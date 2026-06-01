@@ -15,25 +15,25 @@ AI-based contract review and negotiation web app.
 | GitHub | pranav-error |
 | Email | rajasaipranv0@gmail.com |
 | Budget | ₹20,000 total (developer fee only; client pays API + hosting) |
-| Stage | Pre-development — waiting on client project requirements form |
+| Stage | Active development — backend complete, frontend in progress |
 
 ---
 
 ## Payment Milestones
 
-| Milestone | Amount | Trigger |
+| Milestone | Amount | Status |
 |---|---|---|
-| Milestone 1 — Upfront | ₹8,000 | Contract signing |
-| Milestone 2 — Mid-delivery | ₹6,000 | Mid-point delivery |
-| Milestone 3 — Final | ₹6,000 | Final delivery + sign-off |
+| Milestone 1 — Upfront | ₹8,000 | Received |
+| Milestone 2 — Mid-delivery | ₹6,000 | Pending |
+| Milestone 3 — Final | ₹6,000 | Pending |
 
 IP transfers to client only upon receipt of full payment.
 
 ---
 
-## Legal Agreements (Status)
+## Legal Agreements
 
-Five agreements signed by Kartik, pending countersign + verification from Pranav:
+All five agreements fully signed by both parties (2026-06-01):
 1. Freelance Software Development Agreement
 2. NDA
 3. IP Assignment and Work-For-Hire Agreement
@@ -46,169 +46,274 @@ Five agreements signed by Kartik, pending countersign + verification from Pranav
 
 | Layer | Technology |
 |---|---|
-| Frontend | Next.js + Tailwind CSS |
-| Backend | Node.js |
-| Database | Supabase (Postgres + storage metadata) |
-| File Storage | AWS S3 (PDF/DOCX contracts) |
-| Auth | Clerk (1-year free tier) |
+| Frontend | Next.js + Tailwind CSS (Kartik) |
+| Backend | Node.js + Express + TypeScript (Pranav) |
+| Database | Supabase (PostgreSQL) |
+| File Storage | AWS S3 (PDF/DOCX, max 10MB, pre-signed URLs) |
+| Auth | Clerk (email/password + Google OAuth) |
 | Hosting | Vercel |
-| AI | Anthropic — `claude-sonnet-4-6` (locked 2026-06-01) |
+| AI | Anthropic claude-sonnet-4-6 (locked 2026-06-01) |
 
-Client pays AI API costs directly. Developer pays nothing for AI usage.
+Client pays AI API + hosting costs. Developer fee only is ₹20,000.
 
-### AI Provider: Anthropic claude-sonnet-4-6 (Locked)
-
-Model: `claude-sonnet-4-6`
-- Fast, cost-effective, strong legal reasoning
-- Use prompt caching (`cache_control: { type: "ephemeral" }`) on the static system prompt to cut repeated call costs
-- Structured output via tool use (`tool_choice: { type: "tool", name: "analyze_contract" }`) for reliable JSON
+### AI: Anthropic claude-sonnet-4-6
+- Tool use for structured JSON output (`tool_choice: { type: "tool", name: "analyze_contract" }`)
+- Prompt caching (`cache_control: { type: "ephemeral" }`) on system prompt — cuts repeated call costs
+- Entry point: `apps/api/src/services/ai.service.ts`
 
 ---
 
 ## Locked Feature Scope
 
-Scope is frozen at contract signing. Any change requires: written description → written estimate → advance payment.
+Scope frozen at contract signing. Changes require: written description → written estimate → advance payment.
 
-### Feature 1 — Frontend UI
-**In:** Dashboard, contract upload screen, AI review results page, contract history list. Responsive (desktop/tablet/mobile).
-**Out:** Admin panel, dark mode, landing/marketing page, custom animations.
+### In Scope
+- Dashboard, upload screen, AI review results page, contract history list (responsive)
+- Clause extraction from PDF/DOCX, risk flagging (high/medium/low/critical), negotiation suggestions
+- REST API, PDF/DOCX text extraction, review history per user
+- Secure S3 upload up to 10MB
+- Clerk auth: email/password + Google OAuth
+- Export reviewed contract as PDF or DOCX with inline suggestions
+- Functional testing, one bug-fix round, Vercel deployment with SSL + custom domain
+- 2 months post-delivery bug-fix support (24h response, working days)
 
-### Feature 2 — AI Contract Review Engine
-**In:** Clause extraction from PDF/DOCX, risk flagging (high/medium/low), negotiation suggestions per clause. One AI provider.
-**Out:** Custom-trained models, fine-tuning, jurisdiction-specific legal DBs, real-time legal advice.
+### Out of Scope (V1)
+- Admin panel, dark mode, landing page
+- Custom-trained models, fine-tuning
+- Multi-tenant / org/team accounts, billing/subscription
+- MFA, SSO/SAML, RBAC
+- Bulk export, DocuSign/e-signature
+- Load/stress/penetration testing
+- New features during support period
 
-### Feature 3 — Backend + Database
-**In:** REST API for all frontend features, PDF/DOCX text extraction, review history per user, basic user data management.
-**Out:** Admin backend, analytics engine, multi-tenant architecture, billing/subscription logic.
-
-### Feature 4 — File Storage
-**In:** Secure PDF/DOCX upload up to 10MB per file, stored on AWS S3 with access control.
-**Out:** Video storage, bulk upload, folder system, file versioning, virus scanning.
-
-### Feature 5 — Auth
-**In:** Email/password signup, Google OAuth, protected routes, session management via Clerk.
-**Out:** MFA, SSO/SAML, RBAC, team/org accounts, social logins beyond Google.
-
-### Feature 6 — Export Reviewed Contract
-**In:** Download AI-reviewed contract as PDF or DOCX with inline suggestions/annotations.
-**Out:** Custom branded exports, bulk export, DocuSign/e-signature integration.
-
-### Feature 7 — Testing + Deployment
-**In:** Functional testing of all features, one round of bug fixes pre-launch, Vercel deployment with SSL + custom domain connection.
-**Out:** Load/stress testing, penetration testing, multi-region deployment, CI/CD pipeline beyond basic GitHub integration.
-
-### Feature 8 — Post-Delivery Support (2 months)
-**In:** Bug fixes for originally delivered features, 24h response on working days.
-**Out:** New features, design changes, third-party API issues (e.g. OpenAI downtime), support beyond 2 months.
+**Sign-off rule:** 7 calendar days after delivery notification. Silence = accepted, final payment due.
 
 ---
 
-## Scope Protection Rules
+## Monorepo Structure
 
-- Scope frozen at contract signing
-- Change requests: written description → written cost/timeline estimate → advance payment before work starts
-- Client sign-off window: 7 calendar days after delivery notification. Silence = accepted, final payment due.
+```
+contract-review-saas/
+├── apps/
+│   ├── api/                  Express + TypeScript (port 4000) — Pranav
+│   │   └── src/
+│   │       ├── config.ts     Zod-validated env — single source of truth
+│   │       ├── db.ts         Supabase client
+│   │       ├── index.ts      Express entry — registers all routers
+│   │       ├── middleware/
+│   │       │   ├── auth.ts   Clerk JWT verification
+│   │       │   └── error.ts  Global error handler
+│   │       ├── routes/
+│   │       │   ├── contracts.ts   Core contract routes
+│   │       │   ├── clauses.ts     Clause library CRUD
+│   │       │   ├── rules.ts       Review rules / playbook CRUD
+│   │       │   └── analytics.ts   Dashboard stats
+│   │       └── services/
+│   │           ├── ai.service.ts       Anthropic — analyze + summarize
+│   │           ├── chat.service.ts     Follow-up Q&A with context memory
+│   │           ├── prompts.ts          Legal prompt builder (intake + rules aware)
+│   │           ├── document.service.ts PDF (pdf-parse) + DOCX (mammoth) extraction
+│   │           ├── storage.service.ts  S3 upload/download/delete
+│   │           ├── export.service.ts   DOCX (docx) + PDF (pdfkit) report export
+│   │           └── activity.service.ts Audit log writer
+│   └── web/                  Next.js frontend (port 3000) — Kartik
+├── packages/
+│   ├── shared/src/types.ts   Shared TypeScript types (Contract, Analysis, etc.)
+│   └── database/schema.sql   Supabase schema — run in SQL editor to init
+├── package.json              npm workspaces root
+└── tsconfig.base.json
+```
 
 ---
 
-## Architecture
+## API Routes (Complete)
 
-### Frontend (Next.js App Router)
+All routes require `Authorization: Bearer <clerk_jwt>` except `/health`.
 
-Pages:
-- `/` — Dashboard (recent contracts, risk summary cards)
-- `/upload` — Contract upload screen
-- `/contracts` — Contract history list (filterable by date)
-- `/contracts/[id]` — AI review results page
-- `/contracts/[id]/export` — Export trigger
-
-Auth: Clerk wraps all routes. Unauthenticated users redirect to sign-in.
-
-### Backend (Node.js REST API)
-
+### Contracts
 | Method | Path | Description |
 |---|---|---|
-| POST | `/api/contracts/upload` | Upload PDF/DOCX to S3, extract text, store in Supabase |
-| POST | `/api/contracts/:id/analyze` | Run AI analysis, store result in Supabase |
-| GET | `/api/contracts` | List user's contracts with status + risk level |
-| GET | `/api/contracts/:id` | Contract detail + analysis result |
-| GET | `/api/contracts/:id/export` | Generate + return annotated PDF or DOCX |
+| POST | `/api/contracts/upload` | Upload PDF/DOCX → extract text → store in S3 + Supabase |
+| GET | `/api/contracts` | List with filters: `status`, `contract_type`, `risk_level`, `search`, `from`, `to` |
+| GET | `/api/contracts/:id` | Single contract + analysis + intake |
+| POST | `/api/contracts/:id/intake` | Save legal intake (counterparty, jurisdiction, deal value…) |
+| GET | `/api/contracts/:id/intake` | Fetch saved intake |
+| POST | `/api/contracts/:id/analyze` | Run AI analysis (uses intake + active review rules as context) |
+| POST | `/api/contracts/:id/summarize` | Plain-English summary (cached after first call) |
+| GET | `/api/contracts/:id/export/docx` | Download annotated DOCX report |
+| GET | `/api/contracts/:id/export/pdf` | Download annotated PDF report |
+| POST | `/api/contracts/:id/chat` | Ask follow-up question (full context: contract + analysis + history) |
+| GET | `/api/contracts/:id/chat` | Get full chat history |
+| DELETE | `/api/contracts/:id/chat` | Clear chat history |
+| DELETE | `/api/contracts/:id` | Delete contract + S3 file |
 
-Clerk JWT is verified on every protected route via middleware.
+### Other
+| Method | Path | Description |
+|---|---|---|
+| GET/POST/PATCH/DELETE | `/api/clauses` | Clause library management |
+| GET/POST/PATCH/DELETE | `/api/rules` | Review rules / playbook management |
+| GET | `/api/analytics` | Stats: totals, by status/type/risk, uploads per month, recent activity |
 
-### Database (Supabase / PostgreSQL)
+---
 
-```sql
--- Users managed by Clerk; store only clerk_user_id + metadata
-users (id, clerk_user_id, email, created_at)
+## Database Schema (Supabase)
 
--- Uploaded contract files
-contracts (id, user_id, filename, s3_key, file_size, mime_type, status, extracted_text, created_at)
--- status: uploaded | processing | analyzed | failed
+Run `packages/database/schema.sql` in Supabase SQL editor.
 
--- AI analysis output
-analyses (id, contract_id, risk_level, risk_summary, clause_analysis, negotiation_points, model, created_at)
--- risk_level: low | medium | high | critical
--- risk_summary, clause_analysis, negotiation_points: JSONB
-```
+| Table | Purpose |
+|---|---|
+| `users` | Clerk user mirror (clerk_user_id, email) |
+| `contracts` | Uploaded files — status, extracted_text, summary, s3_key |
+| `legal_intake` | Pre-analysis context: counterparty, jurisdiction, deal value, urgency |
+| `analyses` | AI results (JSONB): risk_level, risk_summary, clause_analysis, negotiation_points |
+| `chat_messages` | Per-contract Q&A history (role: user/assistant) |
+| `clause_library` | User's saved approved/fallback clauses |
+| `review_rules` | Playbook rule sets — injected into AI prompt when is_active = true |
+| `activity_logs` | Full audit trail of all actions |
 
-### File Storage (AWS S3)
+---
 
-- Upload path: `contracts/{user_id}/{uuid}/{filename}`
-- Access: pre-signed URLs (time-limited, never public)
-- Max file size: 10MB
-- Accepted types: `application/pdf`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document`
+## How the Playbook + Contracts Flow Works
 
-### AI Analysis Flow
+1. **User creates review rules** → `POST /api/rules` with clause-level requirements and severity
+2. **User uploads contract** → text extracted and cached in `contracts.extracted_text`
+3. **User fills intake** → `POST /api/contracts/:id/intake` (jurisdiction, counterparty, deal value, urgency)
+4. **Analyze triggered** → backend fetches contract text + intake + all active review rules → bundles into AI prompt
+5. **Claude reviews against company standards** — flags deviations from rules as specific risks
+6. **Results saved** → risk_level, clause findings, negotiation points stored in `analyses`
+7. **Follow-up chat** → `POST /api/contracts/:id/chat` — every message bundles contract text + analysis + last 20 chat messages as context. Persists forever in `chat_messages`
 
-1. Extract text from PDF/DOCX on upload
-2. On analyze request: fetch extracted text from Supabase (or S3 fallback)
-3. Build prompt: legal system prompt + contract text + contract type
-4. Call AI API with structured JSON output schema
-5. Store analysis result in `analyses` table
-6. Return to frontend
+---
 
-**Context reconstruction for old contracts:**
-- Fetch contract text from Supabase (or re-extract from S3)
-- Fetch all prior analysis results for that contract
-- Bundle into prompt: `contract text + previous reviews + new query`
-- Users can re-run analysis on any historical contract — already in scope
+## Context Memory (Contracts)
 
-### AI Output Schema
+Users never lose contract context:
+- Contract text cached in Supabase on upload — no re-download from S3 needed
+- Analysis results stored indefinitely in `analyses` table
+- Chat history stored indefinitely in `chat_messages` — last 20 messages loaded per call
+- Users can re-analyze any contract from any date — extracted text is always available
+- Re-analysis automatically picks up the latest intake + active review rules
 
-```typescript
-{
-  riskLevel: "low" | "medium" | "high" | "critical"
-  riskSummary: { area: string; risk: string; severity: string; recommendation: string }[]
-  clauseAnalysis: { clause: string; finding: string; risk: string; recommendation: string }[]
-  negotiationPoints: { point: string; preferredPosition: string; fallbackPosition: string }[]
-}
-```
+---
 
-Always enforce with structured output (tool use / JSON schema mode). Never parse free-text AI responses.
+## AI Accuracy — Known Limitations + Planned Fixes
+
+### Current limitations
+
+| Issue | Impact | Fix (planned) |
+|---|---|---|
+| Scanned PDFs | Text extraction fails silently — AI analyses empty contract | AWS Textract OCR fallback |
+| Implied terms + case law | LLM unaware of recent SC/HC judgements; clause valid in text but unenforceable | RAG with Indian Kanoon + bare acts via pgvector |
+| Deeply nested cross-references | Clause 8.2 referencing Schedule 4 para 3(b) analysed independently | Document structure parser (LlamaParse or Textract) + reference resolution |
+| Jurisdiction-specific nuances | Knows Indian Contract Act broadly but not stamp duty, NCLT, Karnataka-specific practice | Jurisdiction prompt modules per intake + RAG with bare acts |
+| Deliberate ambiguity | Strategically vague language ("reasonable", "material", "best efforts") may be missed | Dedicated ambiguity detection pass in AI tool schema |
+
+### Priority order to implement
+1. **Scanned PDF OCR** (AWS Textract) — V1, low effort, high impact
+2. **Ambiguity detection** (add to tool schema) — V1, very low effort
+3. **Jurisdiction prompt modules** (write prompt text per jurisdiction) — V1, low effort
+4. **Cross-reference resolution** (document structure parser) — V1.5
+5. **RAG with Indian bare acts** (pgvector in Supabase) — V1.5
+6. **RAG with case law** (Indian Kanoon API) — V2
+
+**Rough accuracy estimate:**
+- Well-drafted standard English contracts: 75–85% of material risks caught
+- Complex multi-party or poorly formatted documents: 50–65%
+
+---
+
+## Legal Standing
+
+- The tool is **legal to sell and use** in India — it is software, not legal practice
+- Correct disclaimer (already in all outputs): *"AI-generated insights are for informational purposes only and do not constitute legal advice"*
+- Under Advocates Act 1961 — only enrolled Advocates can give legal advice. The tool gives analysis assistance, not advice
+- Amith as a lawyer uses it as an assistant — professional liability for any advice remains his, not the software's
+- Never market as "replace your lawyer" — always position as "makes your lawyer faster"
+
+---
+
+## Competitive Positioning
+
+**vs Ironclad / Kira (~$50,000–$200,000/year):**
+- They win on: custom-trained ML models, full CLM, enterprise integrations (Salesforce, DocuSign), SOC2, RBAC, years of hardening
+- We win on: price (100x cheaper), simplicity (upload → analyze in minutes), Indian legal market (they don't serve it), AI-native architecture, conversational follow-up chat, negotiation intelligence (they give extractions, we give fallback positions)
+
+**Real target market:** Solo lawyers, small Indian law firms, Indian startups, founders, procurement at mid-sized Indian companies — all underserved by enterprise tools.
+
+**Key differentiator to develop:** Jurisdiction-aware depth (India-specific statutes + case law via RAG) is what eventually makes Contralyn better than any general LLM tool for Indian legal work.
 
 ---
 
 ## Development Principles
 
 - Clerk handles all auth — never build custom JWT logic
-- Every DB query scoped to `user_id` from Clerk session — no cross-user data leaks
+- Every DB query scoped to `user_id` from Clerk JWT — no cross-user data leaks
 - S3 files accessed via pre-signed URLs only — no public buckets
-- All API inputs validated with Zod before touching DB or S3
-- AI output always parsed against strict JSON schema — never trust free-text
-- Store extracted contract text in Supabase so re-analysis doesn't re-download from S3
-- Use prompt caching on the static legal system prompt (Anthropic) or system message caching (OpenAI) to reduce repeated API costs
+- All inputs validated with Zod before DB or S3
+- AI output always via tool use with strict schema — never parse free-text AI responses
+- All key actions logged to `activity_logs` via `logActivity()`
+- Config always from `config.ts` — never `process.env` directly
+- Org isolation note: no multi-tenant in V1 — `user_id` is Clerk user ID, single user per account
 
 ---
 
-## Legal System Prompt Principles
+## Environment Variables
 
-- Position AI as a senior corporate lawyer specializing in commercial contracts
-- Always produce structured JSON output matching the schema above
-- Flag both legal and business risk
-- Include clear risk severity per clause
-- Produce negotiation fallback positions, not just "this is risky"
-- Always append: "AI-generated insights are not legal advice"
+Copy `apps/api/.env.example` → `apps/api/.env` and fill in:
+
+```env
+NODE_ENV=development
+PORT=4000
+WEB_URL=http://localhost:3000
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=
+CLERK_SECRET_KEY=sk_test_...
+AWS_REGION=ap-south-1
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+S3_BUCKET_NAME=contralyn-contracts
+ANTHROPIC_API_KEY=sk-ant-...
+AI_MODEL=claude-sonnet-4-6
+```
+
+---
+
+## Local Dev Setup
+
+```bash
+# 1. Run schema in Supabase SQL editor (packages/database/schema.sql)
+# 2. Fill apps/api/.env from .env.example
+# 3. Install deps
+npm install
+# 4. Start API
+npm run dev:api
+# 5. Start web (partner)
+npm run dev:web
+```
+
+---
+
+## Current Status
+
+- [x] Legal agreements signed (2026-06-01)
+- [x] Milestone 1 — ₹8,000 received (2026-06-01)
+- [x] AI provider locked — Anthropic claude-sonnet-4-6
+- [x] Backend scaffold — Express, Clerk auth, S3, Supabase, Anthropic
+- [x] Contract upload, extraction, analysis, export (PDF + DOCX)
+- [x] Follow-up chat with persistent context memory
+- [x] Search + filter on contract list
+- [x] Legal intake (feeds jurisdiction + deal value into AI prompt)
+- [x] AI summarization (cached)
+- [x] Activity logging / audit trail
+- [x] Clause library CRUD
+- [x] Review rules / basic playbook (injected into AI analysis)
+- [x] Analytics endpoint
+- [ ] Frontend (Kartik — in progress)
+- [ ] Scanned PDF OCR (AWS Textract) — planned V1
+- [ ] Ambiguity detection in AI schema — planned V1
+- [ ] Jurisdiction prompt modules — planned V1
+- [ ] Provision Supabase + S3 + Clerk + fill .env
+- [ ] Milestone 2 — ₹6,000
 
 ---
 
@@ -216,23 +321,13 @@ Always enforce with structured output (tool use / JSON schema mode). Never parse
 
 | Task | Skill |
 |---|---|
-| Claude API integration, prompt caching | `claude-api` |
-| Next.js routing, Server Components, layouts | `vercel:nextjs` |
+| Claude API, prompt caching, tool use | `claude-api` |
+| Next.js routing, Server Components | `vercel:nextjs` |
 | UI components, Tailwind, shadcn | `vercel:shadcn` |
-| AI streaming / structured output | `vercel:ai-sdk` |
-| Deploying to Vercel | `vercel:deploy` |
-| Managing env vars | `vercel:env` |
+| AI streaming interfaces | `vercel:ai-sdk` |
+| Deploy to Vercel | `vercel:deploy` |
+| Env vars | `vercel:env` |
 | Supabase + S3 setup | `vercel:marketplace` |
-| Clerk auth setup | `vercel:auth` |
-| Security review (S3 access control, auth middleware) | `security-review` |
-| Verify a feature works end-to-end | `verify` |
-
----
-
-## Current Status
-
-- [x] Legal agreements — fully signed by both parties (2026-06-01)
-- [x] Milestone 1 payment — ₹8,000 received (2026-06-01)
-- [ ] Client project requirements form — received, review and confirm details
-- [ ] AI provider decision (OpenAI vs Anthropic) — pending
-- [ ] Development start — ready to begin once requirements confirmed and AI provider chosen
+| Clerk auth | `vercel:auth` |
+| Security review | `security-review` |
+| Verify feature works end-to-end | `verify` |
