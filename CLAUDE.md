@@ -52,21 +52,16 @@ Five agreements signed by Kartik, pending countersign + verification from Pranav
 | File Storage | AWS S3 (PDF/DOCX contracts) |
 | Auth | Clerk (1-year free tier) |
 | Hosting | Vercel |
-| AI | OpenAI OR Anthropic — one provider, decided before dev starts |
+| AI | Anthropic — `claude-sonnet-4-6` (locked 2026-06-01) |
 
 Client pays AI API costs directly. Developer pays nothing for AI usage.
 
-### AI Provider Decision (Pending)
+### AI Provider: Anthropic claude-sonnet-4-6 (Locked)
 
-Choose one before dev starts:
-
-| Provider | Model | Pros | Cons |
-|---|---|---|---|
-| Anthropic | claude-opus-4-7 | 200k context, superior legal reasoning, better long-doc handling | Slightly higher cost |
-| Anthropic | claude-sonnet-4-6 | Faster + cheaper, still strong | Smaller context |
-| OpenAI | gpt-4o | Widely known, good structured output | 128k context, weaker on long contracts |
-
-**Recommendation: Anthropic claude-opus-4-7** for full contract analysis (200k context = no truncation on large contracts), claude-sonnet-4-6 for cheaper extraction tasks. Use prompt caching (`cache_control`) on the static legal system prompt to reduce repeated costs.
+Model: `claude-sonnet-4-6`
+- Fast, cost-effective, strong legal reasoning
+- Use prompt caching (`cache_control: { type: "ephemeral" }`) on the static system prompt to cut repeated call costs
+- Structured output via tool use (`tool_choice: { type: "tool", name: "analyze_contract" }`) for reliable JSON
 
 ---
 

@@ -1,0 +1,14 @@
+{
+  "name": "contralyn",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev:api": "npm run dev --workspace=apps/api",
+    "build:api": "npm run build --workspace=apps/api",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "build:web": "npm run build --workspace=apps/web"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

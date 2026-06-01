@@ -1,0 +1,38 @@
+{
+  "name": "@contralyn/api",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.30.0",
+    "@aws-sdk/client-s3": "^3.600.0",
+    "@aws-sdk/s3-request-presigner": "^3.600.0",
+    "@clerk/backend": "^1.0.0",
+    "@contralyn/shared": "*",
+    "@supabase/supabase-js": "^2.45.0",
+    "cors": "^2.8.5",
+    "docx": "^9.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "helmet": "^7.1.0",
+    "mammoth": "^1.8.0",
+    "multer": "^1.4.5-lts.1",
+    "pdf-parse": "^1.1.1",
+    "pdfkit": "^0.15.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/multer": "^1.4.11",
+    "@types/node": "^20.0.0",
+    "@types/pdf-parse": "^1.1.4",
+    "@types/pdfkit": "^0.13.4",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0"
+  }
+}
