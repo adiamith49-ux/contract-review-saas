@@ -38,7 +38,18 @@ CREATE TABLE IF NOT EXISTS analyses (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- Chat messages (follow-up Q&A per contract)
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  contract_id uuid NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+  user_id text NOT NULL,
+  role text NOT NULL CHECK (role IN ('user', 'assistant')),
+  content text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 -- Indexes for fast per-user queries
 CREATE INDEX IF NOT EXISTS idx_contracts_user_created ON contracts(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_analyses_user_created ON analyses(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_analyses_contract ON analyses(contract_id);
+CREATE INDEX IF NOT EXISTS idx_chat_contract_created ON chat_messages(contract_id, created_at ASC);

@@ -6,6 +6,7 @@ import type { ContractType } from "@contralyn/shared";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { analyzeContract } from "../services/ai.service.js";
+import { chatWithContract } from "../services/chat.service.js";
 import { extractText } from "../services/document.service.js";
 import { exportToDocx, exportToPdf } from "../services/export.service.js";
 import {
@@ -249,6 +250,99 @@ contractsRouter.delete("/:id", async (req, res, next) => {
       db.from("contracts").delete().eq("id", req.params.id),
     ]);
 
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/contracts/:id/chat
+// Body: { question: string }
+// Bundles contract text + previous analysis + chat history → AI response
+contractsRouter.post("/:id/chat", async (req, res, next) => {
+  try {
+    const { question } = z.object({ question: z.string().min(1).max(2000) }).parse(req.body);
+
+    const { data: contract, error: contractError } = await db
+      .from("contracts")
+      .select("extracted_text, contract_type, analyses(*)")
+      .eq("id", req.params.id)
+      .eq("user_id", req.userId)
+      .single();
+
+    if (contractError || !contract) {
+      res.status(404).json({ error: "Contract not found" });
+      return;
+    }
+
+    if (!contract.extracted_text) {
+      res.status(422).json({ error: "Contract text not available" });
+      return;
+    }
+
+    const { data: history } = await db
+      .from("chat_messages")
+      .select("role, content")
+      .eq("contract_id", req.params.id)
+      .eq("user_id", req.userId)
+      .order("created_at", { ascending: true })
+      .limit(20);
+
+    const analysis = contract.analyses?.[0] ?? null;
+
+    const answer = await chatWithContract({
+      contractText: contract.extracted_text,
+      contractType: contract.contract_type,
+      analysis: analysis
+        ? {
+            riskLevel: analysis.risk_level,
+            riskSummary: analysis.risk_summary,
+            clauseAnalysis: analysis.clause_analysis,
+            negotiationPoints: analysis.negotiation_points,
+          }
+        : null,
+      history: (history ?? []) as { role: "user" | "assistant"; content: string }[],
+      question,
+    });
+
+    await db.from("chat_messages").insert([
+      { contract_id: req.params.id, user_id: req.userId, role: "user", content: question },
+      { contract_id: req.params.id, user_id: req.userId, role: "assistant", content: answer },
+    ]);
+
+    res.json({ answer });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/contracts/:id/chat — full chat history for a contract
+contractsRouter.get("/:id/chat", async (req, res, next) => {
+  try {
+    const { data, error } = await db
+      .from("chat_messages")
+      .select("id, role, content, created_at")
+      .eq("contract_id", req.params.id)
+      .eq("user_id", req.userId)
+      .order("created_at", { ascending: true });
+
+    if (error) throw error;
+    res.json({ messages: data ?? [] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/contracts/:id/chat — clears chat history (fresh start)
+contractsRouter.delete("/:id/chat", async (req, res, next) => {
+  try {
+    const { error } = await db
+      .from("chat_messages")
+      .delete()
+      .eq("contract_id", req.params.id)
+      .eq("user_id", req.userId);
+
+    if (error) throw error;
     res.status(204).send();
   } catch (err) {
     next(err);
