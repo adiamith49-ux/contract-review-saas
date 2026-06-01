@@ -1,64 +1,212 @@
-# contract-review-saas
-AI-powered contract review application designed to assist legal professionals in analyzing agreements efficiently. The tool focuses on generating structured risk summaries, redlines, and negotiation insights for contracts such as NDAs, MSAs, SaaS agreements, SOWs, and vendor contracts.
+# Contralyn — AI-Powered Legal-Tech SaaS Platform
 
-This project is being built as a lean MVP with a focus on practical legal workflows, especially for Indian and global corporate use cases.
+Contralyn is a stealth-mode AI-powered legal-tech SaaS platform focused on enterprise-grade contract review, negotiation workflows, legal playbook automation, and AI-assisted risk analysis.
 
-🎯 Objective
+The platform is being designed to assist legal teams, in-house counsel, founders, procurement teams, and contract professionals in reviewing, analyzing, negotiating, and managing contracts more efficiently through structured AI-driven workflows.
 
-To create a lightweight, AI-assisted system that:
+The project is currently under active conceptualization and MVP development with a strong focus on practical legal workflows, scalable SaaS architecture, and enterprise-oriented usability for both Indian and global legal/commercial use cases.
 
-Reduces contract review time
-Highlights legal risks clearly
-Suggests actionable redlines
-Provides negotiation positions and fallback options
-⚙️ Core Features (Current Scope)
-📥 Contract input (text/file upload)
-🧠 AI-based contract analysis
-⚠️ Risk summary generation
-✍️ Suggested redlines with reasoning
-🤝 Negotiation points and fallback positions
-📄 Structured output for easy review
-🚧 Work in Progress
+---
 
-The application scaffold is generated but needs refinement and stabilization.
+# 🎯 Vision
 
-Immediate Goals:
-Make backend fully runnable locally
-Fix dependency/configuration issues
-Ensure /analyze endpoint works reliably
-Connect frontend to backend (basic flow)
-🔧 Next Phase: Playbook Integration
+Contralyn aims to evolve from a focused AI-assisted contract review platform into a broader workflow-driven legal operating system combining:
 
-We plan to introduce legal playbooks to improve output quality and consistency.
+* AI contract analysis
+* negotiation intelligence
+* legal playbooks
+* approval workflows
+* collaboration systems
+* legal intake workflows
+* institutional legal memory
+* matter management
+* risk visibility
+* enterprise legal operations support
 
-Playbook Features:
-Clause-level risk rules (e.g., indemnity, liability, termination)
-Predefined redline standards
-Jurisdiction-specific (India-focused initially)
-Custom negotiation strategies
-🧱 Tech Stack (Auto-generated scaffold)
-Frontend: Next.js
-Backend: Node.js / Express (TypeScript)
-Database: PostgreSQL
-AI Integration: OpenAI API (with fallback logic)
-Storage: Local/S3-compatible
-👨‍💻 What is Needed
+The long-term objective is to combine practical legal expertise with AI-assisted workflow automation to improve speed, consistency, visibility, and scalability of contract operations.
 
-Looking for support to:
+---
 
-Run and stabilize the application locally
-Fix setup/environment issues
-Ensure API endpoints work correctly
-Assist in implementing playbook integration logic
-Improve AI output structure and reliability
-🧠 Context
+# ⚙️ Intended Product Scope (Current MVP Direction)
 
-This project is led by a corporate lawyer with 12+ years of experience in contract negotiation and risk assessment. The focus is on combining legal expertise + AI to build a practical, high-impact tool rather than a generic platform.
+The Platform is an evolving early-stage legal-tech AI SaaS product currently under active refinement and development.
 
-🚀 Vision
+The intended MVP scope may include:
 
-Start with a focused contract review tool and evolve into a decision-support system for legal teams, prioritizing:
+* secure user authentication and account management
+* contract upload and document handling workflows
+* AI-assisted contract review and clause extraction
+* risk analysis and negotiation suggestion workflows
+* automated comments and redline support
+* legal intake and contextual review systems
+* legal playbook and policy-driven review logic
+* workflow automation and approval-routing systems
+* matter management and collaboration functionality
+* contract comparison and version analysis
+* clause libraries and institutional legal memory concepts
+* reporting, dashboards, and analytics workflows
+* jurisdiction-aware legal workflow functionality
+* backend APIs and scalable infrastructure
+* deployment and implementation support
+* export/download/report generation functionality
+* testing, debugging, optimization, and workflow refinement
 
-Speed
-Accuracy
-Practical usability
+The Platform scope, workflows, feature priorities, UI/UX, integrations, prompts, and implementation logic may continue evolving during the initial MVP planning and requirement-finalization stage based on product discussions, legal-tech references, operational workflows, and practical implementation considerations.
+
+---
+
+# 🧠 Core Product Philosophy
+
+The Platform is being built around the idea that the future of legal-tech is not merely isolated AI outputs, but AI combined with:
+
+* workflow orchestration
+* approvals
+* structured legal intake
+* negotiation intelligence
+* institutional playbooks
+* collaboration layers
+* operational visibility
+* legal knowledge retention
+
+Contralyn focuses on building practical, workflow-oriented systems rather than generic AI chat interfaces.
+
+---
+
+# 🔥 Key Planned Product Modules
+
+## 1. Legal Intake System
+
+Structured intake workflows before contract review including:
+
+* contract type
+* jurisdiction
+* counterparty
+* department
+* urgency
+* deal value
+* risk level
+* renewal information
+* business owner context
+
+## 2. Playbook Engine
+
+Policy-driven AI review logic using:
+
+* preferred clauses
+* fallback language
+* escalation rules
+* negotiation standards
+* company-specific risk tolerances
+
+## 3. AI Negotiation Copilot
+
+AI-assisted negotiation support including:
+
+* fallback positions
+* negotiation suggestions
+* risk trade-offs
+* compromise language
+* business impact analysis
+
+## 4. Approval Workflow System
+
+Workflow-based routing and approvals including:
+
+* legal review
+* finance approvals
+* security/privacy escalation
+* high-risk contract escalation
+* internal review tracking
+
+## 5. Matter Management & Collaboration
+
+Collaboration workflows including:
+
+* comments
+* internal discussions
+* task assignment
+* review tracking
+* audit history
+* workflow visibility
+
+## 6. Clause Library & Institutional Memory
+
+Centralized legal intelligence including:
+
+* approved clauses
+* fallback language
+* negotiation history
+* reusable playbook logic
+* prior contract learnings
+
+## 7. Version Comparison & Risk Visibility
+
+Comparison and analysis workflows including:
+
+* clause-level change detection
+* revision comparison
+* hidden-risk identification
+* contract delta analysis
+
+## 8. Executive Risk Dashboard
+
+Operational dashboards including:
+
+* contract risk visibility
+* expiring contracts
+* auto-renewal tracking
+* vendor exposure
+* legal analytics
+* workflow visibility
+
+## 9. Jurisdiction-Aware AI Logic
+
+Jurisdiction-specific workflow and review behavior including:
+
+* India
+* US
+* UK
+* future multi-jurisdiction support
+
+---
+
+# 🧱 Technology Direction
+
+Current development stack and architecture direction may include:
+
+* Frontend: Next.js
+* Backend: Node.js / Express / TypeScript
+* Database: PostgreSQL
+* AI Integration: OpenAI and related AI APIs
+* Authentication: Supabase Auth / related authentication systems
+* Storage: Secure local/cloud-compatible storage
+* Infrastructure: Scalable deployment-oriented architecture
+
+Final implementation approaches may evolve during development.
+
+---
+
+# 👨‍💻 Current Development Focus
+
+Current development priorities include:
+
+* stabilizing the application foundation
+* improving backend reliability
+* refining workflows and architecture
+* implementing MVP modules
+* improving AI output structure
+* integrating legal playbook logic
+* improving deployment readiness
+* building scalable workflow systems
+* strengthening UX/UI and usability
+* refining legal operational workflows
+
+---
+
+# 🚧 Development Status
+
+The current application scaffold and MVP architecture are under active development and refinement.
+
+The Platform remains confidential and under restricted development access.
+
+Additional product references, workflow concepts, module structures, implementation guidance, legal-tech inspirations, and operational requirements may continue to evolve during the MVP development lifecycle.
