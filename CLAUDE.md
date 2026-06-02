@@ -16,6 +16,8 @@ AI-based contract review and negotiation web app.
 | Email | rajasaipranv0@gmail.com |
 | Budget | ₹20,000 total (developer fee only; client pays API + hosting) |
 | Stage | Active development — backend complete, frontend in progress |
+| Primary market | US and UK law firms + legal teams |
+| Secondary market | EU, India, and other jurisdictions (supported, not primary focus) |
 
 ---
 
@@ -203,9 +205,9 @@ Users never lose contract context:
 | Issue | Impact | Fix (planned) |
 |---|---|---|
 | Scanned PDFs | Text extraction fails silently — AI analyses empty contract | AWS Textract OCR fallback |
-| Implied terms + case law | LLM unaware of recent SC/HC judgements; clause valid in text but unenforceable | RAG with Indian Kanoon + bare acts via pgvector |
+| Implied terms + case law | LLM unaware of recent US/UK court decisions; clause valid in text but unenforceable | RAG with CourtListener (US) + BAILII (UK) + statutes via pgvector |
 | Deeply nested cross-references | Clause 8.2 referencing Schedule 4 para 3(b) analysed independently | Document structure parser (LlamaParse or Textract) + reference resolution |
-| Jurisdiction-specific nuances | Knows Indian Contract Act broadly but not stamp duty, NCLT, Karnataka-specific practice | Jurisdiction prompt modules per intake + RAG with bare acts |
+| Jurisdiction-specific nuances | Knows US/UK law broadly but not state-specific US law or recent UK case law | Jurisdiction prompt modules per intake + RAG with US/UK statutes and case law |
 | Deliberate ambiguity | Strategically vague language ("reasonable", "material", "best efforts") may be missed | Dedicated ambiguity detection pass in AI tool schema |
 
 ### Priority order to implement
@@ -213,8 +215,8 @@ Users never lose contract context:
 2. **Ambiguity detection** (add to tool schema) — V1, very low effort
 3. **Jurisdiction prompt modules** (write prompt text per jurisdiction) — V1, low effort
 4. **Cross-reference resolution** (document structure parser) — V1.5
-5. **RAG with Indian bare acts** (pgvector in Supabase) — V1.5
-6. **RAG with case law** (Indian Kanoon API) — V2
+5. **RAG with US/UK statutes** (UCC, UK Companies Act, GDPR via pgvector) — V1.5
+6. **RAG with case law** (CourtListener for US, BAILII for UK) — V2
 
 **Rough accuracy estimate:**
 - Well-drafted standard English contracts: 75–85% of material risks caught
@@ -234,13 +236,26 @@ Users never lose contract context:
 
 ## Competitive Positioning
 
+**Primary market:** US and UK law firms, solo practitioners, in-house legal teams, mid-sized businesses. EU supported. India available but not primary.
+
+**Direct competitor: ContractKen ($149/user/month)**
+- They win on: Microsoft Word add-in (works inside existing workflow), one-click redline application in Word, defined terms tracking, iManage/enterprise DMS integration
+- We win on: web-based (no Word dependency), 3–5x cheaper, conversational chat per contract, legal intake + deal context in AI, simpler onboarding (no Word add-in install)
+- Their weakness: requires Microsoft Word — useless for Google Docs users or PDF-only workflows
+
 **vs Ironclad / Kira (~$50,000–$200,000/year):**
-- They win on: custom-trained ML models, full CLM, enterprise integrations (Salesforce, DocuSign), SOC2, RBAC, years of hardening
-- We win on: price (100x cheaper), simplicity (upload → analyze in minutes), Indian legal market (they don't serve it), AI-native architecture, conversational follow-up chat, negotiation intelligence (they give extractions, we give fallback positions)
+- They win on: custom-trained ML models, full CLM, Salesforce/DocuSign integrations, SOC2, RBAC, years of hardening
+- We win on: price (10–100x cheaper), simplicity, AI-native architecture, conversational follow-up chat, negotiation intelligence
 
-**Real target market:** Solo lawyers, small Indian law firms, Indian startups, founders, procurement at mid-sized Indian companies — all underserved by enterprise tools.
+**Pricing positioning:** $49–$99/user/month puts us directly below ContractKen and well below Ironclad/Kira. Strong value proposition for small-to-mid US/UK firms who don't need enterprise CLM.
 
-**Key differentiator to develop:** Jurisdiction-aware depth (India-specific statutes + case law via RAG) is what eventually makes Contralyn better than any general LLM tool for Indian legal work.
+**Key sales line:** *"ContractKen charges $149/user/month and only works inside Microsoft Word. Contralyn works on any browser, costs less, and gives you a full AI chat interface per contract — not just a Word add-in."*
+
+**Security sales line:** *"Built on AWS, Clerk, Supabase, and Vercel — all independently SOC2 certified. Your contracts are encrypted at rest and in transit and are never used to train AI models."*
+
+**Key differentiator to develop:** Jurisdiction-aware depth for US and UK law (UCC, Delaware corporate law, English contract law, UK Companies Act) via RAG is what eventually makes Contralyn better than any general LLM tool.
+
+**Target market:** US and UK law firms, in-house counsel, legal teams. EU supported. India supported as secondary market — do not lead with India in positioning or UI.
 
 ---
 

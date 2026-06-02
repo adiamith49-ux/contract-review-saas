@@ -34,7 +34,7 @@ const intakeSchema = z.object({
   department: z.string().optional(),
   urgency: z.enum(["low", "medium", "high", "critical"]).optional(),
   deal_value: z.coerce.number().positive().optional(),
-  jurisdiction: z.enum(["india", "us", "uk", "other"]).optional(),
+  jurisdiction: z.enum(["us", "uk", "eu", "india", "other"]).optional(),
   renewal_date: z.string().optional(),
   business_owner: z.string().optional(),
   notes: z.string().optional(),

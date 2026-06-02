@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS legal_intake (
   department text,
   urgency text DEFAULT 'medium',                  -- low | medium | high | critical
   deal_value numeric,
-  jurisdiction text DEFAULT 'india',              -- india | us | uk | other
+  jurisdiction text DEFAULT 'us',                 -- us | uk | eu | india | other
   renewal_date date,
   business_owner text,
   notes text,
