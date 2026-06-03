@@ -58,6 +58,20 @@ const analysisTool: Anthropic.Tool = {
           },
         },
       },
+      ambiguityFlags: {
+        type: "array",
+        description: "Vague, contradictory, or undefined terms that could create disputes",
+        items: {
+          type: "object",
+          required: ["term", "location", "issue", "suggestion"],
+          properties: {
+            term: { type: "string", description: "The ambiguous term or phrase" },
+            location: { type: "string", description: "Clause or section where it appears" },
+            issue: { type: "string", description: "Why this is ambiguous or risky" },
+            suggestion: { type: "string", description: "Recommended replacement or clarification" },
+          },
+        },
+      },
     },
   },
 };
@@ -84,7 +98,7 @@ export async function analyzeContract(
   intake?: IntakeContext | null,
   rules?: ReviewRule[]
 ): Promise<AnalysisResult & { model: string }> {
-  const response = await anthropic.messages.create({
+  const response = await anthropic.beta.promptCaching.messages.create({
     model: config.AI_MODEL,
     max_tokens: 4096,
     system: [{ type: "text", text: legalSystemPrompt, cache_control: { type: "ephemeral" } }],
@@ -103,7 +117,7 @@ export async function summarizeContract(
   text: string,
   contractType: ContractType
 ): Promise<string> {
-  const response = await anthropic.messages.create({
+  const response = await anthropic.beta.promptCaching.messages.create({
     model: config.AI_MODEL,
     max_tokens: 1024,
     system: [{ type: "text", text: legalSystemPrompt, cache_control: { type: "ephemeral" } }],

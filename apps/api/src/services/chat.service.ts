@@ -63,7 +63,7 @@ export async function chatWithContract(params: {
     { role: "user", content: params.question },
   ];
 
-  const response = await anthropic.messages.create({
+  const response = await anthropic.beta.promptCaching.messages.create({
     model: config.AI_MODEL,
     max_tokens: 2048,
     system: [

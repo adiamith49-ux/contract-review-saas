@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS analyses (
   risk_summary jsonb NOT NULL DEFAULT '[]',
   clause_analysis jsonb NOT NULL DEFAULT '[]',
   negotiation_points jsonb NOT NULL DEFAULT '[]',
+  ambiguity_flags jsonb NOT NULL DEFAULT '[]',
   model text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );

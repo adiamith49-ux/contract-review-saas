@@ -5,10 +5,11 @@ import { z } from "zod";
 import type { ContractType } from "@contralyn/shared";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { analyzeLimiter, chatLimiter, uploadLimiter } from "../middleware/rateLimit.js";
 import { analyzeContract, summarizeContract } from "../services/ai.service.js";
 import { logActivity } from "../services/activity.service.js";
 import { chatWithContract } from "../services/chat.service.js";
-import { extractText } from "../services/document.service.js";
+import { extractText, validateFileType } from "../services/document.service.js";
 import { exportToDocx, exportToPdf } from "../services/export.service.js";
 import { buildS3Key, deleteFromS3, getPresignedUrl, uploadToS3 } from "../services/storage.service.js";
 
@@ -44,12 +45,14 @@ export const contractsRouter = Router();
 contractsRouter.use(requireAuth);
 
 // POST /api/contracts/upload
-contractsRouter.post("/upload", upload.single("file"), async (req, res, next) => {
+contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req, res, next) => {
   try {
     if (!req.file) {
       res.status(400).json({ error: "File is required (PDF or DOCX, max 10MB)" });
       return;
     }
+
+    await validateFileType(req.file.buffer, req.file.mimetype);
 
     const contractType = contractTypeSchema.default("other").parse(req.body.contract_type);
     const fileId = randomUUID();
@@ -186,7 +189,7 @@ contractsRouter.get("/:id/intake", async (req, res, next) => {
 });
 
 // POST /api/contracts/:id/analyze
-contractsRouter.post("/:id/analyze", async (req, res, next) => {
+contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
   try {
     const { data: contract, error: fetchError } = await db
       .from("contracts")
@@ -225,6 +228,7 @@ contractsRouter.post("/:id/analyze", async (req, res, next) => {
         risk_summary: analysis.riskSummary,
         clause_analysis: analysis.clauseAnalysis,
         negotiation_points: analysis.negotiationPoints,
+        ambiguity_flags: analysis.ambiguityFlags ?? [],
         model: analysis.model,
       })
       .select("id")
@@ -338,7 +342,7 @@ contractsRouter.get("/:id/export/pdf", async (req, res, next) => {
 });
 
 // POST /api/contracts/:id/chat
-contractsRouter.post("/:id/chat", async (req, res, next) => {
+contractsRouter.post("/:id/chat", chatLimiter, async (req, res, next) => {
   try {
     const { question } = z.object({ question: z.string().min(1).max(2000) }).parse(req.body);
 
@@ -414,6 +418,36 @@ contractsRouter.delete("/:id/chat", async (req, res, next) => {
 
     if (error) throw error;
     res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/contracts/:id — update filename or contract_type
+contractsRouter.patch("/:id", async (req, res, next) => {
+  try {
+    const body = z.object({
+      filename: z.string().min(1).max(255).optional(),
+      contract_type: contractTypeSchema.optional(),
+    }).parse(req.body);
+
+    if (Object.keys(body).length === 0) {
+      res.status(400).json({ error: "No fields to update" });
+      return;
+    }
+
+    const { data, error } = await db
+      .from("contracts")
+      .update(body)
+      .eq("id", req.params.id)
+      .eq("user_id", req.userId)
+      .select("id, filename, contract_type, status, updated_at")
+      .single();
+
+    if (error || !data) { res.status(404).json({ error: "Contract not found" }); return; }
+
+    await logActivity(req.userId, "contract.updated", req.params.id, body as Record<string, unknown>);
+    res.json({ contract: data });
   } catch (err) {
     next(err);
   }

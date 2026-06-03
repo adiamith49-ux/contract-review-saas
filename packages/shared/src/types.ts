@@ -32,11 +32,19 @@ export interface NegotiationPoint {
   fallbackPosition: string;
 }
 
+export interface AmbiguityFlag {
+  term: string;
+  location: string;
+  issue: string;
+  suggestion: string;
+}
+
 export interface AnalysisResult {
   riskLevel: RiskLevel;
   riskSummary: RiskSummaryItem[];
   clauseAnalysis: ClauseAnalysisItem[];
   negotiationPoints: NegotiationPoint[];
+  ambiguityFlags?: AmbiguityFlag[];
 }
 
 export interface Contract {
@@ -59,6 +67,7 @@ export interface Analysis {
   risk_summary: RiskSummaryItem[];
   clause_analysis: ClauseAnalysisItem[];
   negotiation_points: NegotiationPoint[];
+  ambiguity_flags?: AmbiguityFlag[];
   model: string;
   created_at: string;
 }
