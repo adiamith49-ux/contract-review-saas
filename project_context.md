@@ -39,7 +39,7 @@ npm run dev            # http://localhost:4000
 ### Frontend
 ```bash
 cd apps/web
-cp .env.example .env.local   # fill in NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY + NEXT_PUBLIC_API_URL
+cp .env.example .env   # fill in NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY + NEXT_PUBLIC_API_URL
 npm install
 npm run dev            # http://localhost:3000
 ```
@@ -66,11 +66,16 @@ npm run dev:web    # starts frontend
 | `S3_BUCKET_NAME` | contralyn-contracts |
 | `ANTHROPIC_API_KEY` | console.anthropic.com |
 
-### apps/web/.env.local
+### apps/web/.env
 | Variable | Source |
 |---|---|
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk dashboard > API Keys |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk dashboard > API Keys — **set** (measured-satyr-29.clerk.accounts.dev) |
+| `CLERK_SECRET_KEY` | Clerk dashboard > API Keys — **set** |
 | `NEXT_PUBLIC_API_URL` | http://localhost:4000 (dev) / deployed URL (prod) |
+| `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | /sign-in |
+| `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | /sign-up |
+| `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL` | / |
+| `NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL` | / |
 
 ---
 
@@ -232,6 +237,10 @@ apps/web/src/
   *What:* Config files (next.config.js, tailwind, tsconfig, postcss), Clerk middleware, root layout, globals.css, lib/utils.ts, lib/api.ts, all shadcn/ui components, AppShell + Sidebar layout, auth pages (sign-in/sign-up), all 5 dashboard pages (Dashboard, Upload, Contracts list, Contract detail, Export), project_context.md
   *Files:* All files under `apps/web/src/`
 
+- **2026-06-04** — Environment setup + both dev servers running
+  *What:* Fixed npm cache permissions (`sudo chown -R $(whoami) ~/.npm`), ran `npm install` (271 packages), created `apps/api/.env` and `apps/web/.env`, wired in Clerk credentials (project: measured-satyr-29). Backend running on :4000, frontend on :3000 with full Clerk auth. Note: `apps/web` uses `.env` not `.env.local`.
+  *Files:* `apps/api/.env`, `apps/web/.env`
+
 ---
 
 ## 11) TODO List
@@ -241,6 +250,7 @@ apps/web/src/
 ### Done
 | Status | Task | Date |
 |---|---|---|
+| `[x]` | npm install — all dependencies installed (271 packages) | 2026-06-04 |
 | `[x]` | Backend: Express API, all routes, services | 2026-06-01 |
 | `[x]` | Backend: Supabase DB schema | 2026-06-01 |
 | `[x]` | Backend: Clerk JWT auth middleware | 2026-06-01 |
@@ -265,7 +275,7 @@ apps/web/src/
 ### Pending
 | Status | Task | Added |
 |---|---|---|
-| `[ ]` | Set up Clerk project + fill .env.local keys | 2026-06-01 |
+| `[x]` | Set up Clerk project + fill .env keys | 2026-06-04 |
 | `[ ]` | Set up Supabase project + run schema.sql | 2026-06-01 |
 | `[ ]` | Configure AWS S3 bucket (contralyn-contracts) | 2026-06-01 |
 | `[ ]` | Deploy backend to Vercel / Railway | 2026-06-01 |
