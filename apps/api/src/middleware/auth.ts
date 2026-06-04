@@ -1,6 +1,8 @@
-import { verifyToken } from "@clerk/backend";
+import { createClerkClient } from "@clerk/backend";
 import type { NextFunction, Request, Response } from "express";
 import { config } from "../config.js";
+
+const clerk = createClerkClient({ secretKey: config.CLERK_SECRET_KEY });
 
 declare global {
   namespace Express {
@@ -18,7 +20,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 
   try {
-    const payload = await verifyToken(token, { secretKey: config.CLERK_SECRET_KEY });
+    const payload = await clerk.verifyToken(token);
     req.userId = payload.sub;
     next();
   } catch {
