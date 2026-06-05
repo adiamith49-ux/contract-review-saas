@@ -7,6 +7,52 @@ import type {
   NegotiationPoint,
 } from "@contralyn/shared";
 
+// ─── Clause types ─────────────────────────────────────────────────────────────
+
+export interface Clause {
+  id: string;
+  user_id: string;
+  title: string;
+  clause_type: "approved" | "fallback";
+  jurisdiction: string | null;
+  content: string;
+  tags: string[];
+  created_at: string;
+}
+
+// ─── Review rule types ────────────────────────────────────────────────────────
+
+export interface ReviewRule {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string;
+  severity: RiskLevel;
+  is_active: boolean;
+  created_at: string;
+}
+
+// ─── Analytics types ──────────────────────────────────────────────────────────
+
+export interface AnalyticsData {
+  totals: {
+    total: number;
+    analyzed: number;
+    high_risk: number;
+    pending: number;
+  };
+  by_status: { status: ContractStatus; count: number }[];
+  by_type: { contract_type: ContractType; count: number }[];
+  by_risk: { risk_level: RiskLevel; count: number }[];
+  uploads_per_month: { month: string; count: number }[];
+  recent_activity: {
+    id: string;
+    action: string;
+    entity_type: string;
+    created_at: string;
+  }[];
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 // ─── Response types ──────────────────────────────────────────────────────────
@@ -172,4 +218,66 @@ export async function clearChatHistory(token: string | null, contractId: string)
     headers,
   });
   if (!res.ok) throw new Error("Failed to clear chat");
+}
+
+// ─── Clause endpoints ─────────────────────────────────────────────────────────
+
+export async function listClauses(token: string | null): Promise<{ clauses: Clause[] }> {
+  return apiFetch("/api/clauses", token);
+}
+
+export async function createClause(
+  token: string | null,
+  data: Pick<Clause, "title" | "clause_type" | "jurisdiction" | "content" | "tags">
+): Promise<{ clause: Clause }> {
+  return apiFetch("/api/clauses", token, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function updateClause(
+  token: string | null,
+  id: string,
+  data: Partial<Pick<Clause, "title" | "clause_type" | "jurisdiction" | "content" | "tags">>
+): Promise<{ clause: Clause }> {
+  return apiFetch(`/api/clauses/${id}`, token, { method: "PATCH", body: JSON.stringify(data) });
+}
+
+export async function deleteClause(token: string | null, id: string): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}/api/clauses/${id}`, { method: "DELETE", headers });
+  if (!res.ok) throw new Error("Failed to delete clause");
+}
+
+// ─── Review rule endpoints ────────────────────────────────────────────────────
+
+export async function listRules(token: string | null): Promise<{ rules: ReviewRule[] }> {
+  return apiFetch("/api/rules", token);
+}
+
+export async function createRule(
+  token: string | null,
+  data: Pick<ReviewRule, "name" | "description" | "severity" | "is_active">
+): Promise<{ rule: ReviewRule }> {
+  return apiFetch("/api/rules", token, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function updateRule(
+  token: string | null,
+  id: string,
+  data: Partial<Pick<ReviewRule, "name" | "description" | "severity" | "is_active">>
+): Promise<{ rule: ReviewRule }> {
+  return apiFetch(`/api/rules/${id}`, token, { method: "PATCH", body: JSON.stringify(data) });
+}
+
+export async function deleteRule(token: string | null, id: string): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}/api/rules/${id}`, { method: "DELETE", headers });
+  if (!res.ok) throw new Error("Failed to delete rule");
+}
+
+// ─── Analytics endpoint ───────────────────────────────────────────────────────
+
+export async function getAnalytics(token: string | null): Promise<AnalyticsData> {
+  return apiFetch("/api/analytics", token);
 }

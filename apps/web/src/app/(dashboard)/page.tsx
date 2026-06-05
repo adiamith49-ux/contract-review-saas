@@ -9,6 +9,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { RiskBadge } from "@/components/RiskBadge";
 import { StatusBadge } from "@/components/StatusBadge";
 import { listContracts, type ContractListItem } from "@/lib/api";
+import { MOCK_CONTRACTS } from "@/lib/mock-data";
+
+const DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 import { formatDate, formatFileSize, CONTRACT_TYPE_LABELS } from "@/lib/utils";
 
 export default function DashboardPage() {
@@ -19,6 +22,11 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function load() {
+      if (DEMO) {
+        setContracts(MOCK_CONTRACTS);
+        setLoading(false);
+        return;
+      }
       try {
         const token = await getToken();
         const { contracts } = await listContracts(token);
