@@ -233,7 +233,7 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
         negotiation_points: analysis.negotiationPoints,
         ambiguity_flags: analysis.ambiguityFlags ?? [],
         model: analysis.model,
-      })
+      }, { onConflict: "contract_id" })
       .select("id")
       .single();
 
