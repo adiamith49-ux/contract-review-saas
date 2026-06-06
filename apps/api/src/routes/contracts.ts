@@ -114,7 +114,10 @@ contractsRouter.get("/", async (req, res, next) => {
     if (error) throw error;
 
     if (risk_level && data) {
-      data = data.filter((c: any) => c.analyses?.[0]?.risk_level === risk_level);
+      data = data.filter((c: any) => {
+        const a = Array.isArray(c.analyses) ? c.analyses[0] : c.analyses;
+        return a?.risk_level === risk_level;
+      });
     }
 
     res.json({ contracts: data });
@@ -289,9 +292,9 @@ contractsRouter.get("/:id/export/docx", async (req, res, next) => {
       .eq("user_id", req.userId)
       .single();
 
-    if (error || !data || !data.analyses?.[0]) { res.status(404).json({ error: "Analysis not found" }); return; }
+    const a = Array.isArray(data?.analyses) ? data.analyses[0] : data?.analyses;
+    if (error || !data || !a) { res.status(404).json({ error: "Analysis not found" }); return; }
 
-    const a = data.analyses[0];
     const buffer = await exportToDocx(data.filename, data.contract_type, {
       riskLevel: a.risk_level,
       riskSummary: a.risk_summary,
@@ -320,9 +323,9 @@ contractsRouter.get("/:id/export/pdf", async (req, res, next) => {
       .eq("user_id", req.userId)
       .single();
 
-    if (error || !data || !data.analyses?.[0]) { res.status(404).json({ error: "Analysis not found" }); return; }
+    const a = Array.isArray(data?.analyses) ? data.analyses[0] : data?.analyses;
+    if (error || !data || !a) { res.status(404).json({ error: "Analysis not found" }); return; }
 
-    const a = data.analyses[0];
     const buffer = await exportToPdf(data.filename, data.contract_type, {
       riskLevel: a.risk_level,
       riskSummary: a.risk_summary,
@@ -364,7 +367,7 @@ contractsRouter.post("/:id/chat", chatLimiter, async (req, res, next) => {
       .order("created_at", { ascending: true })
       .limit(20);
 
-    const a = contract.analyses?.[0] ?? null;
+    const a = (Array.isArray(contract.analyses) ? contract.analyses[0] : contract.analyses) ?? null;
 
     const answer = await chatWithContract({
       contractText: contract.extracted_text,

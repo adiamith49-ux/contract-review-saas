@@ -75,7 +75,13 @@ export async function extractText(buffer: Buffer, mimeType: string): Promise<str
 
     // Fallback to Textract if PDF appears to be a scan (no extractable text)
     if (text.length < 100) {
-      return extractTextWithTextract(buffer);
+      try {
+        return await extractTextWithTextract(buffer);
+      } catch (err) {
+        // Textract not configured or lacks permissions — return whatever text was extracted
+        console.warn("Textract OCR fallback failed:", (err as Error).message);
+        return text;
+      }
     }
 
     return text;
