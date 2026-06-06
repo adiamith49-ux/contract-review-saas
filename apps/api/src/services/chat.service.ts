@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { AnalysisResult } from "@contralyn/shared";
+import type { AnalysisResult } from "../types.js";
 import { config } from "../config.js";
 import { legalSystemPrompt } from "./prompts.js";
 

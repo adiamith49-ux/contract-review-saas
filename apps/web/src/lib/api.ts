@@ -5,7 +5,7 @@ import type {
   RiskSummaryItem,
   ClauseAnalysisItem,
   NegotiationPoint,
-} from "@contralyn/shared";
+} from "@/lib/types";
 
 // ─── Clause types ─────────────────────────────────────────────────────────────
 

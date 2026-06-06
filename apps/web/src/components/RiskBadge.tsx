@@ -1,4 +1,4 @@
-import type { RiskLevel } from "@contralyn/shared";
+import type { RiskLevel } from "@/lib/types";
 import { cn, RISK_LEVEL_LABELS, RISK_COLORS } from "@/lib/utils";
 
 interface RiskBadgeProps {

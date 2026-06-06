@@ -1,4 +1,4 @@
-import type { ContractType } from "@contralyn/shared";
+import type { ContractType } from "../types.js";
 
 export const legalSystemPrompt = `You are a senior corporate lawyer specializing in commercial contracts, with deep expertise in US and UK commercial law.
 

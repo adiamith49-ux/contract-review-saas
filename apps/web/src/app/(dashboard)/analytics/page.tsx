@@ -24,7 +24,7 @@ import {
   formatDateTime,
 } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import type { ContractType, RiskLevel, ContractStatus } from "@contralyn/shared";
+import type { ContractType, RiskLevel, ContractStatus } from "@/lib/types";
 import { toast } from "sonner";
 
 export default function AnalyticsPage() {

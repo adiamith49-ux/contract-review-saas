@@ -9,3 +9,4 @@ uploads/
 .next/
 out/
 coverage/
+.vercel

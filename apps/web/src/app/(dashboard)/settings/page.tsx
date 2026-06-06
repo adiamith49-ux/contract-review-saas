@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { CONTRACT_TYPE_LABELS } from "@/lib/utils";
-import type { ContractType } from "@contralyn/shared";
+import type { ContractType } from "@/lib/types";
 
 const PREF_KEY = "contralyn_prefs";
 

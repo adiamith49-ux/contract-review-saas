@@ -10,7 +10,7 @@ import {
   WidthType,
 } from "docx";
 import PDFDocument from "pdfkit";
-import type { AnalysisResult } from "@contralyn/shared";
+import type { AnalysisResult } from "../types.js";
 
 export async function exportToDocx(
   filename: string,

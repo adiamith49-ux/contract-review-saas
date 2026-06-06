@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import multer from "multer";
 import { z } from "zod";
-import type { ContractType } from "@contralyn/shared";
+import type { ContractType } from "../types.js";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { analyzeLimiter, chatLimiter, uploadLimiter } from "../middleware/rateLimit.js";

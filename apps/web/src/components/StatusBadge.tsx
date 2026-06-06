@@ -1,4 +1,4 @@
-import type { ContractStatus } from "@contralyn/shared";
+import type { ContractStatus } from "@/lib/types";
 import { cn, STATUS_LABELS, STATUS_COLORS } from "@/lib/utils";
 
 interface StatusBadgeProps {

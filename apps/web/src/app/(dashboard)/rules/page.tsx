@@ -27,7 +27,7 @@ import { MOCK_RULES } from "@/lib/mock-data";
 
 const DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 import { RISK_LEVEL_LABELS, RISK_COLORS, formatDate, cn } from "@/lib/utils";
-import type { RiskLevel } from "@contralyn/shared";
+import type { RiskLevel } from "@/lib/types";
 
 const EMPTY_FORM = {
   name: "",

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { Upload, FileText, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import type { ContractType } from "@contralyn/shared";
+import type { ContractType } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
