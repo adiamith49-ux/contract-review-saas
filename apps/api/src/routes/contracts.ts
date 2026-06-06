@@ -120,7 +120,15 @@ contractsRouter.get("/", async (req, res, next) => {
       });
     }
 
-    res.json({ contracts: data });
+    // Normalize analyses to always be an array for consistent frontend types
+    const contracts = (data ?? []).map((c: any) => ({
+      ...c,
+      analyses: c.analyses
+        ? (Array.isArray(c.analyses) ? c.analyses : [c.analyses])
+        : [],
+    }));
+
+    res.json({ contracts });
   } catch (err) {
     next(err);
   }
@@ -139,7 +147,12 @@ contractsRouter.get("/:id", async (req, res, next) => {
     if (error || !data) { res.status(404).json({ error: "Contract not found" }); return; }
 
     const fileUrl = await getPresignedUrl(data.s3_key);
-    res.json({ contract: { ...data, fileUrl } });
+    // Supabase returns analyses as a single object (not array) when contract_id has UNIQUE constraint.
+    // Normalize to array so the frontend type AnalysisOut[] stays correct.
+    const analyses = data.analyses
+      ? (Array.isArray(data.analyses) ? data.analyses : [data.analyses])
+      : [];
+    res.json({ contract: { ...data, analyses, fileUrl } });
   } catch (err) {
     next(err);
   }
