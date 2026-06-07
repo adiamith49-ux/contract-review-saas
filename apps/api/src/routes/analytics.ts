@@ -23,7 +23,7 @@ analyticsRouter.get("/", async (req, res, next) => {
 
       db
         .from("activity_logs")
-        .select("action, metadata, created_at")
+        .select("id, action, entity_type, created_at")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(20),
@@ -35,29 +35,42 @@ analyticsRouter.get("/", async (req, res, next) => {
     const contractData = contracts.data ?? [];
     const analysisData = analyses.data ?? [];
 
-    // Contracts by status
-    const byStatus = contractData.reduce<Record<string, number>>((acc, c) => {
+    // ── totals ────────────────────────────────────────────────────────────
+    const totalContracts = contractData.length;
+    const totalAnalyzed  = contractData.filter((c) => c.status === "analyzed").length;
+    const highRiskCount  = analysisData.filter(
+      (a) => a.risk_level === "high" || a.risk_level === "critical",
+    ).length;
+    const pendingCount   = contractData.filter(
+      (c) => c.status === "uploaded" || c.status === "processing",
+    ).length;
+
+    // ── by_status (array) ─────────────────────────────────────────────────
+    const statusMap = contractData.reduce<Record<string, number>>((acc, c) => {
       acc[c.status] = (acc[c.status] ?? 0) + 1;
       return acc;
     }, {});
+    const by_status = Object.entries(statusMap).map(([status, count]) => ({ status, count }));
 
-    // Contracts by type
-    const byType = contractData.reduce<Record<string, number>>((acc, c) => {
+    // ── by_type (array) ───────────────────────────────────────────────────
+    const typeMap = contractData.reduce<Record<string, number>>((acc, c) => {
       acc[c.contract_type] = (acc[c.contract_type] ?? 0) + 1;
       return acc;
     }, {});
+    const by_type = Object.entries(typeMap).map(([contract_type, count]) => ({ contract_type, count }));
 
-    // Analyses by risk level
-    const byRisk = analysisData.reduce<Record<string, number>>((acc, a) => {
+    // ── by_risk (array) ───────────────────────────────────────────────────
+    const riskMap = analysisData.reduce<Record<string, number>>((acc, a) => {
       acc[a.risk_level] = (acc[a.risk_level] ?? 0) + 1;
       return acc;
     }, {});
+    const by_risk = Object.entries(riskMap).map(([risk_level, count]) => ({ risk_level, count }));
 
-    // Uploads per month (last 6 months)
+    // ── uploads_per_month (array, last 6 months, sorted) ─────────────────
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-    const uploadsPerMonth = contractData
+    const monthMap = contractData
       .filter((c) => new Date(c.created_at) >= sixMonthsAgo)
       .reduce<Record<string, number>>((acc, c) => {
         const month = c.created_at.slice(0, 7); // YYYY-MM
@@ -65,19 +78,30 @@ analyticsRouter.get("/", async (req, res, next) => {
         return acc;
       }, {});
 
+    const uploads_per_month = Object.entries(monthMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, count]) => ({ month, count }));
+
+    // ── recent_activity ───────────────────────────────────────────────────
+    const recent_activity = (recentActivity.data ?? []).map((a) => ({
+      id:          a.id ?? "",
+      action:      a.action ?? "",
+      entity_type: a.entity_type ?? "",
+      created_at:  a.created_at ?? "",
+    }));
+
     res.json({
-      summary: {
-        totalContracts: contractData.length,
-        totalAnalyses: analysisData.length,
-        analyzedRate: contractData.length > 0
-          ? Math.round((analysisData.length / contractData.length) * 100)
-          : 0,
+      totals: {
+        total:     totalContracts,
+        analyzed:  totalAnalyzed,
+        high_risk: highRiskCount,
+        pending:   pendingCount,
       },
-      byStatus,
-      byType,
-      byRisk,
-      uploadsPerMonth,
-      recentActivity: recentActivity.data ?? [],
+      by_status,
+      by_type,
+      by_risk,
+      uploads_per_month,
+      recent_activity,
     });
   } catch (err) {
     next(err);

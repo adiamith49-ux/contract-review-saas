@@ -7,17 +7,49 @@ export const rulesRouter = Router();
 rulesRouter.use(requireAuth);
 
 const ruleItemSchema = z.object({
-  clause_type: z.string().min(1),
-  requirement: z.string().min(1),
-  severity: z.enum(["low", "medium", "high", "critical"]),
+  clause_type:  z.string().min(1),
+  requirement:  z.string().min(1),
+  severity:     z.enum(["low", "medium", "high", "critical"]),
 });
 
+// Full schema (multi-rule playbook, used by direct API callers)
 const ruleSetSchema = z.object({
-  title: z.string().min(1).max(200),
+  title:       z.string().min(1).max(200),
   description: z.string().optional(),
-  is_active: z.boolean().optional(),
-  rules: z.array(ruleItemSchema).min(1),
+  is_active:   z.boolean().optional(),
+  rules:       z.array(ruleItemSchema).min(1),
 });
+
+// Simple schema (single-rule, used by the frontend form)
+// Frontend sends: { name, description, severity, is_active }
+// We map name → title and wrap it into a rules array automatically.
+const simpleRuleSchema = z.object({
+  name:        z.string().min(1).max(200),
+  description: z.string().optional(),
+  severity:    z.enum(["low", "medium", "high", "critical"]).optional(),
+  is_active:   z.boolean().optional(),
+});
+
+function normaliseBody(raw: unknown): z.infer<typeof ruleSetSchema> {
+  // Try full schema first
+  const full = ruleSetSchema.safeParse(raw);
+  if (full.success) return full.data;
+
+  // Fall back to simple schema
+  const simple = simpleRuleSchema.parse(raw); // throws ZodError on failure (caught by route handler)
+  return {
+    title:       simple.name,
+    description: simple.description,
+    is_active:   simple.is_active,
+    rules: [
+      {
+        clause_type:  simple.name,
+        requirement:  simple.description ?? simple.name,
+        severity:     simple.severity ?? "medium",
+      },
+    ],
+  };
+}
 
 // GET /api/rules
 rulesRouter.get("/", async (req, res, next) => {
@@ -38,7 +70,7 @@ rulesRouter.get("/", async (req, res, next) => {
 // POST /api/rules
 rulesRouter.post("/", async (req, res, next) => {
   try {
-    const body = ruleSetSchema.parse(req.body);
+    const body = normaliseBody(req.body);
     const { data, error } = await db
       .from("review_rules")
       .insert({ ...body, user_id: req.userId })
@@ -55,7 +87,30 @@ rulesRouter.post("/", async (req, res, next) => {
 // PATCH /api/rules/:id
 rulesRouter.patch("/:id", async (req, res, next) => {
   try {
-    const body = ruleSetSchema.partial().parse(req.body);
+    // Accept partial of either schema
+    let body: Partial<z.infer<typeof ruleSetSchema>>;
+    const full = ruleSetSchema.partial().safeParse(req.body);
+    if (full.success) {
+      body = full.data;
+    } else {
+      const simple = simpleRuleSchema.partial().parse(req.body);
+      body = {
+        ...(simple.name        !== undefined ? { title: simple.name } : {}),
+        ...(simple.description !== undefined ? { description: simple.description } : {}),
+        ...(simple.is_active   !== undefined ? { is_active: simple.is_active } : {}),
+        // If name or description changed, rebuild the single-rule rules array
+        ...(simple.name !== undefined || simple.description !== undefined
+          ? {
+              rules: [{
+                clause_type: simple.name ?? "",
+                requirement: simple.description ?? simple.name ?? "",
+                severity:    simple.severity ?? "medium",
+              }],
+            }
+          : {}),
+      };
+    }
+
     const { data, error } = await db
       .from("review_rules")
       .update({ ...body, updated_at: new Date().toISOString() })

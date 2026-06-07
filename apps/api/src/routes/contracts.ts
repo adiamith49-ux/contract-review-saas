@@ -300,7 +300,7 @@ contractsRouter.get("/:id/export/docx", async (req, res, next) => {
   try {
     const { data, error } = await db
       .from("contracts")
-      .select("filename, contract_type, analyses(*)")
+      .select("filename, contract_type, summary, created_at, extracted_text, analyses(*)")
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
       .single();
@@ -313,7 +313,7 @@ contractsRouter.get("/:id/export/docx", async (req, res, next) => {
       riskSummary: a.risk_summary,
       clauseAnalysis: a.clause_analysis,
       negotiationPoints: a.negotiation_points,
-    });
+    }, data.summary ?? undefined, data.created_at);
 
     await logActivity(req.userId, "contract.exported", req.params.id, { format: "docx" });
 
@@ -331,7 +331,7 @@ contractsRouter.get("/:id/export/pdf", async (req, res, next) => {
   try {
     const { data, error } = await db
       .from("contracts")
-      .select("filename, contract_type, analyses(*)")
+      .select("filename, contract_type, summary, created_at, extracted_text, analyses(*)")
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
       .single();
@@ -344,7 +344,7 @@ contractsRouter.get("/:id/export/pdf", async (req, res, next) => {
       riskSummary: a.risk_summary,
       clauseAnalysis: a.clause_analysis,
       negotiationPoints: a.negotiation_points,
-    });
+    }, data.summary ?? undefined, data.created_at, data.extracted_text ?? undefined);
 
     await logActivity(req.userId, "contract.exported", req.params.id, { format: "pdf" });
 
