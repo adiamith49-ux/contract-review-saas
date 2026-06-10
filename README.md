@@ -2,7 +2,17 @@
 
 AI-powered contract review and negotiation platform for US and UK law firms, in-house counsel, and legal teams.
 
-Analyzes contracts clause-by-clause, flags risks, detects ambiguous language, generates negotiation strategies, and answers follow-up questions — all in a single web interface.
+Analyzes contracts clause-by-clause, flags risks, detects ambiguous language, generates negotiation strategies, exports redlined DOCX with Word comments and tracked-change suggestions, and answers follow-up questions — all in a single web interface.
+
+---
+
+## Live URLs
+
+| App | URL |
+|---|---|
+| Frontend | https://contralyne.com |
+| Backend API | https://api.contralyne.com |
+| Vercel team | amitadi-s-projects (Amith's account) |
 
 ---
 
@@ -12,12 +22,22 @@ Analyzes contracts clause-by-clause, flags risks, detects ambiguous language, ge
 |---|---|
 | Frontend | Next.js 14 + Tailwind CSS |
 | Backend | Node.js + Express + TypeScript |
-| Database | Supabase (PostgreSQL) |
-| File Storage | AWS S3 (PDF/DOCX, max 10MB, AES256) |
+| Database | Supabase (PostgreSQL) — project ref: `qdjdoxwebuwpnggifeku` |
+| File Storage | AWS S3 (PDF/DOCX, max 10MB, AES256) — bucket: `contralyn-contracts` (ap-south-1) |
 | Auth | Clerk (email/password + Google OAuth) |
 | AI | Anthropic claude-sonnet-4-6 (tool use + prompt caching) |
 | OCR | AWS Textract (scanned PDF fallback) |
 | Hosting | Vercel |
+
+---
+
+## Team
+
+| Person | Role | Contact |
+|---|---|---|
+| Sai Pranav | Backend developer | rajasaipranv0@gmail.com / GitHub: pranav-error |
+| Kartik | Frontend developer | kartikjarali@gmail.com |
+| Amith | Client (corporate lawyer) | Vercel + Clerk account owner |
 
 ---
 
@@ -26,13 +46,16 @@ Analyzes contracts clause-by-clause, flags risks, detects ambiguous language, ge
 ```
 contract-review-saas/
 ├── apps/
-│   ├── api/                  Express + TypeScript (port 4000)
+│   ├── api/                  Express + TypeScript (port 4000) — Pranav
+│   │   ├── vercel.json       Vercel build config (src/app.ts, @vercel/node)
 │   │   └── src/
-│   │       ├── config.ts          Zod-validated env
+│   │       ├── app.ts             Express app (no dotenv — for Vercel)
+│   │       ├── index.ts           Local dev entry (imports app.ts + dotenv)
+│   │       ├── config.ts          Zod-validated env — single source of truth
 │   │       ├── db.ts              Supabase client
-│   │       ├── index.ts           Express entry — all routers registered
+│   │       ├── types.ts           Inlined shared types (no workspace dep)
 │   │       ├── middleware/
-│   │       │   ├── auth.ts        Clerk JWT verification
+│   │       │   ├── auth.ts        Clerk JWT verification (standalone verifyToken)
 │   │       │   ├── error.ts       Global error handler
 │   │       │   └── rateLimit.ts   Per-route rate limiters
 │   │       ├── routes/
@@ -40,20 +63,23 @@ contract-review-saas/
 │   │       │   ├── clauses.ts     Clause library CRUD
 │   │       │   ├── rules.ts       Review rules / playbook CRUD
 │   │       │   ├── analytics.ts   Dashboard stats
-│   │       │   ├── activity.ts    Audit log endpoint
-│   │       │   └── account.ts     GDPR account deletion
+│   │       │   ├── activity.ts    Paginated audit log
+│   │       │   └── account.ts     GDPR hard-delete
 │   │       └── services/
 │   │           ├── ai.service.ts       Anthropic — analyze + summarize
 │   │           ├── chat.service.ts     Follow-up Q&A with context memory
 │   │           ├── prompts.ts          Legal prompt builder (US/UK-first, jurisdiction-aware)
-│   │           ├── document.service.ts PDF/DOCX extraction + file validation + OCR fallback
-│   │           ├── storage.service.ts  S3 upload/download/delete
-│   │           ├── export.service.ts   DOCX + PDF report export
+│   │           ├── document.service.ts PDF/DOCX extraction + magic bytes validation + Textract OCR
+│   │           ├── storage.service.ts  S3 upload/download/delete (pre-signed URLs)
+│   │           ├── export.service.ts   DOCX (Word comments + redlines) + PDF (two-column redlines)
 │   │           └── activity.service.ts Audit log writer
-│   └── web/                  Next.js frontend (port 3000)
+│   └── web/                  Next.js frontend (port 3000) — Kartik
+│       ├── vercel.json       framework: nextjs
+│       └── src/
+│           ├── lib/types.ts  Inlined shared types
+│           └── middleware.ts Clerk v5 auth middleware
 ├── packages/
-│   ├── shared/src/types.ts   Shared TypeScript types
-│   └── database/schema.sql   Supabase schema
+│   └── database/schema.sql  Supabase schema — run in SQL editor to init
 ├── package.json              npm workspaces root
 └── tsconfig.base.json
 ```
@@ -76,9 +102,9 @@ All routes require `Authorization: Bearer <clerk_jwt>` except `/health`.
 | GET | `/api/contracts/:id/intake` | — | Fetch saved intake |
 | POST | `/api/contracts/:id/analyze` | 30/hr | Run AI analysis with intake + active rules |
 | POST | `/api/contracts/:id/summarize` | — | Plain-English summary (cached after first call) |
-| GET | `/api/contracts/:id/export/docx` | — | Download annotated DOCX report |
-| GET | `/api/contracts/:id/export/pdf` | — | Download annotated PDF report |
-| POST | `/api/contracts/:id/chat` | 20/min | Ask follow-up question |
+| GET | `/api/contracts/:id/export/docx` | — | Download annotated DOCX with Word comments + redlines |
+| GET | `/api/contracts/:id/export/pdf` | — | Download annotated PDF with two-column redlines layout |
+| POST | `/api/contracts/:id/chat` | 20/min | Ask follow-up question (full contract + analysis context) |
 | GET | `/api/contracts/:id/chat` | — | Full chat history |
 | DELETE | `/api/contracts/:id/chat` | — | Clear chat history |
 | DELETE | `/api/contracts/:id` | — | Delete contract + S3 file |
@@ -97,17 +123,32 @@ All routes require `Authorization: Bearer <clerk_jwt>` except `/health`.
 
 ## AI Analysis
 
-The AI returns structured JSON via Anthropic tool use. Analysis includes:
+Structured JSON output via Anthropic tool use (`tool_choice: { type: "tool", name: "analyze_contract" }`). System prompt cached via Anthropic prompt caching to reduce repeated call costs.
 
+Analysis includes:
 - **Risk level** — low / medium / high / critical
 - **Risk summary** — high-level risk areas with severity + recommendations
 - **Clause analysis** — per-clause findings with risk rating
 - **Negotiation points** — preferred + fallback positions
-- **Ambiguity flags** — vague or undefined terms that could create disputes, with suggested replacements
+- **Ambiguity flags** — vague or undefined terms that could create disputes
 
-Jurisdiction-aware prompts: US (UCC, Delaware), UK (English contract law, Companies Act 2006), EU (GDPR/EU law), India (Indian Contract Act). Defaults to US. System prompt is cached via Anthropic prompt caching to reduce repeated call costs.
+Jurisdiction-aware prompts: US (UCC, Delaware), UK (English contract law, Companies Act 2006), EU (GDPR), India (Indian Contract Act). Defaults to US.
 
-PDF extraction: `pdf-parse` for text PDFs, AWS Textract OCR fallback for scanned documents. DOCX extraction via `mammoth`. File magic bytes validated on every upload to prevent MIME spoofing.
+PDF extraction: `pdf-parse` for text PDFs, AWS Textract OCR fallback for scanned documents. DOCX extraction via `mammoth`. File magic bytes validated on every upload.
+
+---
+
+## DOCX Export — Word Integration
+
+The DOCX export produces a proper redlined annotated contract (not just a separate report). When opened in Microsoft Word or Google Docs:
+
+- **Highlighted paragraphs** — risky clauses are shaded by severity (red = high/critical, orange = medium, green = low)
+- **Word comments** — each flagged clause has a native Word comment balloon in the margin with the AI finding and recommendation (author: "Contralyn AI")
+- **Tracked-change insertions** — negotiation suggestions appear inline as blue underlined tracked insertions; the lawyer can Accept or Reject each one natively in Word
+- **Unmatched findings** — clauses that couldn't be pinned to a specific paragraph appear in an "Additional Findings" appendix
+- **Fallback** — if no extracted text is available, falls back to a table-based report
+
+Library: `docx` v9.7.1 — uses `CommentRangeStart/End/Reference` for comments, `InsertedTextRun` for tracked insertions.
 
 ---
 
@@ -136,16 +177,46 @@ npm run dev:web
 NODE_ENV=development
 PORT=4000
 WEB_URL=http://localhost:3000
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=
-CLERK_SECRET_KEY=sk_test_...
+SUPABASE_URL=https://qdjdoxwebuwpnggifeku.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<from Supabase dashboard>
+CLERK_SECRET_KEY=sk_test_oVWSGUgoJbGJgK619G9FED1CW2ESyf6eKEamTXXr1H
 AWS_REGION=ap-south-1
-AWS_ACCESS_KEY_ID=
-AWS_SECRET_ACCESS_KEY=
+AWS_ACCESS_KEY_ID=AKIAZ626D2EVPRMBGBJC
+AWS_SECRET_ACCESS_KEY=<from Pranav>
 S3_BUCKET_NAME=contralyn-contracts
-ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_API_KEY=<from Vercel env — ask Pranav>
 AI_MODEL=claude-sonnet-4-6
 ```
+
+### Web env (`apps/web/.env.local`)
+
+```env
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_bWVhc3VyZWQtc2F0eXItMjkuY2xlcmsuYWNjb3VudHMuZGV2JA
+CLERK_SECRET_KEY=sk_test_oVWSGUgoJbGJgK619G9FED1CW2ESyf6eKEamTXXr1H
+NEXT_PUBLIC_API_URL=http://localhost:4000
+```
+
+---
+
+## Deploying to Vercel
+
+**Important — monorepo deploy rule:** Always deploy from the **repo root**, not from within `apps/api` or `apps/web`. The Vercel projects have `rootDirectory` set, so running from a subdirectory causes a doubled path error.
+
+```bash
+# Deploy API to production (run from repo root)
+VERCEL_ORG_ID=team_5kVOrDiQPhSjelez7qUKICnx \
+VERCEL_PROJECT_ID=prj_JEhmNBe2xycHd0piqwMmT1E4QbiJ \
+vercel --prod --yes --token <vercel-token>
+
+# Deploy Web to production (run from repo root)
+VERCEL_ORG_ID=team_5kVOrDiQPhSjelez7qUKICnx \
+VERCEL_PROJECT_ID=prj_hgRCNgIHZFQbZAJ34zwgxPFQmJXW \
+vercel --prod --yes --token <vercel-token>
+```
+
+Git auto-deploy is configured: pushing to `main` triggers Vercel's Git integration automatically (rootDirectory + ignored build step per app).
+
+Vercel token: stored in Vercel dashboard / ask Pranav
 
 ---
 
@@ -176,12 +247,20 @@ Run `packages/database/schema.sql` in the Supabase SQL editor to initialize all 
 | OCR fallback (AWS Textract) | Done |
 | Ambiguity detection in AI schema | Done |
 | Playbook (review rules injected into analysis) | Done |
-| Export — DOCX + PDF | Done |
+| Export — PDF (two-column redlines layout) | Done |
+| Export — DOCX (Word comments + tracked-change redlines) | Done |
 | Chat with persistent context | Done |
 | Activity log endpoint | Done |
 | GDPR account deletion | Done |
-| Frontend | In progress (Kartik) |
-| Supabase + S3 + Clerk provisioning | Pending |
+| Analytics (by status/type/risk/month) | Done |
+| Frontend | Done (Kartik) — live at contralyne.com |
+| Vercel auto-deploy on git push | Done (rootDirectory + ignored build step per app) |
+| Supabase provisioned (8 tables) | Done |
+| S3 bucket + IAM user | Done |
+| Clerk configured | Done |
+| Anthropic API key live | Done |
+| Transfer Supabase billing to Amith | Pending |
+| Transfer S3 billing to Amith | Pending |
 
 ---
 
