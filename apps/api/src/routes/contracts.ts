@@ -313,7 +313,7 @@ contractsRouter.get("/:id/export/docx", async (req, res, next) => {
       riskSummary: a.risk_summary,
       clauseAnalysis: a.clause_analysis,
       negotiationPoints: a.negotiation_points,
-    }, data.summary ?? undefined, data.created_at);
+    }, data.summary ?? undefined, data.created_at, data.extracted_text ?? undefined);
 
     await logActivity(req.userId, "contract.exported", req.params.id, { format: "docx" });
 

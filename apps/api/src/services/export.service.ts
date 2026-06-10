@@ -9,6 +9,11 @@ import {
   TableRow,
   TextRun,
   WidthType,
+  CommentRangeStart,
+  CommentRangeEnd,
+  CommentReference,
+  InsertedTextRun,
+  ShadingType,
 } from "docx";
 import type { AnalysisResult } from "../types.js";
 
@@ -558,16 +563,174 @@ export function exportToPdf(
 // ─── DOCX Export (unchanged) ──────────────────────────────────────────────────
 
 export async function exportToDocx(
-  filename:     string,
-  contractType: string,
-  analysis:     AnalysisResult,
-  summary?:     string,
-  createdAt?:   string,
+  filename:      string,
+  contractType:  string,
+  analysis:      AnalysisResult,
+  summary?:      string,
+  createdAt?:    string,
+  extractedText?: string,
 ): Promise<Buffer> {
-  const riskColor = { low: "166534", medium: "9A3412", high: "7F1D1D", critical: "4C1D95" };
-  const color = riskColor[analysis.riskLevel as keyof typeof riskColor] ?? "000000";
+  const riskColorHex: Record<string, string> = {
+    low: "166534", medium: "9A3412", high: "7F1D1D", critical: "4C1D95",
+  };
+  const severityBg: Record<string, string> = {
+    low: "F0FFF4", medium: "FFEDD5", high: "FEE2E2", critical: "EDE9FE",
+  };
+  const overallColor = riskColorHex[analysis.riskLevel] ?? "000000";
+  const now     = new Date();
+  const nowISO  = now.toISOString();
 
-  const summaryParagraphs: DocxParagraph[] = summary
+  // ─── Comment registry ──────────────────────────────────────────────────────
+  let nextCommentId = 1;
+  const commentDefs: {
+    id: number; author: string; date: Date;
+    children: DocxParagraph[];
+  }[] = [];
+
+  function registerComment(
+    heading: string, finding: string, recommendation: string, severity: string,
+  ): number {
+    const id = nextCommentId++;
+    const label = severity.toUpperCase();
+    commentDefs.push({
+      id,
+      author: "Contralyn AI",
+      date:   now,
+      children: [
+        new DocxParagraph({
+          children: [new TextRun({
+            text: `[${label} RISK]  ${heading}`,
+            bold: true,
+            color: riskColorHex[severity] ?? "000000",
+          })],
+        }),
+        new DocxParagraph({
+          children: [new TextRun({ text: `Finding: ${finding}` })],
+        }),
+        ...(recommendation
+          ? [new DocxParagraph({
+              children: [new TextRun({ text: `Recommendation: ${recommendation}` })],
+            })]
+          : []),
+      ],
+    });
+    return id;
+  }
+
+  // ─── Helper: wrap paragraph text with comment markers ─────────────────────
+  function annotatedParagraph(
+    text: string, isHeading: boolean, annotations: AnnotationItem[],
+  ): DocxParagraph {
+    // Worst severity wins for background colour
+    const order: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+    const severity = annotations.reduce(
+      (w, a) => (order[a.severity] ?? 0) > (order[w] ?? 0) ? a.severity : w,
+      "low",
+    );
+
+    const commentId = registerComment(
+      annotations.map(a => a.heading).join(" / "),
+      annotations.map(a => a.finding).join("\n\n"),
+      annotations.map(a => a.recommendation).filter(Boolean).join("\n\n"),
+      severity,
+    );
+
+    return new DocxParagraph({
+      heading:  isHeading ? HeadingLevel.HEADING_3 : undefined,
+      shading:  { type: ShadingType.CLEAR, color: "auto", fill: severityBg[severity] ?? "FEE2E2" },
+      children: [
+        new CommentRangeStart(commentId),
+        new TextRun({ text, bold: isHeading }),
+        new CommentRangeEnd(commentId),
+        new CommentReference(commentId),
+      ],
+    });
+  }
+
+  // ─── Build contract body with inline annotations ───────────────────────────
+  const bodyChildren: DocxParagraph[] = [];
+  let hasBody = false;
+
+  if (extractedText && extractedText.trim().length > 100) {
+    hasBody = true;
+    const paragraphs  = parseContractParagraphs(cleanText(extractedText));
+    const allAnnotations = collectAnnotations(analysis);
+    const { map: annotationMap, unmatched } = buildAnnotationMap(paragraphs, allAnnotations);
+
+    // Build negotiation suggestion map using same matching logic
+    const negMap = new Map<number, any[]>();
+    for (const np of analysis.negotiationPoints as any[]) {
+      const idx = findMatchingParagraph(
+        paragraphs,
+        cleanText(np.preferredPosition ?? ""),
+        cleanText(np.point ?? ""),
+      );
+      if (idx !== null) {
+        const arr = negMap.get(idx) ?? [];
+        arr.push(np);
+        negMap.set(idx, arr);
+      }
+    }
+
+    let insertionId = 0;
+
+    for (let i = 0; i < paragraphs.length; i++) {
+      const para        = paragraphs[i];
+      const annotations = annotationMap.get(i) ?? [];
+
+      if (annotations.length > 0) {
+        bodyChildren.push(annotatedParagraph(para.text, para.isHeading, annotations));
+      } else {
+        bodyChildren.push(new DocxParagraph({
+          heading:  para.isHeading ? HeadingLevel.HEADING_3 : undefined,
+          children: [new TextRun({ text: para.text, bold: para.isHeading })],
+        }));
+      }
+
+      // Inline negotiation suggestion (tracked insertion) after matched paragraph
+      for (const np of negMap.get(i) ?? []) {
+        if (np.preferredPosition) {
+          bodyChildren.push(new DocxParagraph({
+            children: [
+              new TextRun({
+                text:  "Suggested revision: ",
+                bold:  true,
+                color: "0070C0",
+                size:  18,
+              }),
+              new InsertedTextRun({
+                text:   cleanText(np.preferredPosition),
+                id:     insertionId++,
+                author: "Contralyn AI",
+                date:   nowISO,
+                color:  "0070C0",
+                size:   18,
+              }),
+            ],
+          }));
+        }
+      }
+    }
+
+    // Unmatched findings — append at end before negotiation summary
+    if (unmatched.length > 0) {
+      bodyChildren.push(new DocxParagraph({ text: "" }));
+      bodyChildren.push(new DocxParagraph({ text: "Additional Findings", heading: HeadingLevel.HEADING_2 }));
+      for (const item of unmatched) {
+        bodyChildren.push(new DocxParagraph({
+          children: [new TextRun({ text: item.heading, bold: true, color: riskColorHex[item.severity] ?? "000000" })],
+        }));
+        bodyChildren.push(new DocxParagraph(item.finding));
+        if (item.recommendation) {
+          bodyChildren.push(new DocxParagraph(`Recommendation: ${item.recommendation}`));
+        }
+        bodyChildren.push(new DocxParagraph({ text: "" }));
+      }
+    }
+  }
+
+  // ─── Summary paragraphs ────────────────────────────────────────────────────
+  const summaryParas: DocxParagraph[] = summary
     ? [
         new DocxParagraph({ text: "Executive Summary", heading: HeadingLevel.HEADING_1 }),
         new DocxParagraph({
@@ -582,68 +745,93 @@ export async function exportToDocx(
       ]
     : [];
 
+  // ─── Negotiation summary appendix ─────────────────────────────────────────
+  const negSummary: DocxParagraph[] = [];
+  if ((analysis.negotiationPoints as any[]).length > 0) {
+    negSummary.push(new DocxParagraph({ text: "" }));
+    negSummary.push(new DocxParagraph({ text: "Negotiation Points", heading: HeadingLevel.HEADING_1 }));
+    for (const n of analysis.negotiationPoints as any[]) {
+      negSummary.push(new DocxParagraph({ children: [new TextRun({ text: n.point ?? "", bold: true })] }));
+      negSummary.push(new DocxParagraph(`Preferred position: ${n.preferredPosition ?? ""}`));
+      negSummary.push(new DocxParagraph(`Fallback position: ${n.fallbackPosition ?? ""}`));
+      negSummary.push(new DocxParagraph({ text: "" }));
+    }
+  }
+
+  // ─── Fallback (no extracted text): table-based report ─────────────────────
+  const fallbackChildren: (DocxParagraph | Table)[] = hasBody ? [] : [
+    new DocxParagraph({ text: "Risk Areas", heading: HeadingLevel.HEADING_1 }),
+    new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: [
+        new TableRow({
+          children: ["Area", "Severity", "Finding", "Recommendation"].map(
+            h => new TableCell({ children: [new DocxParagraph({ children: [new TextRun({ text: h, bold: true })] })] }),
+          ),
+        }),
+        ...(analysis.riskSummary as any[]).map(r =>
+          new TableRow({
+            children: [r.area, ((r.severity ?? "") as string).toUpperCase(), r.risk ?? "", r.recommendation ?? ""].map(
+              v => new TableCell({ children: [new DocxParagraph(String(v))] }),
+            ),
+          }),
+        ),
+      ],
+    }),
+    new DocxParagraph({ text: "" }),
+    new DocxParagraph({ text: "Clause Analysis", heading: HeadingLevel.HEADING_1 }),
+    ...analysis.clauseAnalysis.flatMap(c => [
+      new DocxParagraph({ children: [new TextRun({ text: (c as any).clause ?? "", bold: true })] }),
+      new DocxParagraph(`Risk: ${((c as any).risk ?? "").toUpperCase()}`),
+      new DocxParagraph(`Finding: ${(c as any).finding ?? ""}`),
+      new DocxParagraph(`Recommendation: ${(c as any).recommendation ?? ""}`),
+      new DocxParagraph({ text: "" }),
+    ]),
+  ];
+
+  // ─── Build document ────────────────────────────────────────────────────────
   const doc = new Document({
+    comments: commentDefs.length > 0 ? { children: commentDefs } : undefined,
     sections: [{
       children: [
-        new DocxParagraph({ text: "Contract Analysis Report", heading: HeadingLevel.TITLE }),
+        // Cover / title block
+        new DocxParagraph({ text: "Contract Review — Contralyn AI", heading: HeadingLevel.TITLE }),
         new DocxParagraph({
           children: [
-            new TextRun({ text: "File: ", bold: true }),
-            new TextRun(filename),
+            new TextRun({ text: "File: ", bold: true }), new TextRun(filename),
             new TextRun("   "),
-            new TextRun({ text: "Type: ", bold: true }),
-            new TextRun(formatContractType(contractType)),
-            createdAt
-              ? new TextRun({ text: `   Reviewed: ${formatDate(createdAt)}`, color: "718096" })
-              : new TextRun(""),
+            new TextRun({ text: "Type: ", bold: true }), new TextRun(formatContractType(contractType)),
+            ...(createdAt ? [new TextRun({ text: `   Reviewed: ${formatDate(createdAt)}`, color: "718096" })] : []),
           ],
         }),
         new DocxParagraph({
           children: [
             new TextRun({ text: "Overall Risk: ", bold: true }),
-            new TextRun({ text: riskLabel(analysis.riskLevel), color, bold: true }),
+            new TextRun({ text: riskLabel(analysis.riskLevel), color: overallColor, bold: true }),
           ],
         }),
         new DocxParagraph({ text: "" }),
-        ...summaryParagraphs,
 
-        new DocxParagraph({ text: "Risk Areas", heading: HeadingLevel.HEADING_1 }),
-        new Table({
-          width: { size: 100, type: WidthType.PERCENTAGE },
-          rows: [
-            new TableRow({
-              children: ["Area", "Severity", "Finding", "Recommendation"].map(
-                h => new TableCell({ children: [new DocxParagraph({ children: [new TextRun({ text: h, bold: true })] })] }),
-              ),
-            }),
-            ...(analysis.riskSummary as any[]).map(r =>
-              new TableRow({
-                children: [r.area, ((r.severity ?? "") as string).toUpperCase(), r.risk ?? "", r.recommendation ?? ""].map(
-                  v => new TableCell({ children: [new DocxParagraph(String(v))] }),
-                ),
+        ...summaryParas,
+
+        // Annotated contract body or table fallback
+        ...(hasBody
+          ? [
+              new DocxParagraph({ text: "Contract Text with Annotations", heading: HeadingLevel.HEADING_1 }),
+              new DocxParagraph({
+                children: [new TextRun({
+                  text: "Highlighted clauses carry AI findings as Word comments. Blue underlined text shows suggested revisions.",
+                  italics: true, size: 18, color: "718096",
+                })],
               }),
-            ),
-          ],
-        }),
+              new DocxParagraph({ text: "" }),
+              ...bodyChildren,
+            ]
+          : fallbackChildren),
+
+        ...negSummary,
+
         new DocxParagraph({ text: "" }),
-
-        new DocxParagraph({ text: "Clause Analysis", heading: HeadingLevel.HEADING_1 }),
-        ...analysis.clauseAnalysis.flatMap(c => [
-          new DocxParagraph({ children: [new TextRun({ text: (c as any).clause ?? "", bold: true })] }),
-          new DocxParagraph(`Risk: ${((c as any).risk ?? "").toUpperCase()}`),
-          new DocxParagraph(`Finding: ${(c as any).finding ?? ""}`),
-          new DocxParagraph(`Recommendation: ${(c as any).recommendation ?? ""}`),
-          new DocxParagraph({ text: "" }),
-        ]),
-
-        new DocxParagraph({ text: "Negotiation Points", heading: HeadingLevel.HEADING_1 }),
-        ...analysis.negotiationPoints.flatMap(n => [
-          new DocxParagraph({ children: [new TextRun({ text: (n as any).point ?? "", bold: true })] }),
-          new DocxParagraph(`Preferred: ${(n as any).preferredPosition ?? ""}`),
-          new DocxParagraph(`Fallback: ${(n as any).fallbackPosition ?? ""}`),
-          new DocxParagraph({ text: "" }),
-        ]),
-
         new DocxParagraph({
           children: [new TextRun({
             text: "AI-generated insights are for informational purposes only and do not constitute legal advice.",
