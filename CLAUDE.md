@@ -1,4 +1,4 @@
-# Contralyn — CLAUDE.md
+# Contralyne — CLAUDE.md
 
 AI-based contract review and negotiation web app.
 **Production-ready V1 — not a prototype or MVP.**
@@ -9,13 +9,13 @@ AI-based contract review and negotiation web app.
 
 | Field | Value |
 |---|---|
-| Product name | Contralyn |
+| Product name | Contralyne |
 | Client | Amith — corporate lawyer, Karnataka (Karwar) |
 | Developers | Sai Pranav + Kartik (partners) |
 | GitHub | pranav-error |
 | Email | rajasaipranv0@gmail.com |
 | Budget | ₹20,000 total (developer fee only; client pays API + hosting) |
-| Stage | Active development — backend complete, frontend in progress |
+| Stage | V1 delivered — live at contralyne.com |
 | Primary market | US and UK law firms + legal teams |
 | Secondary market | EU, India, and other jurisdictions (supported, not primary focus) |
 
@@ -61,7 +61,7 @@ Client pays AI API + hosting costs. Developer fee only is ₹20,000.
 ### AI: Anthropic claude-sonnet-4-6
 - Tool use for structured JSON output (`tool_choice: { type: "tool", name: "analyze_contract" }`)
 - Prompt caching (`cache_control: { type: "ephemeral" }`) on system prompt — cuts repeated call costs
-- Entry point: `apps/api/src/services/ai.service.ts`
+- Entry point: `backend/src/services/ai.service.ts`
 
 ---
 
@@ -98,29 +98,38 @@ Scope frozen at contract signing. Changes require: written description → writt
 contract-review-saas/
 ├── apps/
 │   ├── api/                  Express + TypeScript (port 4000) — Pranav
+│   │   ├── vercel.json       Vercel build config (src/app.ts, @vercel/node)
 │   │   └── src/
-│   │       ├── config.ts     Zod-validated env — single source of truth
-│   │       ├── db.ts         Supabase client
-│   │       ├── index.ts      Express entry — registers all routers
+│   │       ├── app.ts             Express app (CORS, helmet, routes — no dotenv, Vercel-safe)
+│   │       ├── index.ts           Local dev entry (dotenv + app.ts)
+│   │       ├── config.ts          Zod-validated env — single source of truth
+│   │       ├── db.ts              Supabase client
+│   │       ├── types.ts           Inlined shared types (no workspace dep needed)
 │   │       ├── middleware/
-│   │       │   ├── auth.ts   Clerk JWT verification
-│   │       │   └── error.ts  Global error handler
+│   │       │   ├── auth.ts        Clerk JWT verification (standalone verifyToken)
+│   │       │   ├── error.ts       Global error handler
+│   │       │   └── rateLimit.ts   Per-route rate limiters
 │   │       ├── routes/
-│   │       │   ├── contracts.ts   Core contract routes
+│   │       │   ├── contracts.ts   Core contract CRUD + AI routes
 │   │       │   ├── clauses.ts     Clause library CRUD
 │   │       │   ├── rules.ts       Review rules / playbook CRUD
-│   │       │   └── analytics.ts   Dashboard stats
+│   │       │   ├── analytics.ts   Dashboard stats
+│   │       │   ├── activity.ts    Paginated audit log
+│   │       │   └── account.ts     GDPR hard-delete
 │   │       └── services/
-│   │           ├── ai.service.ts       Anthropic — analyze + summarize
+│   │           ├── ai.service.ts       Anthropic — analyze + summarize + ambiguity detection
 │   │           ├── chat.service.ts     Follow-up Q&A with context memory
-│   │           ├── prompts.ts          Legal prompt builder (intake + rules aware)
-│   │           ├── document.service.ts PDF (pdf-parse) + DOCX (mammoth) extraction
-│   │           ├── storage.service.ts  S3 upload/download/delete
-│   │           ├── export.service.ts   DOCX (docx) + PDF (pdfkit) report export
+│   │           ├── prompts.ts          Legal prompt builder (US/UK-first, jurisdiction-aware)
+│   │           ├── document.service.ts PDF/DOCX extraction + AWS Textract OCR fallback
+│   │           ├── storage.service.ts  S3 upload/download/delete (pre-signed URLs)
+│   │           ├── export.service.ts   DOCX (Word comments + tracked redlines) + PDF export
 │   │           └── activity.service.ts Audit log writer
-│   └── web/                  Next.js frontend (port 3000) — Kartik
+│   └── frontend/             Next.js frontend (port 3000) — Kartik
+│       ├── vercel.json        framework: nextjs
+│       └── src/
+│           ├── lib/types.ts   Inlined shared types
+│           └── middleware.ts  Clerk v5 auth middleware
 ├── packages/
-│   ├── shared/src/types.ts   Shared TypeScript types (Contract, Analysis, etc.)
 │   └── database/schema.sql   Supabase schema — run in SQL editor to init
 ├── package.json              npm workspaces root
 └── tsconfig.base.json
@@ -133,28 +142,31 @@ contract-review-saas/
 All routes require `Authorization: Bearer <clerk_jwt>` except `/health`.
 
 ### Contracts
-| Method | Path | Description |
-|---|---|---|
-| POST | `/api/contracts/upload` | Upload PDF/DOCX → extract text → store in S3 + Supabase |
-| GET | `/api/contracts` | List with filters: `status`, `contract_type`, `risk_level`, `search`, `from`, `to` |
-| GET | `/api/contracts/:id` | Single contract + analysis + intake |
-| POST | `/api/contracts/:id/intake` | Save legal intake (counterparty, jurisdiction, deal value…) |
-| GET | `/api/contracts/:id/intake` | Fetch saved intake |
-| POST | `/api/contracts/:id/analyze` | Run AI analysis (uses intake + active review rules as context) |
-| POST | `/api/contracts/:id/summarize` | Plain-English summary (cached after first call) |
-| GET | `/api/contracts/:id/export/docx` | Download annotated DOCX report |
-| GET | `/api/contracts/:id/export/pdf` | Download annotated PDF report |
-| POST | `/api/contracts/:id/chat` | Ask follow-up question (full context: contract + analysis + history) |
-| GET | `/api/contracts/:id/chat` | Get full chat history |
-| DELETE | `/api/contracts/:id/chat` | Clear chat history |
-| DELETE | `/api/contracts/:id` | Delete contract + S3 file |
+| Method | Path | Rate Limit | Description |
+|---|---|---|---|
+| POST | `/api/contracts/upload` | 20/hr | Upload PDF/DOCX → validate (magic bytes) → extract → S3 + Supabase |
+| GET | `/api/contracts` | — | List with filters: `status`, `contract_type`, `risk_level`, `search`, `from`, `to` |
+| GET | `/api/contracts/:id` | — | Single contract + analysis + intake + pre-signed S3 URL |
+| PATCH | `/api/contracts/:id` | — | Rename contract or update contract_type |
+| POST | `/api/contracts/:id/intake` | — | Save legal intake (counterparty, jurisdiction, deal value…) |
+| GET | `/api/contracts/:id/intake` | — | Fetch saved intake |
+| POST | `/api/contracts/:id/analyze` | 30/hr | Run AI analysis (uses intake + active review rules as context) |
+| POST | `/api/contracts/:id/summarize` | — | Plain-English summary (cached after first call) |
+| GET | `/api/contracts/:id/export/docx` | — | Download DOCX with Word comments + tracked-change redlines |
+| GET | `/api/contracts/:id/export/pdf` | — | Download PDF with two-column redlines layout |
+| POST | `/api/contracts/:id/chat` | 20/min | Ask follow-up question (full context: contract + analysis + history) |
+| GET | `/api/contracts/:id/chat` | — | Get full chat history |
+| DELETE | `/api/contracts/:id/chat` | — | Clear chat history |
+| DELETE | `/api/contracts/:id` | — | Delete contract + S3 file |
 
 ### Other
 | Method | Path | Description |
 |---|---|---|
 | GET/POST/PATCH/DELETE | `/api/clauses` | Clause library management |
 | GET/POST/PATCH/DELETE | `/api/rules` | Review rules / playbook management |
-| GET | `/api/analytics` | Stats: totals, by status/type/risk, uploads per month, recent activity |
+| GET | `/api/analytics` | Dashboard stats — totals, risk breakdown, uploads per month |
+| GET | `/api/activity` | Paginated audit log (all user actions) |
+| DELETE | `/api/account` | GDPR hard-delete — all user data + S3 files |
 
 ---
 
@@ -198,22 +210,28 @@ Users never lose contract context:
 
 ---
 
-## AI Accuracy — Known Limitations + Planned Fixes
+## AI Accuracy — Limitations + Roadmap
 
-### Current limitations
+### Implemented in V1
 
-| Issue | Impact | Fix (planned) |
+| Feature | Notes |
+|---|---|
+| Scanned PDF OCR (AWS Textract) | Fallback when pdf-parse returns empty text |
+| Ambiguity detection | Dedicated pass in AI tool schema — flags "reasonable", "material", "best efforts" |
+| Jurisdiction-aware prompts | US (UCC, Delaware), UK (English contract law, Companies Act 2006), EU (GDPR), India (Indian Contract Act) |
+
+### Remaining limitations (V1.5+)
+
+| Issue | Impact | Planned fix |
 |---|---|---|
-| Scanned PDFs | Text extraction fails silently — AI analyses empty contract | AWS Textract OCR fallback |
-| Implied terms + case law | LLM unaware of recent US/UK court decisions; clause valid in text but unenforceable | RAG with CourtListener (US) + BAILII (UK) + statutes via pgvector |
-| Deeply nested cross-references | Clause 8.2 referencing Schedule 4 para 3(b) analysed independently | Document structure parser (LlamaParse or Textract) + reference resolution |
-| Jurisdiction-specific nuances | Knows US/UK law broadly but not state-specific US law or recent UK case law | Jurisdiction prompt modules per intake + RAG with US/UK statutes and case law |
-| Deliberate ambiguity | Strategically vague language ("reasonable", "material", "best efforts") may be missed | Dedicated ambiguity detection pass in AI tool schema |
+| Implied terms + case law | LLM unaware of recent US/UK court decisions | RAG with CourtListener (US) + BAILII (UK) via pgvector |
+| Deeply nested cross-references | Clause 8.2 referencing Schedule 4 para 3(b) analysed independently | Document structure parser + reference resolution |
+| State-specific US law + recent UK case law | Knows law broadly but not sub-jurisdiction nuances | RAG with US/UK statutes and recent case law |
 
-### Priority order to implement
-1. **Scanned PDF OCR** (AWS Textract) — V1, low effort, high impact
-2. **Ambiguity detection** (add to tool schema) — V1, very low effort
-3. **Jurisdiction prompt modules** (write prompt text per jurisdiction) — V1, low effort
+### Roadmap
+1. ✅ **Scanned PDF OCR** (AWS Textract) — done V1
+2. ✅ **Ambiguity detection** (AI tool schema) — done V1
+3. ✅ **Jurisdiction prompt modules** (US/UK/EU/India) — done V1
 4. **Cross-reference resolution** (document structure parser) — V1.5
 5. **RAG with US/UK statutes** (UCC, UK Companies Act, GDPR via pgvector) — V1.5
 6. **RAG with case law** (CourtListener for US, BAILII for UK) — V2
@@ -238,10 +256,10 @@ Users never lose contract context:
 
 **Primary market:** US and UK law firms, solo practitioners, in-house legal teams, mid-sized businesses. EU supported. India available but not primary.
 
-**Direct competitor: ContractKen ($149/user/month)**
-- They win on: Microsoft Word add-in (works inside existing workflow), one-click redline application in Word, defined terms tracking, iManage/enterprise DMS integration
-- We win on: web-based (no Word dependency), 3–5x cheaper, conversational chat per contract, legal intake + deal context in AI, simpler onboarding (no Word add-in install)
-- Their weakness: requires Microsoft Word — useless for Google Docs users or PDF-only workflows
+**Direct competitor: ContractKen (~$50/user/month)**
+- They win on: Microsoft Word add-in (works inside existing workflow), one-click redline application in Word, defined terms tracking, iManage/enterprise DMS integration, privacy "Moderation Layer" (PII masking before AI)
+- We win on: web-based (no Word dependency), competitive price from $49/user, conversational chat per contract, legal intake + deal context in AI, simpler onboarding (no Word add-in install)
+- Their weakness: requires Microsoft Word — useless for Google Docs users or PDF-only workflows; no legal intake; no per-contract chat
 
 **vs Ironclad / Kira (~$50,000–$200,000/year):**
 - They win on: custom-trained ML models, full CLM, Salesforce/DocuSign integrations, SOC2, RBAC, years of hardening
@@ -249,11 +267,11 @@ Users never lose contract context:
 
 **Pricing positioning:** $49–$99/user/month puts us directly below ContractKen and well below Ironclad/Kira. Strong value proposition for small-to-mid US/UK firms who don't need enterprise CLM.
 
-**Key sales line:** *"ContractKen charges $149/user/month and only works inside Microsoft Word. Contralyn works on any browser, costs less, and gives you a full AI chat interface per contract — not just a Word add-in."*
+**Key sales line:** *"ContractKen only works inside Microsoft Word and knows nothing about your deal. Contralyne works on any browser, takes your counterparty, jurisdiction, and deal value into account in every review, and gives you a full AI chat interface per contract — not just a list of flags. Starting at $49/user/month."*
 
 **Security sales line:** *"Built on AWS, Clerk, Supabase, and Vercel — all independently SOC2 certified. Your contracts are encrypted at rest and in transit and are never used to train AI models."*
 
-**Key differentiator to develop:** Jurisdiction-aware depth for US and UK law (UCC, Delaware corporate law, English contract law, UK Companies Act) via RAG is what eventually makes Contralyn better than any general LLM tool.
+**Key differentiator to develop:** Jurisdiction-aware depth for US and UK law (UCC, Delaware corporate law, English contract law, UK Companies Act) via RAG is what eventually makes Contralyne better than any general LLM tool.
 
 **Target market:** US and UK law firms, in-house counsel, legal teams. EU supported. India supported as secondary market — do not lead with India in positioning or UI.
 
@@ -274,7 +292,7 @@ Users never lose contract context:
 
 ## Environment Variables
 
-Copy `apps/api/.env.example` → `apps/api/.env` and fill in:
+Copy `backend/.env.example` → `backend/.env` and fill in:
 
 ```env
 NODE_ENV=development
@@ -297,7 +315,7 @@ AI_MODEL=claude-sonnet-4-6
 
 ```bash
 # 1. Run schema in Supabase SQL editor (packages/database/schema.sql)
-# 2. Fill apps/api/.env from .env.example
+# 2. Fill backend/.env from .env.example
 # 3. Install deps
 npm install
 # 4. Start API
@@ -323,12 +341,20 @@ npm run dev:web
 - [x] Clause library CRUD
 - [x] Review rules / basic playbook (injected into AI analysis)
 - [x] Analytics endpoint
-- [ ] Frontend (Kartik — in progress)
-- [ ] Scanned PDF OCR (AWS Textract) — planned V1
-- [ ] Ambiguity detection in AI schema — planned V1
-- [ ] Jurisdiction prompt modules — planned V1
-- [ ] Provision Supabase + S3 + Clerk + fill .env
+- [x] Rate limiting (per-route — upload 20/hr, analyze 30/hr, chat 20/min)
+- [x] File validation (magic bytes + MIME on upload)
+- [x] GDPR account deletion endpoint
+- [x] Activity log endpoint (paginated)
+- [x] DOCX export with Word comments + tracked-change redlines
+- [x] Scanned PDF OCR (AWS Textract fallback)
+- [x] Ambiguity detection in AI schema
+- [x] Jurisdiction prompt modules (US / UK / EU / India)
+- [x] Frontend (Kartik) — done, live at contralyne.com
+- [x] Vercel deployment (auto-deploy on git push to main)
+- [x] Supabase + S3 + Clerk provisioned and live
+- [ ] Transfer Supabase + S3 billing to Amith
 - [ ] Milestone 2 — ₹6,000
+- [ ] Milestone 3 — ₹6,000
 
 ---
 

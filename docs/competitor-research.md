@@ -1,6 +1,6 @@
 # Contralyne — Competitor Research
 
-> Last updated: 2026-06-10
+> Last updated: 2026-06-11
 > Purpose: Permanent reference for product decisions, UI/UX inspiration, pricing strategy, and sales positioning.
 
 ---
@@ -330,7 +330,7 @@ A US or UK lawyer or in-house counsel who:
 **When prospect says:** "We use ContractKen and it works in Word."
 
 **Our response:**
-> "ContractKen is a great tool if you live in Microsoft Word. But you can't use it on a PDF, a tablet, or a Google Docs workflow — and it knows nothing about your deal. Contralyne takes your contract plus the deal context — counterparty, jurisdiction, deal value, urgency — and reviews it with all of that in mind. Then you can have a real conversation with the AI about that specific contract, not just get a list of flags. And we're 3–5x cheaper."
+> "ContractKen is a great tool if you live in Microsoft Word. But you can't use it on a PDF, a tablet, or a Google Docs workflow — and it knows nothing about your deal. Contralyne takes your contract plus the deal context — counterparty, jurisdiction, deal value, urgency — and reviews it with all of that in mind. Then you can have a real conversation with the AI about that specific contract, not just get a list of flags. Starting at $49/user — and built for the web."
 
 **Key proof points:**
 - ContractKen = Word only. Contralyne = any browser.

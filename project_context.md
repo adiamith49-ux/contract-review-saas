@@ -1,4 +1,4 @@
-# Project Context — Contralyn
+# Project Context — Contralyne
 
 > **Single source of truth** for project state, architecture, decisions, and history.
 > Every meaningful change must be logged in [§10 Changelog](#10-update-protocol--changelog).
@@ -8,7 +8,7 @@
 
 ## 1) Overview
 
-**Contralyn** — AI-powered contract review and negotiation SaaS for corporate lawyers.
+**Contralyne** — AI-powered contract review and negotiation SaaS for corporate lawyers.
 Client: Amith (corporate lawyer, Karnataka). Developers: Kartik + Sai Pranav.
 
 **Core flow:** Upload contract (PDF/DOCX) → AI extracts clauses → risk flags + negotiation points → export annotated report → chat with AI about specific clauses.
@@ -16,13 +16,13 @@ Client: Amith (corporate lawyer, Karnataka). Developers: Kartik + Sai Pranav.
 | Layer | Stack |
 |---|---|
 | Frontend | Next.js 14 (App Router) + Tailwind CSS + shadcn/ui + Clerk |
-| Backend | Node.js + Express + TypeScript (apps/api) |
+| Backend | Node.js + Express + TypeScript (backend) |
 | Database | Supabase (PostgreSQL) |
 | File Storage | AWS S3 (pre-signed URLs, never public) |
 | Auth | Clerk (JWT, 1-year free via GitHub Student) |
 | AI | Anthropic claude-sonnet-4-6 |
 | Hosting | Vercel |
-| Monorepo | npm workspaces — apps/web, apps/api, packages/shared |
+| Monorepo | npm workspaces — frontend, backend, packages/shared |
 
 ---
 
@@ -30,7 +30,7 @@ Client: Amith (corporate lawyer, Karnataka). Developers: Kartik + Sai Pranav.
 
 ### Backend
 ```bash
-cd apps/api
+cd backend
 cp .env.example .env   # fill in all keys
 npm install
 npm run dev            # http://localhost:4000
@@ -38,7 +38,7 @@ npm run dev            # http://localhost:4000
 
 ### Frontend
 ```bash
-cd apps/web
+cd frontend
 cp .env.example .env   # fill in NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY + NEXT_PUBLIC_API_URL
 npm install
 npm run dev            # http://localhost:3000
@@ -54,7 +54,7 @@ npm run dev:web    # starts frontend
 
 ## 3) Environment Variables
 
-### apps/api/.env
+### backend/.env
 | Variable | Source |
 |---|---|
 | `SUPABASE_URL` | Supabase project settings > API |
@@ -66,7 +66,7 @@ npm run dev:web    # starts frontend
 | `S3_BUCKET_NAME` | contralyn-contracts |
 | `ANTHROPIC_API_KEY` | console.anthropic.com |
 
-### apps/web/.env
+### frontend/.env
 | Variable | Source |
 |---|---|
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk dashboard > API Keys — **set** (measured-satyr-29.clerk.accounts.dev) |
@@ -82,22 +82,31 @@ npm run dev:web    # starts frontend
 ## 4) Backend Architecture
 
 ```
-apps/api/src/
-├── index.ts                      — Express app, CORS, helmet, routes
+backend/src/
+├── app.ts                        — Express app (CORS, helmet, routes — no dotenv, Vercel-safe)
+├── index.ts                      — Local dev entry (dotenv + app.ts)
 ├── config.ts                     — Zod-validated env schema
 ├── db.ts                         — Supabase client
+├── types.ts                      — Inlined shared types (no workspace dep needed)
 ├── middleware/
 │   ├── auth.ts                   — requireAuth: verifies Clerk JWT, sets req.userId
-│   └── error.ts                  — Global error handler
+│   ├── error.ts                  — Global error handler
+│   └── rateLimit.ts              — Per-route rate limiters
 ├── routes/
-│   └── contracts.ts              — All contract routes (see §6)
+│   ├── contracts.ts              — Core contract CRUD + AI routes
+│   ├── clauses.ts                — Clause library CRUD
+│   ├── rules.ts                  — Review rules / playbook CRUD
+│   ├── analytics.ts              — Dashboard stats
+│   ├── activity.ts               — Paginated audit log
+│   └── account.ts                — GDPR hard-delete
 └── services/
-    ├── ai.service.ts             — Anthropic claude-sonnet-4-6 analysis
-    ├── chat.service.ts           — Context-aware Q&A
-    ├── document.service.ts       — PDF/DOCX text extraction
-    ├── export.service.ts         — Annotated PDF/DOCX generation
-    ├── storage.service.ts        — S3 upload/download/delete
-    └── prompts.ts                — Legal system prompts
+    ├── ai.service.ts             — Anthropic claude-sonnet-4-6 analysis + ambiguity detection
+    ├── chat.service.ts           — Context-aware Q&A with history
+    ├── document.service.ts       — PDF/DOCX extraction + AWS Textract OCR fallback
+    ├── export.service.ts         — DOCX (Word comments + tracked redlines) + PDF generation
+    ├── storage.service.ts        — S3 upload/download/delete (pre-signed URLs)
+    ├── prompts.ts                — Jurisdiction-aware legal prompts (US/UK/EU/India)
+    └── activity.service.ts       — Audit log writer
 ```
 
 ---
@@ -107,9 +116,13 @@ apps/api/src/
 | Table | Key columns |
 |---|---|
 | `users` | id, clerk_user_id, email, created_at |
-| `contracts` | id, user_id (clerk), filename, s3_key, file_size, mime_type, contract_type, status, extracted_text, created_at |
-| `analyses` | id, contract_id, user_id, risk_level, risk_summary (jsonb), clause_analysis (jsonb), negotiation_points (jsonb), model, created_at |
+| `contracts` | id, user_id, filename, s3_key, file_size, mime_type, contract_type, status, extracted_text, summary, created_at |
+| `legal_intake` | id, contract_id, user_id, counterparty, jurisdiction, deal_value, urgency, notes, created_at |
+| `analyses` | id, contract_id, user_id, risk_level, risk_summary (jsonb), clause_analysis (jsonb), negotiation_points (jsonb), ambiguity_flags (jsonb), model, created_at |
 | `chat_messages` | id, contract_id, user_id, role (user/assistant), content, created_at |
+| `clause_library` | id, user_id, name, content, clause_type, created_at |
+| `review_rules` | id, user_id, name, description, rules (jsonb), is_active, created_at |
+| `activity_logs` | id, user_id, action, entity_type, entity_id, metadata (jsonb), created_at |
 
 **contract status:** `uploaded` → `processing` → `analyzed` | `failed`
 
@@ -121,25 +134,34 @@ apps/api/src/
 
 ## 6) API Contract Reference
 
-All routes prefixed `/api/contracts`. All require `Authorization: Bearer <clerk_jwt>`.
+All routes require `Authorization: Bearer <clerk_jwt>` except `/health`.
 
 ### Contracts
-| Method | Path | Body / Notes | Response |
-|---|---|---|---|
-| `POST` | `/api/contracts/upload` | multipart: `file` (PDF/DOCX ≤10MB) + `contract_type` | `{ contract: { id, filename, contract_type, status, created_at } }` |
-| `POST` | `/api/contracts/:id/analyze` | — | `{ analysisId, status: "analyzed" }` |
-| `GET` | `/api/contracts` | — | `{ contracts: [{ id, filename, contract_type, status, file_size, created_at, analyses: [{ id, risk_level }] }] }` |
-| `GET` | `/api/contracts/:id` | — | `{ contract: { ...all fields, fileUrl, analyses: [full analysis] } }` |
-| `GET` | `/api/contracts/:id/export/pdf` | — | Binary PDF download |
-| `GET` | `/api/contracts/:id/export/docx` | — | Binary DOCX download |
-| `DELETE` | `/api/contracts/:id` | — | 204 No Content |
+| Method | Path | Rate Limit | Body / Notes | Response |
+|---|---|---|---|---|
+| `POST` | `/api/contracts/upload` | 20/hr | multipart: `file` (PDF/DOCX ≤10MB) + `contract_type` | `{ contract: { id, filename, contract_type, status, created_at } }` |
+| `GET` | `/api/contracts` | — | query: `status`, `contract_type`, `risk_level`, `search`, `from`, `to` | `{ contracts: [...] }` |
+| `GET` | `/api/contracts/:id` | — | — | `{ contract: { ...fields, fileUrl, analyses: [...] } }` |
+| `PATCH` | `/api/contracts/:id` | — | `{ filename?, contract_type? }` | `{ contract: {...} }` |
+| `POST` | `/api/contracts/:id/intake` | — | `{ counterparty, jurisdiction, deal_value, urgency, notes }` | `{ intake: {...} }` |
+| `GET` | `/api/contracts/:id/intake` | — | — | `{ intake: {...} }` |
+| `POST` | `/api/contracts/:id/analyze` | 30/hr | — | `{ analysisId, status: "analyzed" }` |
+| `POST` | `/api/contracts/:id/summarize` | — | — | `{ summary: string }` (cached after first call) |
+| `GET` | `/api/contracts/:id/export/pdf` | — | — | Binary PDF (two-column redlines layout) |
+| `GET` | `/api/contracts/:id/export/docx` | — | — | Binary DOCX (Word comments + tracked-change redlines) |
+| `POST` | `/api/contracts/:id/chat` | 20/min | `{ question: string }` | `{ answer: string }` |
+| `GET` | `/api/contracts/:id/chat` | — | — | `{ messages: [{ id, role, content, created_at }] }` |
+| `DELETE` | `/api/contracts/:id/chat` | — | — | 204 No Content |
+| `DELETE` | `/api/contracts/:id` | — | — | 204 No Content |
 
-### Chat
-| Method | Path | Body | Response |
-|---|---|---|---|
-| `POST` | `/api/contracts/:id/chat` | `{ question: string }` | `{ answer: string }` |
-| `GET` | `/api/contracts/:id/chat` | — | `{ messages: [{ id, role, content, created_at }] }` |
-| `DELETE` | `/api/contracts/:id/chat` | — | 204 No Content |
+### Other
+| Method | Path | Description |
+|---|---|---|
+| `GET/POST/PATCH/DELETE` | `/api/clauses` | Clause library management |
+| `GET/POST/PATCH/DELETE` | `/api/rules` | Review rules / playbook management |
+| `GET` | `/api/analytics` | Dashboard stats — totals, by status/type/risk, uploads per month |
+| `GET` | `/api/activity` | Paginated audit log (`?page=1&limit=20`) |
+| `DELETE` | `/api/account` | GDPR hard-delete — all user data + S3 files |
 
 ### Health
 | Method | Path | Response |
@@ -151,7 +173,7 @@ All routes prefixed `/api/contracts`. All require `Authorization: Bearer <clerk_
 ## 7) Frontend Architecture
 
 ```
-apps/web/src/
+frontend/src/
 ├── middleware.ts                      — Clerk route protection
 ├── app/
 │   ├── layout.tsx                     — Root layout: ClerkProvider, Toaster, fonts
@@ -216,6 +238,9 @@ apps/web/src/
 | Export as direct fetch + blob download | Backend returns binary; no redirect approach to keep auth header |
 | Chat on contract detail page | Natural UX — user reads analysis then asks follow-up questions in context |
 | Auto-trigger analyze after upload | Reduces friction; user shouldn't have to press two buttons |
+| app.ts / index.ts split in API | Vercel requires no dotenv in the entry — app.ts is Vercel-safe; index.ts wraps it with dotenv for local dev |
+| types.ts inlined in each app | Avoids workspace resolution issues on Vercel; shared types duplicated intentionally |
+| Deploy from repo root, not subdirectory | Vercel rootDirectory config handles path routing; deploying from a subdir doubles the path |
 
 ---
 
@@ -231,15 +256,27 @@ apps/web/src/
 
 - **2026-06-01** — Backend fully scaffolded by Sai Pranav
   *What:* Express API, Supabase DB, Clerk auth middleware, S3 storage, Anthropic AI analysis, PDF/DOCX export, contract chat with history
-  *Files:* All files under `apps/api/src/`, `packages/database/schema.sql`, `packages/shared/src/types.ts`
+  *Files:* All files under `backend/src/`, `packages/database/schema.sql`
 
-- **2026-06-01** — Frontend scaffolded: full Next.js 14 app in apps/web
-  *What:* Config files (next.config.js, tailwind, tsconfig, postcss), Clerk middleware, root layout, globals.css, lib/utils.ts, lib/api.ts, all shadcn/ui components, AppShell + Sidebar layout, auth pages (sign-in/sign-up), all 5 dashboard pages (Dashboard, Upload, Contracts list, Contract detail, Export), project_context.md
-  *Files:* All files under `apps/web/src/`
+- **2026-06-01** — Frontend scaffolded: full Next.js 14 app in frontend
+  *What:* Config files (next.config.js, tailwind, tsconfig, postcss), Clerk middleware, root layout, globals.css, lib/utils.ts, lib/api.ts, all shadcn/ui components, AppShell + Sidebar layout, auth pages (sign-in/sign-up), all 5 dashboard pages (Dashboard, Upload, Contracts list, Contract detail, Export)
+  *Files:* All files under `frontend/src/`
 
 - **2026-06-04** — Environment setup + both dev servers running
-  *What:* Fixed npm cache permissions (`sudo chown -R $(whoami) ~/.npm`), ran `npm install` (271 packages), created `apps/api/.env` and `apps/web/.env`, wired in Clerk credentials (project: measured-satyr-29). Backend running on :4000, frontend on :3000 with full Clerk auth. Note: `apps/web` uses `.env` not `.env.local`.
-  *Files:* `apps/api/.env`, `apps/web/.env`
+  *What:* Ran `npm install`, created `backend/.env` and `frontend/.env`, wired in Clerk credentials (project: measured-satyr-29). Backend on :4000, frontend on :3000 with full Clerk auth. Note: `frontend` uses `.env` not `.env.local`.
+  *Files:* `backend/.env`, `frontend/.env`
+
+- **2026-06-10** — Backend hardened + V1 features complete
+  *What:* Added rate limiting (per-route), file magic bytes validation, AWS Textract OCR fallback for scanned PDFs, ambiguity detection in AI schema, jurisdiction-aware prompts (US/UK/EU/India), DOCX export with Word comments + tracked-change redlines, PDF two-column redlines layout, activity log endpoint (paginated), GDPR account deletion, PATCH /contracts/:id, app.ts split from index.ts for Vercel, types.ts inlined
+  *Files:* `backend/src/app.ts`, `backend/src/types.ts`, `backend/src/middleware/rateLimit.ts`, `backend/src/routes/activity.ts`, `backend/src/routes/account.ts`
+
+- **2026-06-10** — Vercel deployment configured + both apps live
+  *What:* vercel.json per app, rootDirectory config, Supabase + S3 + Clerk + Anthropic keys provisioned, auto-deploy on git push to main. Frontend live at contralyne.com, API at api.contralyne.com.
+  *Files:* `backend/vercel.json`, `frontend/vercel.json`
+
+- **2026-06-10** — Competitor research document added
+  *What:* Deep dive on ContractKen, Lexzur, Spellbook, Ironclad, Kira, LegalOn, goHeather — pricing, features, battlecards, positioning
+  *Files:* `docs/competitor-research.md`
 
 ---
 
@@ -259,7 +296,7 @@ apps/web/src/
 | `[x]` | Backend: PDF/DOCX export service | 2026-06-01 |
 | `[x]` | Backend: Contract chat with history | 2026-06-01 |
 | `[x]` | project_context.md created | 2026-06-01 |
-| `[x]` | apps/web config files (package.json, next.config.js, tailwind, tsconfig) | 2026-06-01 |
+| `[x]` | frontend config files (package.json, next.config.js, tailwind, tsconfig) | 2026-06-01 |
 | `[x]` | Clerk middleware + root layout + globals.css | 2026-06-01 |
 | `[x]` | lib/utils.ts + lib/api.ts (full typed API client) | 2026-06-01 |
 | `[x]` | shadcn/ui base components | 2026-06-01 |
@@ -272,14 +309,21 @@ apps/web/src/
 | `[x]` | Export page (/contracts/[id]/export) | 2026-06-01 |
 | `[x]` | npm install + TypeScript/build verification | 2026-06-01 |
 
+### Recently Done
+| Status | Task | Date |
+|---|---|---|
+| `[x]` | Set up Clerk project + fill .env keys | 2026-06-04 |
+| `[x]` | Set up Supabase project + run schema.sql (8 tables) | 2026-06-10 |
+| `[x]` | Configure AWS S3 bucket (contralyn-contracts, ap-south-1) | 2026-06-10 |
+| `[x]` | Deploy backend to Vercel (api.contralyne.com) | 2026-06-10 |
+| `[x]` | Deploy frontend to Vercel (contralyne.com) | 2026-06-10 |
+| `[x]` | Custom domain connected (contralyne.com) | 2026-06-10 |
+| `[x]` | Full UI complete (all 5 pages + auth) | 2026-06-10 |
+
 ### Pending
 | Status | Task | Added |
 |---|---|---|
-| `[x]` | Set up Clerk project + fill .env keys | 2026-06-04 |
-| `[ ]` | Set up Supabase project + run schema.sql | 2026-06-01 |
-| `[ ]` | Configure AWS S3 bucket (contralyn-contracts) | 2026-06-01 |
-| `[ ]` | Deploy backend to Vercel / Railway | 2026-06-01 |
-| `[ ]` | Deploy frontend to Vercel | 2026-06-01 |
-| `[ ]` | Full UI redesign (Kartik to provide design prompt) | 2026-06-01 |
 | `[ ]` | End-to-end testing of all features | 2026-06-01 |
-| `[ ]` | Custom domain connection | 2026-06-01 |
+| `[ ]` | Transfer Supabase billing to Amith | 2026-06-10 |
+| `[ ]` | Transfer S3 billing to Amith | 2026-06-10 |
+| `[ ]` | Collect Milestone 2 — ₹6,000 | 2026-06-10 |

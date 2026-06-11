@@ -1,4 +1,4 @@
-# Contralyn
+# Contralyne
 
 AI-powered contract review and negotiation platform for US and UK law firms, in-house counsel, and legal teams.
 
@@ -143,7 +143,7 @@ PDF extraction: `pdf-parse` for text PDFs, AWS Textract OCR fallback for scanned
 The DOCX export produces a proper redlined annotated contract (not just a separate report). When opened in Microsoft Word or Google Docs:
 
 - **Highlighted paragraphs** — risky clauses are shaded by severity (red = high/critical, orange = medium, green = low)
-- **Word comments** — each flagged clause has a native Word comment balloon in the margin with the AI finding and recommendation (author: "Contralyn AI")
+- **Word comments** — each flagged clause has a native Word comment balloon in the margin with the AI finding and recommendation (author: "Contralyne AI")
 - **Tracked-change insertions** — negotiation suggestions appear inline as blue underlined tracked insertions; the lawyer can Accept or Reject each one natively in Word
 - **Unmatched findings** — clauses that couldn't be pinned to a specific paragraph appear in an "Additional Findings" appendix
 - **Fallback** — if no extracted text is available, falls back to a table-based report
@@ -159,7 +159,7 @@ Library: `docx` v9.7.1 — uses `CommentRangeStart/End/Reference` for comments, 
 #    packages/database/schema.sql
 
 # 2. Copy and fill env
-cp apps/api/.env.example apps/api/.env
+cp backend/.env.example backend/.env
 
 # 3. Install deps
 npm install
@@ -171,7 +171,7 @@ npm run dev:api
 npm run dev:web
 ```
 
-### Required env variables (`apps/api/.env`)
+### Required env variables (`backend/.env`)
 
 ```env
 NODE_ENV=development
@@ -188,7 +188,7 @@ ANTHROPIC_API_KEY=<from Vercel env — ask Pranav>
 AI_MODEL=claude-sonnet-4-6
 ```
 
-### Web env (`apps/web/.env.local`)
+### Web env (`frontend/.env.local`)
 
 ```env
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_bWVhc3VyZWQtc2F0eXItMjkuY2xlcmsuYWNjb3VudHMuZGV2JA
@@ -200,7 +200,9 @@ NEXT_PUBLIC_API_URL=http://localhost:4000
 
 ## Deploying to Vercel
 
-**Important — monorepo deploy rule:** Always deploy from the **repo root**, not from within `apps/api` or `apps/web`. The Vercel projects have `rootDirectory` set, so running from a subdirectory causes a doubled path error.
+**Important — monorepo deploy rule:** Always deploy from the **repo root**, not from within `backend` or `frontend`. The Vercel projects have `rootDirectory` set, so running from a subdirectory causes a doubled path error.
+
+> **⚠️ After the `apps/api → backend` / `apps/web → frontend` rename:** Update `rootDirectory` in the Vercel dashboard for both projects — API project: set to `backend`, Web project: set to `frontend`. Until this is done, git auto-deploy will fail.
 
 ```bash
 # Deploy API to production (run from repo root)
