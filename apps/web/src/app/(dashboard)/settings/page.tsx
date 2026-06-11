@@ -284,7 +284,7 @@ export default function SettingsPage() {
         <CardContent className="p-5">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-semibold text-gray-900">Contralyn</p>
+              <p className="text-sm font-semibold text-gray-900">Contralyne</p>
               <p className="text-xs text-gray-400 mt-0.5">AI-powered contract review and negotiation</p>
             </div>
             <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">v1.0</span>

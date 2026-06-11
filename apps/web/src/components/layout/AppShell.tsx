@@ -39,7 +39,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Menu className="h-5 w-5" />
           </button>
           <Scale className="h-5 w-5 text-primary" />
-          <span className="text-base font-bold text-gray-900">Contralyn</span>
+          <span className="text-base font-bold text-gray-900">Contralyne</span>
         </header>
 
         <main className="flex-1 overflow-y-auto">

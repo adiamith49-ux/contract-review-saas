@@ -63,7 +63,7 @@ export function Sidebar({ onClose }: SidebarProps) {
       <div className="flex h-16 items-center justify-between border-b px-6">
         <div className="flex items-center gap-2">
           <Scale className="h-6 w-6 text-primary" />
-          <span className="text-lg font-bold tracking-tight text-gray-900">Contralyn</span>
+          <span className="text-lg font-bold tracking-tight text-gray-900">Contralyne</span>
         </div>
         {/* Close button — mobile only */}
         {onClose && (

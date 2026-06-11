@@ -10,7 +10,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Contralyn — AI Contract Review",
+  title: "Contralyne — AI Contract Review",
   description: "AI-powered contract review and negotiation for corporate lawyers",
 };
 

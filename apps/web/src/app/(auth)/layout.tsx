@@ -5,7 +5,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
       <div className="mb-8 flex items-center gap-2">
         <Scale className="h-8 w-8 text-primary" />
-        <span className="text-2xl font-bold tracking-tight text-gray-900">Contralyn</span>
+        <span className="text-2xl font-bold tracking-tight text-gray-900">Contralyne</span>
       </div>
       {children}
       <p className="mt-8 text-xs text-gray-400 text-center max-w-sm">
