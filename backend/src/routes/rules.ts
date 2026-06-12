@@ -1,54 +1,28 @@
 import { Router } from "express";
-import { z } from "zod";
+import multer from "multer";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { extractText } from "../services/document.service.js";
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = [
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/msword",
+    ];
+    cb(null, allowed.includes(file.mimetype));
+  },
+});
 
 export const rulesRouter = Router();
 rulesRouter.use(requireAuth);
 
-const ruleItemSchema = z.object({
-  clause_type:  z.string().min(1),
-  requirement:  z.string().min(1),
-  severity:     z.enum(["low", "medium", "high", "critical"]),
-});
-
-// Full schema (multi-rule playbook, used by direct API callers)
-const ruleSetSchema = z.object({
-  title:       z.string().min(1).max(200),
-  description: z.string().optional(),
-  is_active:   z.boolean().optional(),
-  rules:       z.array(ruleItemSchema).min(1),
-});
-
-// Simple schema (single-rule, used by the frontend form)
-// Frontend sends: { name, description, severity, is_active }
-// We map name → title and wrap it into a rules array automatically.
-const simpleRuleSchema = z.object({
-  name:        z.string().min(1).max(200),
-  description: z.string().optional(),
-  severity:    z.enum(["low", "medium", "high", "critical"]).optional(),
-  is_active:   z.boolean().optional(),
-});
-
-function normaliseBody(raw: unknown): z.infer<typeof ruleSetSchema> {
-  // Try full schema first
-  const full = ruleSetSchema.safeParse(raw);
-  if (full.success) return full.data;
-
-  // Fall back to simple schema
-  const simple = simpleRuleSchema.parse(raw); // throws ZodError on failure (caught by route handler)
-  return {
-    title:       simple.name,
-    description: simple.description,
-    is_active:   simple.is_active,
-    rules: [
-      {
-        clause_type:  simple.name,
-        requirement:  simple.description ?? simple.name,
-        severity:     simple.severity ?? "medium",
-      },
-    ],
-  };
+// Normalize DB row → frontend shape (title → name)
+function normalize(row: any) {
+  return { ...row, name: row.title };
 }
 
 // GET /api/rules
@@ -56,71 +30,87 @@ rulesRouter.get("/", async (req, res, next) => {
   try {
     const { data, error } = await db
       .from("review_rules")
-      .select("id, title, description, is_active, rules, created_at")
+      .select("id, title, description, is_active, original_filename, file_size, created_at")
       .eq("user_id", req.userId)
       .order("created_at", { ascending: false });
 
     if (error) throw error;
-    res.json({ rules: data });
+    res.json({ rules: (data ?? []).map(normalize) });
   } catch (err) {
     next(err);
   }
 });
 
-// POST /api/rules
-rulesRouter.post("/", async (req, res, next) => {
+// POST /api/rules — upload a playbook document (PDF or DOCX)
+rulesRouter.post("/", upload.single("file"), async (req, res, next) => {
   try {
-    const body = normaliseBody(req.body);
-    const { data, error } = await db
-      .from("review_rules")
-      .insert({ ...body, user_id: req.userId })
-      .select()
-      .single();
+    if (!req.file) {
+      res.status(400).json({ error: "A PDF or DOCX playbook file is required" });
+      return;
+    }
 
-    if (error) throw error;
-    res.status(201).json({ ruleSet: data });
-  } catch (err) {
-    next(err);
-  }
-});
+    const name = (req.body.name as string | undefined)?.trim();
+    if (!name) {
+      res.status(400).json({ error: "Playbook name is required" });
+      return;
+    }
 
-// PATCH /api/rules/:id
-rulesRouter.patch("/:id", async (req, res, next) => {
-  try {
-    // Accept partial of either schema
-    let body: Partial<z.infer<typeof ruleSetSchema>>;
-    const full = ruleSetSchema.partial().safeParse(req.body);
-    if (full.success) {
-      body = full.data;
-    } else {
-      const simple = simpleRuleSchema.partial().parse(req.body);
-      body = {
-        ...(simple.name        !== undefined ? { title: simple.name } : {}),
-        ...(simple.description !== undefined ? { description: simple.description } : {}),
-        ...(simple.is_active   !== undefined ? { is_active: simple.is_active } : {}),
-        // If name or description changed, rebuild the single-rule rules array
-        ...(simple.name !== undefined || simple.description !== undefined
-          ? {
-              rules: [{
-                clause_type: simple.name ?? "",
-                requirement: simple.description ?? simple.name ?? "",
-                severity:    simple.severity ?? "medium",
-              }],
-            }
-          : {}),
-      };
+    // Extract readable text from the uploaded document
+    let playbookText = "";
+    try {
+      playbookText = await extractText(req.file.buffer, req.file.mimetype);
+    } catch {
+      playbookText = "";
+    }
+
+    if (!playbookText.trim()) {
+      res.status(422).json({
+        error: "Could not extract text from this document. Please ensure the file contains readable text (not a scanned image-only PDF).",
+      });
+      return;
     }
 
     const { data, error } = await db
       .from("review_rules")
-      .update({ ...body, updated_at: new Date().toISOString() })
+      .insert({
+        user_id: req.userId,
+        title: name,
+        description: (req.body.description as string | undefined)?.trim() || null,
+        is_active: req.body.is_active !== "false",
+        playbook_text: playbookText,
+        original_filename: req.file.originalname,
+        file_size: req.file.size,
+        rules: [],
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json({ rule: normalize(data) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/rules/:id — update metadata only (name, description, is_active)
+// To replace the playbook document: delete + re-upload via POST
+rulesRouter.patch("/:id", async (req, res, next) => {
+  try {
+    const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+    if (req.body.name        !== undefined) updates.title       = String(req.body.name).trim();
+    if (req.body.description !== undefined) updates.description = String(req.body.description).trim() || null;
+    if (req.body.is_active   !== undefined) updates.is_active   = Boolean(req.body.is_active);
+
+    const { data, error } = await db
+      .from("review_rules")
+      .update(updates)
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
       .select()
       .single();
 
-    if (error || !data) { res.status(404).json({ error: "Rule set not found" }); return; }
-    res.json({ ruleSet: data });
+    if (error || !data) { res.status(404).json({ error: "Playbook not found" }); return; }
+    res.json({ rule: normalize(data) });
   } catch (err) {
     next(err);
   }

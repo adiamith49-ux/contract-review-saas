@@ -5,6 +5,7 @@ import type {
   RiskSummaryItem,
   ClauseAnalysisItem,
   NegotiationPoint,
+  AmbiguityFlag,
 } from "@/lib/types";
 
 // ─── Clause types ─────────────────────────────────────────────────────────────
@@ -20,15 +21,16 @@ export interface Clause {
   created_at: string;
 }
 
-// ─── Review rule types ────────────────────────────────────────────────────────
+// ─── Review rule / Playbook types ────────────────────────────────────────────
 
 export interface ReviewRule {
   id: string;
   user_id: string;
   name: string;
   description: string;
-  severity: RiskLevel;
   is_active: boolean;
+  original_filename?: string | null;
+  file_size?: number | null;
   created_at: string;
 }
 
@@ -65,6 +67,7 @@ export interface AnalysisOut {
   risk_summary: RiskSummaryItem[];
   clause_analysis: ClauseAnalysisItem[];
   negotiation_points: NegotiationPoint[];
+  ambiguity_flags?: AmbiguityFlag[];
   model: string;
   created_at: string;
 }
@@ -88,6 +91,8 @@ export interface ContractDetail {
   s3_key: string;
   created_at: string;
   fileUrl: string;
+  extracted_text?: string | null;
+  summary?: string | null;
   analyses: AnalysisOut[];
 }
 
@@ -140,9 +145,13 @@ export async function uploadContract(
 
 export async function analyzeContract(
   token: string | null,
-  id: string
+  id: string,
+  selectedRuleIds?: string[]
 ): Promise<{ analysisId: string; status: string }> {
-  return apiFetch(`/api/contracts/${id}/analyze`, token, { method: "POST" });
+  return apiFetch(`/api/contracts/${id}/analyze`, token, {
+    method: "POST",
+    body: JSON.stringify(selectedRuleIds !== undefined ? { selectedRuleIds } : {}),
+  });
 }
 
 export async function listContracts(
@@ -256,15 +265,20 @@ export async function listRules(token: string | null): Promise<{ rules: ReviewRu
 
 export async function createRule(
   token: string | null,
-  data: Pick<ReviewRule, "name" | "description" | "severity" | "is_active">
+  data: { name: string; description?: string; is_active?: boolean; file: File }
 ): Promise<{ rule: ReviewRule }> {
-  return apiFetch("/api/rules", token, { method: "POST", body: JSON.stringify(data) });
+  const form = new FormData();
+  form.append("file", data.file);
+  form.append("name", data.name);
+  if (data.description) form.append("description", data.description);
+  form.append("is_active", String(data.is_active ?? true));
+  return apiFetch("/api/rules", token, { method: "POST", body: form });
 }
 
 export async function updateRule(
   token: string | null,
   id: string,
-  data: Partial<Pick<ReviewRule, "name" | "description" | "severity" | "is_active">>
+  data: Partial<Pick<ReviewRule, "name" | "description" | "is_active">>
 ): Promise<{ rule: ReviewRule }> {
   return apiFetch(`/api/rules/${id}`, token, { method: "PATCH", body: JSON.stringify(data) });
 }

@@ -27,12 +27,6 @@ interface IntakeContext {
   notes?: string | null;
 }
 
-interface ReviewRule {
-  clause_type: string;
-  requirement: string;
-  severity: string;
-}
-
 const jurisdictionContext: Record<string, string> = {
   us: "Apply US commercial law — UCC where applicable, Delaware corporate law for entity matters, relevant state law per governing law clause. Flag any provisions that may conflict with US federal regulations.",
   uk: "Apply English contract law and UK commercial practice — Companies Act 2006 for corporate matters, relevant English common law. Flag any provisions inconsistent with UK standard commercial practice or that may be unenforceable under English law.",
@@ -45,7 +39,7 @@ export function buildContractPrompt(
   text: string,
   contractType: ContractType,
   intake?: IntakeContext | null,
-  rules?: ReviewRule[]
+  playbookText?: string
 ): string {
   const jurisdiction = intake?.jurisdiction ?? "us";
   let context = `CONTRACT TYPE: ${contractType.replace("_", " ").toUpperCase()}`;
@@ -61,9 +55,8 @@ export function buildContractPrompt(
     if (intake.notes) context += `\nADDITIONAL CONTEXT: ${intake.notes}`;
   }
 
-  if (rules && rules.length > 0) {
-    context += `\n\nCOMPANY REVIEW RULES (flag any deviations as risks):\n`;
-    context += rules.map((r) => `- [${r.severity.toUpperCase()}] ${r.clause_type}: ${r.requirement}`).join("\n");
+  if (playbookText?.trim()) {
+    context += `\n\nCOMPANY PLAYBOOK — REVIEW STANDARDS:\nThe following is your organization's contract review playbook. Review every clause in the contract against these standards. Flag any clause that deviates from, contradicts, or fails to meet the requirements in this playbook as a specific risk finding:\n\n${playbookText.slice(0, 60000)}`;
   }
 
   return `${context}\n\nAnalyze this contract. Identify all legal and business risks, unfavorable clauses, missing protections, and negotiation opportunities.\n\nCONTRACT TEXT:\n${text.slice(0, 180000)}`;

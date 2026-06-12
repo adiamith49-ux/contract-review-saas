@@ -86,17 +86,11 @@ interface IntakeContext {
   notes?: string | null;
 }
 
-interface ReviewRule {
-  clause_type: string;
-  requirement: string;
-  severity: string;
-}
-
 export async function analyzeContract(
   text: string,
   contractType: ContractType,
   intake?: IntakeContext | null,
-  rules?: ReviewRule[]
+  playbookText?: string
 ): Promise<AnalysisResult & { model: string }> {
   const response = await anthropic.beta.promptCaching.messages.create({
     model: config.AI_MODEL,
@@ -104,7 +98,7 @@ export async function analyzeContract(
     system: [{ type: "text", text: legalSystemPrompt, cache_control: { type: "ephemeral" } }],
     tools: [analysisTool],
     tool_choice: { type: "tool", name: "analyze_contract" },
-    messages: [{ role: "user", content: buildContractPrompt(text, contractType, intake, rules) }],
+    messages: [{ role: "user", content: buildContractPrompt(text, contractType, intake, playbookText) }],
   });
 
   const toolUse = response.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");

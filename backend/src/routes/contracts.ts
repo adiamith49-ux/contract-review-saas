@@ -139,7 +139,7 @@ contractsRouter.get("/:id", async (req, res, next) => {
   try {
     const { data, error } = await db
       .from("contracts")
-      .select("id, filename, contract_type, status, file_size, s3_key, summary, created_at, analyses(*), legal_intake(*)")
+      .select("id, filename, contract_type, status, file_size, s3_key, summary, extracted_text, created_at, analyses(*), legal_intake(*)")
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
       .single();
@@ -217,14 +217,40 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
     if (fetchError || !contract) { res.status(404).json({ error: "Contract not found" }); return; }
     if (!contract.extracted_text) { res.status(422).json({ error: "Contract text could not be extracted" }); return; }
 
-    // Fetch intake context and active review rules in parallel
-    const [intakeResult, rulesResult] = await Promise.all([
-      db.from("legal_intake").select("*").eq("contract_id", contract.id).single(),
-      db.from("review_rules").select("rules").eq("user_id", req.userId).eq("is_active", true),
-    ]);
+    // selectedRuleIds from body: string[] = use those specific rules,
+    // empty array = standard review (no rules), undefined = all active rules
+    const { selectedRuleIds } = req.body as { selectedRuleIds?: string[] };
 
+    const intakeResult = await db.from("legal_intake").select("*").eq("contract_id", contract.id).single();
     const intake = intakeResult.data ?? null;
-    const rules = (rulesResult.data ?? []).flatMap((r: any) => r.rules);
+
+    // Build combined playbook text from selected (or all active) review rules
+    let playbookText: string | undefined;
+    const selectFields = "playbook_text, rules";
+    let ruleRows: any[] = [];
+
+    if (selectedRuleIds === undefined) {
+      const r = await db.from("review_rules").select(selectFields).eq("user_id", req.userId).eq("is_active", true);
+      ruleRows = r.data ?? [];
+    } else if (selectedRuleIds.length > 0) {
+      const r = await db.from("review_rules").select(selectFields).eq("user_id", req.userId).in("id", selectedRuleIds);
+      ruleRows = r.data ?? [];
+    }
+
+    const playbookParts = ruleRows.map((row: any) => {
+      // New document-based playbooks
+      if (row.playbook_text?.trim()) return row.playbook_text as string;
+      // Backward compat: old text-form rules stored as JSONB
+      const legacyRules = row.rules as Array<{ clause_type: string; requirement: string; severity: string }> | null;
+      if (legacyRules?.length) {
+        return legacyRules.map(r => `[${(r.severity ?? "medium").toUpperCase()}] ${r.clause_type}: ${r.requirement}`).join("\n");
+      }
+      return null;
+    }).filter((t): t is string => Boolean(t));
+
+    if (playbookParts.length > 0) {
+      playbookText = playbookParts.join("\n\n---\n\n");
+    }
 
     await db.from("contracts").update({ status: "processing" }).eq("id", contract.id);
 
@@ -232,7 +258,7 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
       contract.extracted_text,
       contract.contract_type as ContractType,
       intake,
-      rules
+      playbookText
     );
 
     const { data: saved, error: saveError } = await db

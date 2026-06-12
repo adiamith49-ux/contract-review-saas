@@ -80,7 +80,6 @@ export const MOCK_RULES: ReviewRule[] = [
     name: "Mutual NDA Required",
     description:
       "Flag any NDA that is one-sided (only the counterparty's information is protected). Require mutual confidentiality obligations in all standard engagements.",
-    severity: "high",
     is_active: true,
     created_at: "2026-05-08T09:00:00Z",
   },
@@ -90,7 +89,6 @@ export const MOCK_RULES: ReviewRule[] = [
     name: "Liability Cap Must Be Present",
     description:
       "Every MSA or SaaS agreement must include a limitation of liability cap. Flag contracts where liability is unlimited or where the cap exceeds 12 months of fees.",
-    severity: "critical",
     is_active: true,
     created_at: "2026-05-09T10:00:00Z",
   },
@@ -100,7 +98,6 @@ export const MOCK_RULES: ReviewRule[] = [
     name: "Governing Law — England & Wales Preferred",
     description:
       "For UK-based engagements flag any contract that specifies a governing law other than England & Wales unless a specific exemption has been approved in the intake form.",
-    severity: "medium",
     is_active: true,
     created_at: "2026-05-11T14:30:00Z",
   },
@@ -110,7 +107,6 @@ export const MOCK_RULES: ReviewRule[] = [
     name: "IP Ownership — Client Must Own Deliverables",
     description:
       "Any SOW or employment agreement must clearly assign all deliverables and IP to the client. Flag contracts that use \"licence\" language instead of outright assignment.",
-    severity: "high",
     is_active: true,
     created_at: "2026-05-13T11:00:00Z",
   },
@@ -120,7 +116,6 @@ export const MOCK_RULES: ReviewRule[] = [
     name: "Auto-Renewal Notice Period ≥ 30 Days",
     description:
       "Flag any auto-renewal clause where the notice period for non-renewal is less than 30 calendar days. Minimum acceptable notice is 30 days.",
-    severity: "medium",
     is_active: false,
     created_at: "2026-05-16T09:15:00Z",
   },
@@ -130,7 +125,6 @@ export const MOCK_RULES: ReviewRule[] = [
     name: "No Unilateral Amendment Rights",
     description:
       "Flag any clause that grants one party the right to amend contract terms unilaterally (e.g., SaaS pricing changes with notice only). Require mutual written consent.",
-    severity: "high",
     is_active: true,
     created_at: "2026-05-18T16:00:00Z",
   },
@@ -140,7 +134,6 @@ export const MOCK_RULES: ReviewRule[] = [
     name: "GDPR Data Processing Agreement",
     description:
       "For any contract involving processing of personal data of EU/UK residents, flag the absence of a DPA or GDPR-compliant data processing terms as a critical issue.",
-    severity: "critical",
     is_active: false,
     created_at: "2026-05-20T13:00:00Z",
   },

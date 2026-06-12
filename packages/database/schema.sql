@@ -78,17 +78,25 @@ CREATE TABLE IF NOT EXISTS clause_library (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
--- Review rules (basic playbook — user-defined rules injected into AI analysis)
+-- Review rules / Playbooks — uploaded DOCX/PDF playbook documents injected into AI analysis
 CREATE TABLE IF NOT EXISTS review_rules (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id text NOT NULL,
   title text NOT NULL,
   description text,
   is_active boolean NOT NULL DEFAULT true,
-  rules jsonb NOT NULL DEFAULT '[]',              -- [{ clause_type, requirement, severity }]
+  rules jsonb NOT NULL DEFAULT '[]',              -- kept for backward compat; new rows use playbook_text
+  playbook_text text,                             -- extracted full text from uploaded playbook document
+  original_filename text,                         -- original uploaded filename (e.g. "MSA_Playbook_v3.docx")
+  file_size bigint,                               -- file size in bytes
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Migration (run if table already exists):
+-- ALTER TABLE review_rules ADD COLUMN IF NOT EXISTS playbook_text text;
+-- ALTER TABLE review_rules ADD COLUMN IF NOT EXISTS original_filename text;
+-- ALTER TABLE review_rules ADD COLUMN IF NOT EXISTS file_size bigint;
 
 -- Activity logs (audit trail for all key actions)
 CREATE TABLE IF NOT EXISTS activity_logs (
