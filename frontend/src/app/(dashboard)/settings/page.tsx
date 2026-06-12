@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Info,
   Check,
+  LogOut,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,7 +56,7 @@ function savePrefs(prefs: Prefs) {
 
 export default function SettingsPage() {
   const { user } = useUser();
-  const { openUserProfile } = useClerk();
+  const { openUserProfile, signOut } = useClerk();
   const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS);
   const [saved, setSaved] = useState(false);
 
@@ -145,6 +146,24 @@ export default function SettingsPage() {
             <p className="text-xs text-gray-400 mt-2">
               Update your name, email, password, or connected accounts via Clerk.
             </p>
+          </div>
+
+          <Separator />
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-700">Sign Out</p>
+              <p className="text-xs text-gray-400">Sign out of your Contralyne account on this device.</p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => signOut({ redirectUrl: "/" })}
+              className="gap-2 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 hover:text-red-700"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Sign Out
+            </Button>
           </div>
         </CardContent>
       </Card>

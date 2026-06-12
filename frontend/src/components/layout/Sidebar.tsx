@@ -16,7 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const mainNav = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/upload", label: "Upload Contract", icon: Upload },
   { href: "/contracts", label: "All Contracts", icon: FileText },
 ];
@@ -35,7 +35,7 @@ export function Sidebar({ onClose }: SidebarProps) {
   const pathname = usePathname();
 
   function isActive(href: string) {
-    return href === "/" ? pathname === "/" : pathname.startsWith(href);
+    return href === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(href);
   }
 
   function NavLink({ href, label, icon: Icon }: { href: string; label: string; icon: React.ElementType }) {

@@ -59,7 +59,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Good to see you, {firstName} 👋</h1>
-          <p className="text-gray-500 mt-1">Here's what's happening with your contracts.</p>
+          <p className="text-gray-500 mt-1">Here&apos;s what&apos;s happening with your contracts.</p>
         </div>
         <Button asChild>
           <Link href="/upload">
