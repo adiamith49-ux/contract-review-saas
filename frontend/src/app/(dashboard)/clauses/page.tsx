@@ -23,9 +23,6 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { listClauses, createClause, updateClause, deleteClause, type Clause } from "@/lib/api";
-import { MOCK_CLAUSES } from "@/lib/mock-data";
-
-const DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 import { formatDate, cn } from "@/lib/utils";
 
 const EMPTY_FORM = {
@@ -58,11 +55,6 @@ export default function ClausesPage() {
   }, []);
 
   async function load() {
-    if (DEMO) {
-      setClauses(MOCK_CLAUSES);
-      setLoading(false);
-      return;
-    }
     try {
       const token = await getToken();
       const { clauses } = await listClauses(token);
@@ -107,20 +99,6 @@ export default function ClausesPage() {
         tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
       };
 
-      if (DEMO) {
-        if (editTarget) {
-          const updated = { ...editTarget, ...payload };
-          setClauses((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-          toast.success("Clause updated (demo)");
-        } else {
-          const fakeClause: Clause = { id: `cl-${Date.now()}`, user_id: "demo", created_at: new Date().toISOString(), ...payload };
-          setClauses((prev) => [fakeClause, ...prev]);
-          toast.success("Clause added (demo)");
-        }
-        setDialogOpen(false);
-        return;
-      }
-
       const token = await getToken();
       if (editTarget) {
         const { clause } = await updateClause(token, editTarget.id, payload);
@@ -143,12 +121,6 @@ export default function ClausesPage() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      if (DEMO) {
-        setClauses((prev) => prev.filter((c) => c.id !== deleteTarget.id));
-        toast.success("Clause deleted (demo)");
-        setDeleteTarget(null);
-        return;
-      }
       const token = await getToken();
       await deleteClause(token, deleteTarget.id);
       setClauses((prev) => prev.filter((c) => c.id !== deleteTarget.id));
