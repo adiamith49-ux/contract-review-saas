@@ -14,7 +14,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { ReviewPanel } from "@/components/ReviewPanel";
 import { DocumentViewer } from "@/components/DocumentViewer";
 import { AIChatFloat } from "@/components/AIChatFloat";
-import { getContract, analyzeContract, type ContractDetail } from "@/lib/api";
+import { getContract, analyzeContract, downloadExport, type ContractDetail } from "@/lib/api";
 import { formatDate, formatFileSize, CONTRACT_TYPE_LABELS } from "@/lib/utils";
 
 export default function ContractDetailPage() {
@@ -25,6 +25,7 @@ export default function ContractDetailPage() {
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [panelOpen, setPanelOpen] = useState(true);
 
   async function load() {
     try {
@@ -52,6 +53,17 @@ export default function ContractDetailPage() {
       toast.error(err instanceof Error ? err.message : "Analysis failed");
     } finally {
       setAnalyzing(false);
+    }
+  }
+
+  async function handleDownload() {
+    if (!contract) return;
+    try {
+      const token = await getToken();
+      await downloadExport(token, id, "docx", contract.filename);
+      toast.success("Download started");
+    } catch {
+      toast.error("Download failed");
     }
   }
 
@@ -136,24 +148,39 @@ export default function ContractDetailPage() {
           />
         </div>
       ) : (
-        <div className="flex flex-1 min-h-0">
-          {/* Left: AI Review Panel */}
-          <div className="w-[310px] shrink-0">
-            <ReviewPanel
-              analysis={analysis}
-              activeId={activeId}
-              onItemClick={id => setActiveId(prev => prev === id ? null : id)}
-            />
-          </div>
-
-          {/* Right: Document Viewer */}
-          <div className="flex-1 min-w-0">
+        <div className="relative flex-1 min-h-0 overflow-hidden">
+          {/* Document viewer — full width, scrolls independently */}
+          <div className="absolute inset-0">
             <DocumentViewer
               text={contract.extracted_text}
               analysis={analysis}
               activeId={activeId}
             />
           </div>
+
+          {/* Review panel — floating left overlay */}
+          {panelOpen && (
+            <ReviewPanel
+              analysis={analysis}
+              activeId={activeId}
+              onActiveChange={newId => setActiveId(prev => prev === newId ? null : newId)}
+              onClose={() => setPanelOpen(false)}
+              onDownload={handleDownload}
+            />
+          )}
+
+          {/* Toggle tab when panel is collapsed */}
+          {!panelOpen && (
+            <button
+              onClick={() => setPanelOpen(true)}
+              className="absolute left-0 top-1/2 -translate-y-1/2 z-20 bg-[#1a2035] text-white rounded-r-lg px-1.5 py-4 shadow-lg hover:opacity-90 transition-opacity"
+              title="Show AI Review Panel"
+            >
+              <span className="[writing-mode:vertical-rl] rotate-180 text-[10px] font-bold tracking-widest uppercase select-none">
+                AI Review
+              </span>
+            </button>
+          )}
         </div>
       )}
 
