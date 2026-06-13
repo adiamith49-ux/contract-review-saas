@@ -12,9 +12,6 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getAnalytics, type AnalyticsData } from "@/lib/api";
-import { MOCK_ANALYTICS } from "@/lib/mock-data";
-
-const DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 import {
   CONTRACT_TYPE_LABELS,
   RISK_LEVEL_LABELS,
@@ -34,11 +31,6 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     async function load() {
-      if (DEMO) {
-        setData(MOCK_ANALYTICS);
-        setLoading(false);
-        return;
-      }
       try {
         const token = await getToken();
         const result = await getAnalytics(token);

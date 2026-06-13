@@ -30,7 +30,7 @@ rulesRouter.get("/", async (req, res, next) => {
   try {
     const { data, error } = await db
       .from("review_rules")
-      .select("id, title, description, is_active, original_filename, file_size, created_at")
+      .select("id, user_id, title, description, is_active, original_filename, file_size, created_at")
       .eq("user_id", req.userId)
       .order("created_at", { ascending: false });
 
