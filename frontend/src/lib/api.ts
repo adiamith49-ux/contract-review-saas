@@ -295,3 +295,107 @@ export async function deleteRule(token: string | null, id: string): Promise<void
 export async function getAnalytics(token: string | null): Promise<AnalyticsData> {
   return apiFetch("/api/analytics", token);
 }
+
+// ─── Tasks ────────────────────────────────────────────────────────────────────
+
+export interface Task {
+  id: string;
+  user_id: string;
+  title: string;
+  notes: string;
+  priority: "low" | "medium" | "high";
+  due_date: string | null;
+  done: boolean;
+  created_at: string;
+}
+
+export async function listTasks(token: string | null): Promise<{ tasks: Task[] }> {
+  return apiFetch("/api/tasks", token);
+}
+
+export async function createTask(
+  token: string | null,
+  data: Pick<Task, "title" | "notes" | "priority" | "due_date">
+): Promise<{ task: Task }> {
+  return apiFetch("/api/tasks", token, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function updateTask(
+  token: string | null,
+  id: string,
+  data: Partial<Pick<Task, "title" | "notes" | "priority" | "due_date" | "done">>
+): Promise<{ task: Task }> {
+  return apiFetch(`/api/tasks/${id}`, token, { method: "PATCH", body: JSON.stringify(data) });
+}
+
+export async function deleteTask(token: string | null, id: string): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}/api/tasks/${id}`, { method: "DELETE", headers });
+  if (!res.ok) throw new Error("Failed to delete task");
+}
+
+// ─── Time entries ─────────────────────────────────────────────────────────────
+
+export interface TimeEntry {
+  id: string;
+  user_id: string;
+  subject: string;
+  contract: string;
+  date: string;
+  duration: string;
+  duration_mins: number;
+  billable: boolean;
+  category: string;
+  description: string;
+  created_at: string;
+}
+
+export async function listTimeEntries(token: string | null): Promise<{ entries: TimeEntry[] }> {
+  return apiFetch("/api/time", token);
+}
+
+export async function createTimeEntry(
+  token: string | null,
+  data: Pick<TimeEntry, "subject" | "contract" | "date" | "duration" | "duration_mins" | "billable" | "category" | "description">
+): Promise<{ entry: TimeEntry }> {
+  return apiFetch("/api/time", token, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function deleteTimeEntry(token: string | null, id: string): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}/api/time/${id}`, { method: "DELETE", headers });
+  if (!res.ok) throw new Error("Failed to delete time entry");
+}
+
+// ─── Calendar events ──────────────────────────────────────────────────────────
+
+export interface CalEvent {
+  id: string;
+  user_id: string;
+  title: string;
+  date: string;
+  start_hour: number;
+  end_hour: number;
+  color: string;
+  created_at: string;
+}
+
+export async function listCalendarEvents(token: string | null): Promise<{ events: CalEvent[] }> {
+  return apiFetch("/api/calendar", token);
+}
+
+export async function createCalendarEvent(
+  token: string | null,
+  data: Pick<CalEvent, "title" | "date" | "start_hour" | "end_hour" | "color">
+): Promise<{ event: CalEvent }> {
+  return apiFetch("/api/calendar", token, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function deleteCalendarEvent(token: string | null, id: string): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}/api/calendar/${id}`, { method: "DELETE", headers });
+  if (!res.ok) throw new Error("Failed to delete event");
+}

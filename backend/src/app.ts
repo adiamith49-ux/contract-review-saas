@@ -7,9 +7,12 @@ import { generalLimiter } from "./middleware/rateLimit.js";
 import { accountRouter } from "./routes/account.js";
 import { activityRouter } from "./routes/activity.js";
 import { analyticsRouter } from "./routes/analytics.js";
+import { calendarRouter } from "./routes/calendar.js";
 import { clausesRouter } from "./routes/clauses.js";
 import { contractsRouter } from "./routes/contracts.js";
 import { rulesRouter } from "./routes/rules.js";
+import { tasksRouter } from "./routes/tasks.js";
+import { timeRouter } from "./routes/time.js";
 
 const app = express();
 
@@ -26,6 +29,9 @@ app.use("/api/rules", rulesRouter);
 app.use("/api/analytics", analyticsRouter);
 app.use("/api/activity", activityRouter);
 app.use("/api/account", accountRouter);
+app.use("/api/tasks", tasksRouter);
+app.use("/api/time", timeRouter);
+app.use("/api/calendar", calendarRouter);
 
 app.use(errorHandler);
 
