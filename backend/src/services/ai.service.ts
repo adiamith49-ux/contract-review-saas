@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { AnalysisResult, ContractType } from "../types.js";
 import { config } from "../config.js";
-import { buildContractPrompt, buildSummaryPrompt, legalSystemPrompt } from "./prompts.js";
+import { buildContractPrompt, buildSummaryPrompt, legalSystemPrompt, type ClauseLibraryEntry } from "./prompts.js";
 
 const anthropic = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
 
@@ -90,7 +90,8 @@ export async function analyzeContract(
   text: string,
   contractType: ContractType,
   intake?: IntakeContext | null,
-  playbookText?: string
+  playbookText?: string,
+  clauseLibrary?: ClauseLibraryEntry[]
 ): Promise<AnalysisResult & { model: string }> {
   const response = await anthropic.beta.promptCaching.messages.create({
     model: config.AI_MODEL,
@@ -98,7 +99,7 @@ export async function analyzeContract(
     system: [{ type: "text", text: legalSystemPrompt, cache_control: { type: "ephemeral" } }],
     tools: [analysisTool],
     tool_choice: { type: "tool", name: "analyze_contract" },
-    messages: [{ role: "user", content: buildContractPrompt(text, contractType, intake, playbookText) }],
+    messages: [{ role: "user", content: buildContractPrompt(text, contractType, intake, playbookText, clauseLibrary) }],
   });
 
   const toolUse = response.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");

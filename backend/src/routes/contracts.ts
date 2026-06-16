@@ -221,8 +221,12 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
     // empty array = standard review (no rules), undefined = all active rules
     const { selectedRuleIds } = req.body as { selectedRuleIds?: string[] };
 
-    const intakeResult = await db.from("legal_intake").select("*").eq("contract_id", contract.id).single();
+    const [intakeResult, clauseResult] = await Promise.all([
+      db.from("legal_intake").select("*").eq("contract_id", contract.id).single(),
+      db.from("clause_library").select("title, clause_type, content").eq("user_id", req.userId),
+    ]);
     const intake = intakeResult.data ?? null;
+    const clauseLibrary = (clauseResult.data ?? []) as Array<{ title: string; clause_type: "approved" | "fallback"; content: string }>;
 
     // Build combined playbook text from selected (or all active) review rules
     let playbookText: string | undefined;
@@ -258,7 +262,8 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
       contract.extracted_text,
       contract.contract_type as ContractType,
       intake,
-      playbookText
+      playbookText,
+      clauseLibrary.length > 0 ? clauseLibrary : undefined
     );
 
     const { data: saved, error: saveError } = await db

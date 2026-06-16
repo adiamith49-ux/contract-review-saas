@@ -13,6 +13,7 @@ import {
   CommentRangeEnd,
   CommentReference,
   InsertedTextRun,
+  DeletedTextRun,
   ShadingType,
 } from "docx";
 import type { AnalysisResult } from "../types.js";
@@ -672,43 +673,79 @@ export async function exportToDocx(
       }
     }
 
-    let insertionId = 0;
+    let revisionId = 0;
 
     for (let i = 0; i < paragraphs.length; i++) {
       const para        = paragraphs[i];
       const annotations = annotationMap.get(i) ?? [];
+      const negPoints   = negMap.get(i) ?? [];
 
-      if (annotations.length > 0) {
+      if (negPoints.length > 0) {
+        // ── Redline paragraph: the original text IS the deletion, suggestion IS the insertion ──
+        // Do NOT show the original as a plain TextRun — it only exists as DeletedTextRun.
+        // Each negotiation point gets its own revision so Word can accept/reject independently.
+        const order: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+        const topSeverity = annotations.reduce(
+          (w, a) => (order[a.severity] ?? 0) > (order[w] ?? 0) ? a.severity : w,
+          "low",
+        );
+
+        // Attach a Word comment if there are also risk annotations on this paragraph
+        const commentId = annotations.length > 0
+          ? registerComment(
+              annotations.map(a => a.heading).join(" / "),
+              annotations.map(a => a.finding).join("\n\n"),
+              annotations.map(a => a.recommendation).filter(Boolean).join("\n\n"),
+              topSeverity,
+            )
+          : null;
+
+        for (const np of negPoints) {
+          if (!np.preferredPosition) continue;
+          const id = revisionId++;
+          const children: (CommentRangeStart | CommentRangeEnd | CommentReference | DeletedTextRun | InsertedTextRun)[] = [];
+
+          if (commentId !== null) children.push(new CommentRangeStart(commentId));
+
+          // Original clause — red strikethrough in Word
+          children.push(new DeletedTextRun({
+            text:   para.text,
+            id,
+            author: "Contralyn AI",
+            date:   nowISO,
+          }));
+
+          // Suggested replacement — blue underline in Word
+          children.push(new InsertedTextRun({
+            text:   cleanText(np.preferredPosition),
+            id,
+            author: "Contralyn AI",
+            date:   nowISO,
+            color:  "0070C0",
+          }));
+
+          if (commentId !== null) {
+            children.push(new CommentRangeEnd(commentId));
+            children.push(new CommentReference(commentId));
+          }
+
+          bodyChildren.push(new DocxParagraph({
+            heading: para.isHeading ? HeadingLevel.HEADING_3 : undefined,
+            shading: commentId !== null
+              ? { type: ShadingType.CLEAR, color: "auto", fill: severityBg[topSeverity] ?? "FEE2E2" }
+              : undefined,
+            children,
+          }));
+        }
+      } else if (annotations.length > 0) {
+        // Risk annotation only — highlight + Word comment, original text unchanged
         bodyChildren.push(annotatedParagraph(para.text, para.isHeading, annotations));
       } else {
+        // Clean paragraph
         bodyChildren.push(new DocxParagraph({
           heading:  para.isHeading ? HeadingLevel.HEADING_3 : undefined,
           children: [new TextRun({ text: para.text, bold: para.isHeading })],
         }));
-      }
-
-      // Inline negotiation suggestion (tracked insertion) after matched paragraph
-      for (const np of negMap.get(i) ?? []) {
-        if (np.preferredPosition) {
-          bodyChildren.push(new DocxParagraph({
-            children: [
-              new TextRun({
-                text:  "Suggested revision: ",
-                bold:  true,
-                color: "0070C0",
-                size:  18,
-              }),
-              new InsertedTextRun({
-                text:   cleanText(np.preferredPosition),
-                id:     insertionId++,
-                author: "Contralyn AI",
-                date:   nowISO,
-                color:  "0070C0",
-                size:   18,
-              }),
-            ],
-          }));
-        }
       }
     }
 

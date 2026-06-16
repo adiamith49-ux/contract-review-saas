@@ -27,6 +27,12 @@ interface IntakeContext {
   notes?: string | null;
 }
 
+export interface ClauseLibraryEntry {
+  title: string;
+  clause_type: "approved" | "fallback";
+  content: string;
+}
+
 const jurisdictionContext: Record<string, string> = {
   us: "Apply US commercial law — UCC where applicable, Delaware corporate law for entity matters, relevant state law per governing law clause. Flag any provisions that may conflict with US federal regulations.",
   uk: "Apply English contract law and UK commercial practice — Companies Act 2006 for corporate matters, relevant English common law. Flag any provisions inconsistent with UK standard commercial practice or that may be unenforceable under English law.",
@@ -39,7 +45,8 @@ export function buildContractPrompt(
   text: string,
   contractType: ContractType,
   intake?: IntakeContext | null,
-  playbookText?: string
+  playbookText?: string,
+  clauseLibrary?: ClauseLibraryEntry[]
 ): string {
   const jurisdiction = intake?.jurisdiction ?? "us";
   let context = `CONTRACT TYPE: ${contractType.replace("_", " ").toUpperCase()}`;
@@ -57,6 +64,36 @@ export function buildContractPrompt(
 
   if (playbookText?.trim()) {
     context += `\n\nCOMPANY PLAYBOOK — REVIEW STANDARDS:\nThe following is your organization's contract review playbook. Review every clause in the contract against these standards. Flag any clause that deviates from, contradicts, or fails to meet the requirements in this playbook as a specific risk finding:\n\n${playbookText.slice(0, 60000)}`;
+  }
+
+  if (clauseLibrary && clauseLibrary.length > 0) {
+    const approved = clauseLibrary.filter(c => c.clause_type === "approved");
+    const fallback = clauseLibrary.filter(c => c.clause_type === "fallback");
+
+    let clauseSection = "\n\nCOMPANY CLAUSE LIBRARY — STANDARD LANGUAGE:\n";
+    clauseSection += "The following are your organization's approved and fallback clause standards. ";
+    clauseSection += "When reviewing the contract, compare relevant clauses against these standards. ";
+    clauseSection += "Flag any clause that materially deviates from the approved language as a risk finding, and reference the company standard in your recommendation.\n";
+
+    if (approved.length > 0) {
+      clauseSection += "\nAPPROVED CLAUSES (preferred language — flag contract deviations):\n";
+      for (const c of approved) {
+        const entry = `\n[${c.title}]\n${c.content}\n`;
+        if ((context + clauseSection + entry).length > 70000) break;
+        clauseSection += entry;
+      }
+    }
+
+    if (fallback.length > 0) {
+      clauseSection += "\nFALLBACK CLAUSES (acceptable alternative language):\n";
+      for (const c of fallback) {
+        const entry = `\n[${c.title}]\n${c.content}\n`;
+        if ((context + clauseSection + entry).length > 70000) break;
+        clauseSection += entry;
+      }
+    }
+
+    context += clauseSection;
   }
 
   return `${context}\n\nAnalyze this contract. Identify all legal and business risks, unfavorable clauses, missing protections, and negotiation opportunities.\n\nCONTRACT TEXT:\n${text.slice(0, 180000)}`;
