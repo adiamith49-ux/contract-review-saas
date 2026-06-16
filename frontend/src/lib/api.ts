@@ -199,6 +199,21 @@ export async function downloadExport(
   URL.revokeObjectURL(url);
 }
 
+// ─── Redlines endpoint ────────────────────────────────────────────────────────
+
+export interface RedlineStats {
+  placed_count: number;
+  total_count: number;
+  created_at: string;
+}
+
+export async function getRedlines(
+  token: string | null,
+  contractId: string
+): Promise<{ redlines: RedlineStats | null }> {
+  return apiFetch(`/api/contracts/${contractId}/redlines`, token);
+}
+
 // ─── Chat endpoints ───────────────────────────────────────────────────────────
 
 export async function getChatHistory(

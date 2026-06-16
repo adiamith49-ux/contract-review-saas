@@ -98,6 +98,17 @@ CREATE TABLE IF NOT EXISTS review_rules (
 -- ALTER TABLE review_rules ADD COLUMN IF NOT EXISTS original_filename text;
 -- ALTER TABLE review_rules ADD COLUMN IF NOT EXISTS file_size bigint;
 
+-- Redline placements (cached matching results computed after analysis)
+CREATE TABLE IF NOT EXISTS redlines (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  contract_id uuid NOT NULL UNIQUE REFERENCES contracts(id) ON DELETE CASCADE,
+  user_id text NOT NULL,
+  placed_count integer NOT NULL DEFAULT 0,   -- negotiation points matched to a paragraph
+  total_count integer NOT NULL DEFAULT 0,    -- total negotiation points in the analysis
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 -- Activity logs (audit trail for all key actions)
 CREATE TABLE IF NOT EXISTS activity_logs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

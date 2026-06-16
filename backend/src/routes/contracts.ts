@@ -10,7 +10,7 @@ import { analyzeContract, summarizeContract } from "../services/ai.service.js";
 import { logActivity } from "../services/activity.service.js";
 import { chatWithContract } from "../services/chat.service.js";
 import { extractText, validateFileType } from "../services/document.service.js";
-import { exportToDocx, exportToPdf } from "../services/export.service.js";
+import { exportToDocx, exportToPdf, computeRedlinePlacements } from "../services/export.service.js";
 import { buildS3Key, deleteFromS3, getPresignedUrl, uploadToS3 } from "../services/storage.service.js";
 
 const upload = multer({
@@ -284,6 +284,16 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
     if (saveError) throw saveError;
 
     await db.from("contracts").update({ status: "analyzed" }).eq("id", contract.id);
+
+    // Cache redline placements so the ReviewPanel can show placed count immediately
+    const { placedCount, totalCount } = computeRedlinePlacements(contract.extracted_text, analysis);
+    await db.from("redlines").upsert({
+      contract_id: contract.id,
+      user_id: req.userId,
+      placed_count: placedCount,
+      total_count: totalCount,
+    }, { onConflict: "contract_id" });
+
     await logActivity(req.userId, "contract.analyzed", contract.id, {
       risk_level: analysis.riskLevel,
       analysis_id: saved.id,
@@ -432,6 +442,23 @@ contractsRouter.post("/:id/chat", chatLimiter, async (req, res, next) => {
     ]);
 
     res.json({ answer });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/contracts/:id/redlines — return cached redline placement counts
+contractsRouter.get("/:id/redlines", async (req, res, next) => {
+  try {
+    const { data, error } = await db
+      .from("redlines")
+      .select("placed_count, total_count, created_at")
+      .eq("contract_id", req.params.id)
+      .eq("user_id", req.userId)
+      .single();
+
+    if (error || !data) { res.json({ redlines: null }); return; }
+    res.json({ redlines: data });
   } catch (err) {
     next(err);
   }

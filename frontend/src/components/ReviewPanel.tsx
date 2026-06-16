@@ -18,6 +18,8 @@ interface Props {
   onActiveChange: (id: string | null) => void;
   onClose: () => void;
   onDownload: () => void;
+  redlinePlaced?: number;
+  redlineTotal?: number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -195,7 +197,7 @@ function NegotiationItem({
 
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
-export function ReviewPanel({ analysis, activeId, onActiveChange, onClose, onDownload }: Props) {
+export function ReviewPanel({ analysis, activeId, onActiveChange, onClose, onDownload, redlinePlaced, redlineTotal }: Props) {
   const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
 
   const ambiguityFlags = (analysis.ambiguity_flags ?? []) as AmbiguityFlag[];
@@ -251,6 +253,12 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, onClose, onDow
         <span>{analysis.negotiation_points.length} negotiations</span>
         {ambiguityFlags.length > 0 && (
           <><span>·</span><span>{ambiguityFlags.length} ambiguous</span></>
+        )}
+        {typeof redlinePlaced === "number" && (
+          <><span>·</span>
+          <span className={redlinePlaced > 0 ? "text-violet-600 font-medium" : "text-gray-400"}>
+            {redlinePlaced}/{redlineTotal} redlined
+          </span></>
         )}
         {appliedIds.size > 0 && (
           <><span>·</span><span className="text-emerald-600 font-medium">{appliedIds.size} applied</span></>

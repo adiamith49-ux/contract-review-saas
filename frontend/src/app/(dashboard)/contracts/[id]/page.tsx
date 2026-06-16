@@ -14,7 +14,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { ReviewPanel } from "@/components/ReviewPanel";
 import { DocumentViewer } from "@/components/DocumentViewer";
 import { AIChatFloat } from "@/components/AIChatFloat";
-import { getContract, analyzeContract, downloadExport, type ContractDetail } from "@/lib/api";
+import { getContract, analyzeContract, downloadExport, getRedlines, type ContractDetail, type RedlineStats } from "@/lib/api";
 import { formatDate, formatFileSize, CONTRACT_TYPE_LABELS } from "@/lib/utils";
 
 export default function ContractDetailPage() {
@@ -26,12 +26,17 @@ export default function ContractDetailPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
+  const [redlineStats, setRedlineStats] = useState<RedlineStats | null>(null);
 
   async function load() {
     try {
       const token = await getToken();
-      const { contract } = await getContract(token, id);
+      const [{ contract }, { redlines }] = await Promise.all([
+        getContract(token, id),
+        getRedlines(token, id),
+      ]);
       setContract(contract);
+      setRedlineStats(redlines);
     } catch {
       toast.error("Failed to load contract");
     } finally {
@@ -166,6 +171,8 @@ export default function ContractDetailPage() {
               onActiveChange={newId => setActiveId(prev => prev === newId ? null : newId)}
               onClose={() => setPanelOpen(false)}
               onDownload={handleDownload}
+              redlinePlaced={redlineStats?.placed_count}
+              redlineTotal={redlineStats?.total_count}
             />
           )}
 
