@@ -180,12 +180,16 @@ export async function downloadExport(
   token: string | null,
   id: string,
   format: "pdf" | "docx",
-  filename: string
+  filename: string,
+  appliedIds?: Set<string>,
 ): Promise<void> {
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${API_URL}/api/contracts/${id}/export/${format}`, { headers });
+  const qs = appliedIds && appliedIds.size > 0
+    ? `?applied=${Array.from(appliedIds).join(",")}`
+    : "";
+  const res = await fetch(`${API_URL}/api/contracts/${id}/export/${format}${qs}`, { headers });
   if (!res.ok) throw new Error("Export failed");
 
   const blob = await res.blob();
@@ -294,6 +298,75 @@ export async function deleteRule(token: string | null, id: string): Promise<void
 
 export async function getAnalytics(token: string | null): Promise<AnalyticsData> {
   return apiFetch("/api/analytics", token);
+}
+
+// ─── Redline types + endpoints ────────────────────────────────────────────────
+
+export interface RedlineEdit {
+  clause_ref: string;
+  original_text: string;
+  revised_text: string;
+  edit_type: "replace" | "insert" | "delete";
+  risk: "High" | "Medium" | "Low";
+  playbook_rule: string;
+  rationale: string;
+}
+
+export interface LocatedEdit extends RedlineEdit {
+  matched: true;
+  start: number;
+  end: number;
+}
+
+export interface UnmatchedEdit extends RedlineEdit {
+  matched: false;
+  reason: string;
+}
+
+export type ProcessedEdit = LocatedEdit | UnmatchedEdit;
+
+export interface RedlineResult {
+  edits: ProcessedEdit[];
+  matched_count: number;
+  unmatched_count: number;
+  model: string;
+}
+
+export async function runRedline(
+  token: string | null,
+  contractId: string,
+): Promise<RedlineResult> {
+  return apiFetch(`/api/contracts/${contractId}/redline`, token, { method: "POST" });
+}
+
+export async function downloadRedlineDocx(
+  token: string | null,
+  contractId: string,
+  filename: string,
+  edits: ProcessedEdit[],
+): Promise<void> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_URL}/api/contracts/${contractId}/redline/export/docx`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ edits }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Redline export failed" }));
+    throw new Error(err.error ?? "Redline export failed");
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${filename.replace(/\.[^.]+$/, "")}-redlines.docx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────

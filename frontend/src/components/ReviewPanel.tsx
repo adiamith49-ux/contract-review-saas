@@ -1,8 +1,7 @@
 "use client";
-import { useState } from "react";
 import {
-  X, ChevronDown, ChevronUp, AlertTriangle, AlertCircle,
-  Scale, MessageSquare, Check, FileDown, ListChecks,
+  X, ChevronDown, ChevronUp, ShieldAlert, FileWarning,
+  Handshake, HelpCircle, Check, FileDown, ListChecks,
 } from "lucide-react";
 import { RiskBadge } from "@/components/RiskBadge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +15,9 @@ interface Props {
   analysis: AnalysisOut;
   activeId: string | null;
   onActiveChange: (id: string | null) => void;
+  appliedIds: Set<string>;
+  onApply: (id: string) => void;
+  onApplyAll: () => void;
   onClose: () => void;
   onDownload: () => void;
 }
@@ -33,10 +35,10 @@ function riskDot(risk: string) {
 
 function riskBorderL(risk: string) {
   switch (risk) {
-    case "critical": return "border-l-red-500";
-    case "high":     return "border-l-orange-500";
-    case "medium":   return "border-l-amber-400";
-    default:         return "border-l-emerald-500";
+    case "critical": return "border-r-red-500";
+    case "high":     return "border-r-orange-500";
+    case "medium":   return "border-r-amber-400";
+    default:         return "border-r-emerald-500";
   }
 }
 
@@ -78,8 +80,8 @@ function AccordionItem({
 }) {
   return (
     <div className={cn(
-      "border-b border-l-2 transition-colors",
-      isOpen ? riskBorderL(risk) : "border-l-transparent",
+      "border-b border-r-2 transition-colors",
+      isOpen ? riskBorderL(risk) : "border-r-transparent",
     )}>
       {/* Heading row — always visible */}
       <button
@@ -145,7 +147,7 @@ function NegotiationItem({
   return (
     <div className={cn(
       "border-b border-l-2 transition-colors",
-      isOpen ? "border-l-violet-500" : "border-l-transparent",
+      isOpen ? "border-r-violet-500" : "border-r-transparent",
     )}>
       <button
         onClick={() => onToggle(id)}
@@ -195,9 +197,7 @@ function NegotiationItem({
 
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
-export function ReviewPanel({ analysis, activeId, onActiveChange, onClose, onDownload }: Props) {
-  const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
-
+export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, onApply, onApplyAll, onClose, onDownload }: Props) {
   const ambiguityFlags = (analysis.ambiguity_flags ?? []) as AmbiguityFlag[];
 
   const allIds = [
@@ -208,26 +208,13 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, onClose, onDow
   ];
 
   function handleToggle(id: string) {
-    // Accordion: clicking same id closes it, clicking a different one opens it
     onActiveChange(activeId === id ? null : id);
-  }
-
-  function handleApply(id: string) {
-    setAppliedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }
-
-  function applyAll() {
-    setAppliedIds(new Set(allIds));
   }
 
   const remaining = allIds.length - appliedIds.size;
 
   return (
-    <div className="absolute left-0 top-0 h-full w-[340px] z-30 flex flex-col bg-white shadow-2xl border-r">
+    <div className="w-[340px] shrink-0 flex flex-col bg-white border-l shadow-[-2px_0_12px_rgba(0,0,0,0.08)]">
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="shrink-0 flex items-center gap-2.5 px-4 py-3 bg-[#1a2035] text-white">
         <ListChecks className="h-4 w-4 text-white/60 shrink-0" />
@@ -264,7 +251,7 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, onClose, onDow
         {analysis.risk_summary.length > 0 && (
           <>
             <SectionLabel
-              icon={<AlertTriangle className="h-3 w-3" />}
+              icon={<ShieldAlert className="h-3 w-3" />}
               title="Risk Areas"
               count={analysis.risk_summary.length}
             />
@@ -279,66 +266,66 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, onClose, onDow
                 isOpen={activeId === `r-${i}`}
                 isApplied={appliedIds.has(`r-${i}`)}
                 onToggle={handleToggle}
-                onApply={handleApply}
+                onApply={onApply}
               />
             ))}
           </>
         )}
 
         {/* Clause Issues */}
-        {analysis.clause_analysis.length > 0 && (
-          <>
-            <SectionLabel
-              icon={<AlertCircle className="h-3 w-3" />}
-              title="Clause Issues"
-              count={analysis.clause_analysis.length}
-            />
-            {analysis.clause_analysis.map((item, i) => (
-              <AccordionItem
-                key={`c-${i}`}
-                id={`c-${i}`}
-                title={item.clause}
-                body={item.finding}
-                recommendation={item.recommendation}
-                risk={item.risk}
-                isOpen={activeId === `c-${i}`}
-                isApplied={appliedIds.has(`c-${i}`)}
-                onToggle={handleToggle}
-                onApply={handleApply}
-              />
-            ))}
-          </>
+        <SectionLabel
+          icon={<FileWarning className="h-3 w-3" />}
+          title="Clause Issues"
+          count={analysis.clause_analysis.length}
+        />
+        {analysis.clause_analysis.length > 0 ? analysis.clause_analysis.map((item, i) => (
+          <AccordionItem
+            key={`c-${i}`}
+            id={`c-${i}`}
+            title={item.clause}
+            body={item.finding}
+            recommendation={item.recommendation}
+            risk={item.risk}
+            isOpen={activeId === `c-${i}`}
+            isApplied={appliedIds.has(`c-${i}`)}
+            onToggle={handleToggle}
+            onApply={onApply}
+          />
+        )) : (
+          <div className="px-4 py-3 text-[11px] text-gray-400 italic border-b">
+            No clause-level issues flagged — all key clauses appear acceptable.
+          </div>
         )}
 
         {/* Negotiation Points */}
-        {analysis.negotiation_points.length > 0 && (
-          <>
-            <SectionLabel
-              icon={<Scale className="h-3 w-3" />}
-              title="Negotiation Points"
-              count={analysis.negotiation_points.length}
-            />
-            {analysis.negotiation_points.map((item, i) => (
-              <NegotiationItem
-                key={`n-${i}`}
-                id={`n-${i}`}
-                title={item.point}
-                preferred={item.preferredPosition}
-                fallback={item.fallbackPosition}
-                isOpen={activeId === `n-${i}`}
-                isApplied={appliedIds.has(`n-${i}`)}
-                onToggle={handleToggle}
-                onApply={handleApply}
-              />
-            ))}
-          </>
+        <SectionLabel
+          icon={<Handshake className="h-3 w-3" />}
+          title="Negotiation Points"
+          count={analysis.negotiation_points.length}
+        />
+        {analysis.negotiation_points.length > 0 ? analysis.negotiation_points.map((item, i) => (
+          <NegotiationItem
+            key={`n-${i}`}
+            id={`n-${i}`}
+            title={item.point}
+            preferred={item.preferredPosition}
+            fallback={item.fallbackPosition}
+            isOpen={activeId === `n-${i}`}
+            isApplied={appliedIds.has(`n-${i}`)}
+            onToggle={handleToggle}
+            onApply={onApply}
+          />
+        )) : (
+          <div className="px-4 py-3 text-[11px] text-gray-400 italic border-b">
+            No negotiation points identified. Re-run analysis with legal intake for more targeted suggestions.
+          </div>
         )}
 
         {/* Ambiguity Flags */}
         {ambiguityFlags.length > 0 && (
           <>
             <SectionLabel
-              icon={<MessageSquare className="h-3 w-3" />}
+              icon={<HelpCircle className="h-3 w-3" />}
               title="Ambiguity Flags"
               count={ambiguityFlags.length}
             />
@@ -353,7 +340,7 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, onClose, onDow
                 isOpen={activeId === `a-${i}`}
                 isApplied={appliedIds.has(`a-${i}`)}
                 onToggle={handleToggle}
-                onApply={handleApply}
+                onApply={onApply}
               />
             ))}
           </>
@@ -368,7 +355,7 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, onClose, onDow
           variant="outline"
           size="sm"
           className="w-full h-8 text-xs"
-          onClick={applyAll}
+          onClick={onApplyAll}
           disabled={remaining === 0}
         >
           <Check className="h-3.5 w-3.5 mr-1.5" />

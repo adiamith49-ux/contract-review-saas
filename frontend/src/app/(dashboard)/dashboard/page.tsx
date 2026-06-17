@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useAuth, useUser } from "@clerk/nextjs";
 import {
   FileText, Upload, CheckCircle2, Clock, ShieldAlert, Plus,
-  ArrowRight, TrendingUp, BarChart3, BookOpen, ShieldCheck,
+  ArrowRight, TrendingUp, LineChart, Library, Gavel,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -204,10 +204,10 @@ export default function DashboardPage() {
                 Upload New Contract
               </Link>
               {[
-                { label: "Browse All Contracts", href: "/contracts",  icon: FileText   },
-                { label: "Clause Library",        href: "/clauses",   icon: BookOpen   },
-                { label: "Playbooks",             href: "/rules",     icon: ShieldCheck },
-                { label: "Analytics",             href: "/analytics", icon: BarChart3  },
+                { label: "Browse All Contracts", href: "/contracts",  icon: FileText  },
+                { label: "Clause Library",        href: "/clauses",   icon: Library   },
+                { label: "Playbooks",             href: "/rules",     icon: Gavel     },
+                { label: "Analytics",             href: "/analytics", icon: LineChart },
               ].map(({ label, href, icon: Icon }) => (
                 <Link
                   key={href}

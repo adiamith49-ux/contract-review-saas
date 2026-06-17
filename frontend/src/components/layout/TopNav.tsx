@@ -4,13 +4,12 @@ import { usePathname } from "next/navigation";
 import { useUser, useClerk } from "@clerk/nextjs";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
-  Scale,
   ChevronDown,
   Upload,
-  FileText,
-  BookOpen,
-  ShieldCheck,
-  BarChart3,
+  FileSearch,
+  Library,
+  Gavel,
+  LineChart,
   LayoutDashboard,
   Settings,
   Plus,
@@ -22,6 +21,7 @@ import {
   LifeBuoy,
   LogOut,
 } from "lucide-react";
+import { ContralyneLogoMark } from "@/components/ContralyneLogoMark";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { AppLauncher } from "./AppLauncher";
@@ -32,21 +32,21 @@ const NAV = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   {
     label: "Contracts",
-    icon: FileText,
+    icon: FileSearch,
     dropdown: [
-      { label: "All Contracts",   href: "/contracts", icon: FileText,   desc: "Browse and search all your contracts" },
+      { label: "All Contracts",   href: "/contracts", icon: FileSearch, desc: "Browse and search all your contracts" },
       { label: "Upload Contract", href: "/upload",    icon: Upload,     desc: "Add a new PDF or DOCX for review"    },
     ],
   },
   {
     label: "Tools",
-    icon: BookOpen,
+    icon: Library,
     dropdown: [
-      { label: "Clause Library", href: "/clauses", icon: BookOpen,    desc: "Save and manage approved clauses" },
-      { label: "Review Rules",   href: "/rules",   icon: ShieldCheck, desc: "Define your firm's playbook"      },
+      { label: "Clause Library", href: "/clauses", icon: Library, desc: "Save and manage approved clauses" },
+      { label: "Review Rules",   href: "/rules",   icon: Gavel,   desc: "Define your firm's playbook"      },
     ],
   },
-  { label: "Analytics", href: "/analytics", icon: BarChart3 },
+  { label: "Analytics", href: "/analytics", icon: LineChart },
 ];
 
 // ─── Active-route helper ──────────────────────────────────────────────────────
@@ -145,7 +145,7 @@ function ProfileDropdown() {
       },
       {
         label: "Analytics Dashboard",
-        icon: BarChart3,
+        icon: LineChart,
         href: "/analytics",
       },
     ],
@@ -266,11 +266,11 @@ function MobileMenu({ onClose }: { onClose: () => void }) {
 
   const links = [
     { label: "Dashboard",       href: "/dashboard",  icon: LayoutDashboard },
-    { label: "All Contracts",   href: "/contracts",  icon: FileText        },
+    { label: "All Contracts",   href: "/contracts",  icon: FileSearch      },
     { label: "Upload Contract", href: "/upload",     icon: Upload          },
-    { label: "Clause Library",  href: "/clauses",    icon: BookOpen        },
-    { label: "Review Rules",    href: "/rules",      icon: ShieldCheck     },
-    { label: "Analytics",       href: "/analytics",  icon: BarChart3       },
+    { label: "Clause Library",  href: "/clauses",    icon: Library         },
+    { label: "Review Rules",    href: "/rules",      icon: Gavel           },
+    { label: "Analytics",       href: "/analytics",  icon: LineChart       },
     { label: "Settings",        href: "/settings",   icon: Settings        },
   ];
 
@@ -342,9 +342,7 @@ export function TopNav() {
 
           {/* Logo */}
           <Link href="/dashboard" className="flex items-center gap-2 shrink-0 mr-4">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
-              <Scale className="h-4 w-4 text-white" />
-            </div>
+            <ContralyneLogoMark className="h-7 w-7" />
             <span className="text-base font-bold text-white tracking-tight">Contralyne</span>
           </Link>
 

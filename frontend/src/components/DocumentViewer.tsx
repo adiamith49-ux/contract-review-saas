@@ -113,41 +113,6 @@ function buildAnnotationMap(
   return map;
 }
 
-function getHighestRisk(anns: Annotation[]): RiskLevel {
-  for (const r of ["critical", "high", "medium", "low"] as RiskLevel[]) {
-    if (anns.some(a => a.risk === r)) return r;
-  }
-  return "low";
-}
-
-// ─── Styling helpers ──────────────────────────────────────────────────────────
-
-function riskBorderCls(risk: RiskLevel) {
-  switch (risk) {
-    case "critical": return "border-l-4 border-l-red-500";
-    case "high":     return "border-l-4 border-l-orange-500";
-    case "medium":   return "border-l-4 border-l-amber-400";
-    default:         return "border-l-4 border-l-emerald-500";
-  }
-}
-
-function riskBgCls(risk: RiskLevel) {
-  switch (risk) {
-    case "critical": return "bg-red-50/70";
-    case "high":     return "bg-orange-50/70";
-    case "medium":   return "bg-amber-50/70";
-    default:         return "bg-emerald-50/50";
-  }
-}
-
-function annBgCls(risk: RiskLevel) {
-  switch (risk) {
-    case "critical": return "bg-red-100/80 text-red-900";
-    case "high":     return "bg-orange-100/80 text-orange-900";
-    case "medium":   return "bg-amber-100/80 text-amber-900";
-    default:         return "bg-emerald-100/80 text-emerald-900";
-  }
-}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -155,9 +120,11 @@ interface Props {
   text?: string | null;
   analysis: AnalysisOut | null;
   activeId: string | null;
+  appliedIds?: Set<string>;
+  panelOpen?: boolean;
 }
 
-export function DocumentViewer({ text, analysis, activeId }: Props) {
+export function DocumentViewer({ text, analysis, activeId, appliedIds, panelOpen = true }: Props) {
   const paragraphRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   const paragraphs = useMemo(
@@ -196,25 +163,25 @@ export function DocumentViewer({ text, analysis, activeId }: Props) {
 
   return (
     <div className="h-full overflow-y-auto bg-gray-100 px-6 py-8">
-      {/* Paper-like document card */}
-      <div className="max-w-3xl mx-auto bg-white shadow-md rounded-lg px-10 py-10 min-h-full">
+      {/* Paper-like document card — wider when review panel is closed */}
+      <div className={cn("mx-auto bg-white shadow-md rounded-lg px-10 py-10 min-h-full transition-all duration-300", panelOpen ? "max-w-3xl" : "max-w-5xl")}>
         {paragraphs.map((para, idx) => {
           const annotations = annMap.get(idx) ?? [];
-          const highestRisk = annotations.length ? getHighestRisk(annotations) : null;
           const isActive = activeId !== null && annotations.some(a => a.id === activeId);
+          const allApplied = annotations.length > 0 && annotations.every(a => appliedIds?.has(a.id));
           const heading = isHeading(para);
+
+          // Three-state highlight: active (blue) > all-applied (green) > flagged (red)
+          const highlightCls = annotations.length === 0 ? "" :
+            isActive   ? "pl-3 py-1 border-l-4 border-l-blue-500 bg-blue-50 ring-2 ring-blue-300 ring-offset-1 rounded-sm" :
+            allApplied ? "pl-3 py-1 border-l-4 border-l-green-500 bg-green-50" :
+                         "pl-3 py-1 border-l-4 border-l-red-500 bg-red-50";
 
           return (
             <div
               key={idx}
               ref={el => { if (el) paragraphRefs.current.set(idx, el); }}
-              className={cn(
-                "mb-5 rounded-sm transition-all duration-200",
-                annotations.length > 0 && highestRisk
-                  ? cn("pl-3 py-1", riskBorderCls(highestRisk), riskBgCls(highestRisk))
-                  : "",
-                isActive ? "ring-2 ring-blue-400 ring-offset-2 rounded" : "",
-              )}
+              className={cn("mb-5 rounded-sm transition-all duration-200", highlightCls)}
             >
               {/* Paragraph / heading text */}
               <p
@@ -231,16 +198,22 @@ export function DocumentViewer({ text, analysis, activeId }: Props) {
               {/* Inline annotation cards (review-mode style) */}
               {annotations.length > 0 && (
                 <div className="mt-2 space-y-1.5 pb-1">
-                  {annotations.map(ann => (
-                    <div
-                      key={ann.id}
-                      className={cn("rounded-md px-3 py-2 text-[11px]", annBgCls(ann.risk))}
-                    >
-                      <p className="font-semibold mb-0.5">{ann.title}</p>
-                      <p className="opacity-80 leading-relaxed">{ann.body}</p>
-                      <p className="mt-1 text-blue-700 font-medium">→ {ann.recommendation}</p>
-                    </div>
-                  ))}
+                  {annotations.map(ann => {
+                    const isAnnActive   = ann.id === activeId;
+                    const isAnnApplied  = appliedIds?.has(ann.id);
+                    const cardCls = isAnnApplied
+                      ? "bg-green-100/80 text-green-900"
+                      : isAnnActive
+                      ? "bg-blue-100/80 text-blue-900"
+                      : "bg-red-100/80 text-red-900";
+                    return (
+                      <div key={ann.id} className={cn("rounded-md px-3 py-2 text-[11px]", cardCls)}>
+                        <p className="font-semibold mb-0.5">{ann.title}</p>
+                        <p className="opacity-80 leading-relaxed">{ann.body}</p>
+                        <p className="mt-1 font-medium opacity-90">→ {ann.recommendation}</p>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

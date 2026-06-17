@@ -4,27 +4,27 @@ import { usePathname } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
 import {
   LayoutDashboard,
-  Upload,
-  FileText,
-  Scale,
-  BookOpen,
-  ShieldCheck,
-  BarChart3,
+  CloudUpload,
+  FileSearch,
+  Library,
+  Gavel,
+  LineChart,
   Settings,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ContralyneLogoMark } from "@/components/ContralyneLogoMark";
 
 const mainNav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/upload", label: "Upload Contract", icon: Upload },
-  { href: "/contracts", label: "All Contracts", icon: FileText },
+  { href: "/upload", label: "Upload Contract", icon: CloudUpload },
+  { href: "/contracts", label: "All Contracts", icon: FileSearch },
 ];
 
 const toolsNav = [
-  { href: "/clauses", label: "Clause Library", icon: BookOpen },
-  { href: "/rules", label: "Review Rules", icon: ShieldCheck },
-  { href: "/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/clauses", label: "Clause Library", icon: Library },
+  { href: "/rules", label: "Review Rules", icon: Gavel },
+  { href: "/analytics", label: "Analytics", icon: LineChart },
 ];
 
 interface SidebarProps {
@@ -62,7 +62,7 @@ export function Sidebar({ onClose }: SidebarProps) {
       {/* Logo */}
       <div className="flex h-16 items-center justify-between border-b px-6">
         <div className="flex items-center gap-2">
-          <Scale className="h-6 w-6 text-primary" />
+          <ContralyneLogoMark className="h-7 w-7" />
           <span className="text-lg font-bold tracking-tight text-gray-900">Contralyne</span>
         </div>
         {/* Close button — mobile only */}

@@ -3,25 +3,25 @@ import Link from "next/link";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
   LayoutGrid,
-  FileText,
+  FileSearch,
   ClipboardList,
   Clock,
   CalendarDays,
-  BarChart3,
-  BookOpen,
-  ShieldCheck,
+  LineChart,
+  Library,
+  Gavel,
   Settings,
-  Scale,
 } from "lucide-react";
+import { ContralyneLogoMark } from "@/components/ContralyneLogoMark";
 
 const APPS = [
-  { label: "Contracts",     href: "/contracts",  icon: FileText,      color: "bg-blue-50   text-blue-600"    },
+  { label: "Contracts",     href: "/contracts",  icon: FileSearch,    color: "bg-blue-50   text-blue-600"    },
   { label: "Tasks",         href: "/tasks",       icon: ClipboardList, color: "bg-violet-50 text-violet-600"  },
   { label: "Time",          href: "/time",        icon: Clock,         color: "bg-teal-50   text-teal-600"    },
   { label: "Calendar",      href: "/calendar",    icon: CalendarDays,  color: "bg-orange-50 text-orange-600"  },
-  { label: "Analytics",     href: "/analytics",   icon: BarChart3,     color: "bg-indigo-50 text-indigo-600"  },
-  { label: "Clause Library",href: "/clauses",     icon: BookOpen,      color: "bg-emerald-50 text-emerald-600"},
-  { label: "Review Rules",  href: "/rules",       icon: ShieldCheck,   color: "bg-red-50    text-red-600"     },
+  { label: "Analytics",     href: "/analytics",   icon: LineChart,     color: "bg-indigo-50 text-indigo-600"  },
+  { label: "Clause Library",href: "/clauses",     icon: Library,       color: "bg-emerald-50 text-emerald-600"},
+  { label: "Review Rules",  href: "/rules",       icon: Gavel,         color: "bg-red-50    text-red-600"     },
   { label: "Settings",      href: "/settings",    icon: Settings,      color: "bg-gray-100  text-gray-600"    },
 ];
 
@@ -45,9 +45,7 @@ export function AppLauncher() {
         >
           {/* Header */}
           <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-100">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary">
-              <Scale className="h-3.5 w-3.5 text-white" />
-            </div>
+            <ContralyneLogoMark className="h-6 w-6" />
             <span className="text-sm font-bold text-gray-900 tracking-tight">Contralyne</span>
           </div>
 

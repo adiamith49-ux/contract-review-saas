@@ -96,7 +96,46 @@ export function buildContractPrompt(
     context += clauseSection;
   }
 
-  return `${context}\n\nAnalyze this contract. Identify all legal and business risks, unfavorable clauses, missing protections, and negotiation opportunities.\n\nCONTRACT TEXT:\n${text.slice(0, 180000)}`;
+  return `${context}\n\nAnalyze this contract thoroughly. You MUST populate ALL four output fields:\n1. riskSummary — high-level risk areas (always at least 2–4 findings)\n2. clauseAnalysis — clause-by-clause review of every substantive clause (always at least 3–5 findings; flag gaps, weak language, missing protections, and unfavorable terms)\n3. negotiationPoints — concrete leverage points with preferred and fallback positions (always at least 2–4 items; focus on terms that are negotiable in practice)\n4. ambiguityFlags — vague or undefined terms that could create disputes\n\nNever return empty arrays for riskSummary, clauseAnalysis, or negotiationPoints — every commercial contract has risks and negotiable terms.\n\nCONTRACT TEXT:\n${text.slice(0, 180000)}`;
+}
+
+// ─── Redline prompts ──────────────────────────────────────────────────────────
+
+export const redlineSystemPrompt = `You are a senior corporate lawyer producing a contract redline markup.
+
+Your task is to identify specific clause-level text edits that bring this contract in line with the company's review standards.
+
+CRITICAL RULE — original_text must be VERBATIM:
+- original_text must be an EXACT copy-paste from the contract. Character for character. Never paraphrase, summarize, or reword.
+- Keep original_text targeted: the specific phrase or sentence to change, not the entire paragraph.
+- If you cannot find the exact text in the contract, do not include that edit.
+
+edit_type guide:
+- "replace" — original_text is deleted, revised_text takes its place
+- "delete" — original_text is removed entirely (revised_text must be "")
+- "insert" — revised_text is inserted immediately after original_text (original_text is kept)
+
+Produce 3–20 edits. Focus on changes with real legal impact. Omit cosmetic edits.`;
+
+export function buildRedlinePrompt(
+  text: string,
+  contractType: ContractType,
+  intake?: IntakeContext | null,
+  playbookText?: string,
+): string {
+  const jurisdiction = intake?.jurisdiction ?? "us";
+  let ctx = `CONTRACT TYPE: ${contractType.replace("_", " ").toUpperCase()}`;
+  ctx += `\nJURISDICTION: ${jurisdiction.toUpperCase()}`;
+  if (intake?.counterparty_name) ctx += `\nCOUNTERPARTY: ${intake.counterparty_name}`;
+  if (intake?.deal_value) ctx += `\nDEAL VALUE: $${intake.deal_value.toLocaleString()}`;
+
+  if (playbookText?.trim()) {
+    ctx += `\n\nCOMPANY PLAYBOOK / REVIEW RULES:\n${playbookText.slice(0, 60000)}`;
+  } else {
+    ctx += `\n\nNo company playbook provided. Apply best-practice standards for ${jurisdiction.toUpperCase()} commercial contracts.`;
+  }
+
+  return `${ctx}\n\nCONTRACT TEXT — copy original_text VERBATIM from this text:\n${text.slice(0, 180000)}\n\nGenerate redline edits now. Every original_text field must be an exact verbatim substring of the contract text above.`;
 }
 
 export function buildSummaryPrompt(text: string, contractType: ContractType): string {

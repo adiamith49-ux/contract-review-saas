@@ -3,7 +3,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import {
-  Upload, FileText, X, Loader2, ShieldCheck, CheckSquare, Square,
+  Upload, FileText, X, Loader2, Gavel, CheckSquare, Square,
   ExternalLink, CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -235,7 +235,7 @@ export default function UploadPage() {
                 {/* Panel header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b">
                   <div className="flex items-center gap-2">
-                    <ShieldCheck className="h-4 w-4 text-primary shrink-0" />
+                    <Gavel className="h-4 w-4 text-primary shrink-0" />
                     <span className="text-sm font-semibold text-gray-800">Playbook</span>
                     {playbookEnabled && activeCount > 0 && (
                       <span className="text-[10px] bg-primary/10 text-primary font-semibold px-1.5 py-0.5 rounded-full">
@@ -274,7 +274,7 @@ export default function UploadPage() {
                     </div>
                   ) : rules.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full py-6 text-center gap-2">
-                      <ShieldCheck className="h-7 w-7 text-gray-200" />
+                      <Gavel className="h-7 w-7 text-gray-200" />
                       <p className="text-xs text-gray-500 font-medium">No active playbooks</p>
                       <p className="text-[11px] text-gray-400 max-w-[180px]">
                         AI will review against standard market norms.

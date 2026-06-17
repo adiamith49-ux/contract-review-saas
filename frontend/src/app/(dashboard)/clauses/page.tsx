@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { Plus, Search, Pencil, Trash2, BookOpen, Tag, Globe } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Library, Tag, Globe } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -362,7 +362,7 @@ function TypeBadge({ type }: { type: Clause["clause_type"] }) {
 function EmptyState({ hasSearch, onAdd }: { hasSearch: boolean; onAdd: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
-      <BookOpen className="h-10 w-10 text-gray-300 mb-3" />
+      <Library className="h-10 w-10 text-gray-300 mb-3" />
       <p className="text-sm font-medium text-gray-600">
         {hasSearch ? "No clauses match your search" : "No clauses yet"}
       </p>

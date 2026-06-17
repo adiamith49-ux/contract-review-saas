@@ -3,12 +3,11 @@ import Link from "next/link";
 import { useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import {
-  Scale,
   AlertTriangle,
   Globe,
-  MessageSquare,
+  Handshake,
   Download,
-  BookOpen,
+  Gavel,
   Zap,
   Shield,
   FileText,
@@ -22,6 +21,7 @@ import {
   ScanSearch,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ContralyneLogoMark } from "@/components/ContralyneLogoMark";
 
 // ─── Navbar ──────────────────────────────────────────────────────────────────
 
@@ -35,7 +35,7 @@ function LandingNav() {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 shrink-0">
-            <Scale className="h-6 w-6 text-primary" />
+            <ContralyneLogoMark className="h-7 w-7" />
             <span className="text-lg font-bold tracking-tight text-gray-900">Contralyne</span>
           </Link>
 
@@ -277,7 +277,7 @@ function Features() {
       description: "Deep context for US (UCC, Delaware corporate law), UK (English contract law, Companies Act 2006), EU (GDPR), and India (Indian Contract Act). Not generic AI output.",
     },
     {
-      icon: MessageSquare,
+      icon: Handshake,
       color: "text-violet-500",
       bg: "bg-violet-50",
       title: "Negotiation Suggestions",
@@ -291,7 +291,7 @@ function Features() {
       description: "Ask follow-up questions in plain English. The AI remembers the full contract text, the analysis, and your entire conversation — no context lost between sessions.",
     },
     {
-      icon: BookOpen,
+      icon: Gavel,
       color: "text-emerald-500",
       bg: "bg-emerald-50",
       title: "Review Rules & Playbook",
@@ -502,7 +502,7 @@ function Security() {
   const items = [
     { icon: Lock, title: "Encrypted at rest and in transit", desc: "All contract files stored on AWS S3 with AES-256 encryption. TLS 1.3 in transit." },
     { icon: Shield, title: "Pre-signed URLs — no public buckets", desc: "Files are never publicly accessible. Every download is a time-limited, user-specific URL." },
-    { icon: Scale, title: "SOC2-certified stack", desc: "AWS, Clerk, Supabase, and Vercel are independently SOC2 certified. Your data is on infrastructure your security team trusts." },
+    { icon: Shield, title: "SOC2-certified stack", desc: "AWS, Clerk, Supabase, and Vercel are independently SOC2 certified. Your data is on infrastructure your security team trusts." },
     { icon: Globe, title: "Your contracts never train AI", desc: "Anthropic's API is used with commercial terms that prohibit training on your data. Your contracts stay yours." },
   ];
 
@@ -682,7 +682,7 @@ function Footer() {
           {/* Brand */}
           <div className="md:col-span-2">
             <div className="flex items-center gap-2 mb-3">
-              <Scale className="h-5 w-5 text-primary" />
+              <ContralyneLogoMark className="h-6 w-6" />
               <span className="text-base font-bold text-white">Contralyne</span>
             </div>
             <p className="text-sm leading-relaxed max-w-xs">

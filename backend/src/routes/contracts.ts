@@ -6,7 +6,8 @@ import type { ContractType } from "../types.js";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { analyzeLimiter, chatLimiter, uploadLimiter } from "../middleware/rateLimit.js";
-import { analyzeContract, summarizeContract } from "../services/ai.service.js";
+import { analyzeContract, redlineContract, summarizeContract } from "../services/ai.service.js";
+import { exportRedlineDocx, processEdits, type ProcessedEdit } from "../services/redline.service.js";
 import { logActivity } from "../services/activity.service.js";
 import { chatWithContract } from "../services/chat.service.js";
 import { extractText, validateFileType } from "../services/document.service.js";
@@ -339,12 +340,15 @@ contractsRouter.get("/:id/export/docx", async (req, res, next) => {
     const a = Array.isArray(data?.analyses) ? data.analyses[0] : data?.analyses;
     if (error || !data || !a) { res.status(404).json({ error: "Analysis not found" }); return; }
 
+    const appliedParam = typeof req.query.applied === "string" ? req.query.applied : "";
+    const appliedIds = appliedParam ? new Set(appliedParam.split(",").map(s => s.trim())) : undefined;
+
     const buffer = await exportToDocx(data.filename, data.contract_type, {
       riskLevel: a.risk_level,
       riskSummary: a.risk_summary,
       clauseAnalysis: a.clause_analysis,
       negotiationPoints: a.negotiation_points,
-    }, data.summary ?? undefined, data.created_at, data.extracted_text ?? undefined);
+    }, data.summary ?? undefined, data.created_at, data.extracted_text ?? undefined, appliedIds);
 
     await logActivity(req.userId, "contract.exported", req.params.id, { format: "docx" });
 
@@ -370,12 +374,15 @@ contractsRouter.get("/:id/export/pdf", async (req, res, next) => {
     const a = Array.isArray(data?.analyses) ? data.analyses[0] : data?.analyses;
     if (error || !data || !a) { res.status(404).json({ error: "Analysis not found" }); return; }
 
+    const appliedParam = typeof req.query.applied === "string" ? req.query.applied : "";
+    const appliedIds = appliedParam ? new Set(appliedParam.split(",").map(s => s.trim())) : undefined;
+
     const buffer = await exportToPdf(data.filename, data.contract_type, {
       riskLevel: a.risk_level,
       riskSummary: a.risk_summary,
       clauseAnalysis: a.clause_analysis,
       negotiationPoints: a.negotiation_points,
-    }, data.summary ?? undefined, data.created_at, data.extracted_text ?? undefined);
+    }, data.summary ?? undefined, data.created_at, data.extracted_text ?? undefined, appliedIds);
 
     await logActivity(req.userId, "contract.exported", req.params.id, { format: "pdf" });
 
@@ -495,6 +502,133 @@ contractsRouter.patch("/:id", async (req, res, next) => {
 
     await logActivity(req.userId, "contract.updated", req.params.id, body as Record<string, unknown>);
     res.json({ contract: data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/contracts/:id/redline
+contractsRouter.post("/:id/redline", analyzeLimiter, async (req, res, next) => {
+  try {
+    const { data: contract, error } = await db
+      .from("contracts")
+      .select("extracted_text, contract_type, legal_intake(*)")
+      .eq("id", req.params.id)
+      .eq("user_id", req.userId)
+      .single();
+
+    if (error || !contract) { res.status(404).json({ error: "Contract not found" }); return; }
+    if (!contract.extracted_text) { res.status(422).json({ error: "Contract text not extracted yet" }); return; }
+
+    // Fetch active playbook rules — same pattern as analyze route
+    const { data: ruleRows } = await db
+      .from("review_rules")
+      .select("title, playbook_text, rules")
+      .eq("user_id", req.userId)
+      .eq("is_active", true);
+
+    const playbookParts = (ruleRows ?? []).map((row: any) => {
+      if (row.playbook_text?.trim()) return row.playbook_text as string;
+      const legacyRules = row.rules as Array<{ clause_type: string; requirement: string; severity: string }> | null;
+      if (legacyRules?.length) {
+        return legacyRules.map(r => `[${(r.severity ?? "medium").toUpperCase()}] ${r.clause_type}: ${r.requirement}`).join("\n");
+      }
+      return null;
+    }).filter((t: unknown): t is string => Boolean(t));
+
+    const playbookText = playbookParts.length > 0 ? playbookParts.join("\n\n---\n\n") : undefined;
+    const intake = Array.isArray(contract.legal_intake) ? contract.legal_intake[0] : (contract.legal_intake ?? null);
+
+    const { edits, model } = await redlineContract(
+      contract.extracted_text,
+      contract.contract_type as ContractType,
+      intake,
+      playbookText,
+    );
+
+    console.log("[diag] source head:", JSON.stringify(contract.extracted_text.slice(0, 200)));
+    const processedEdits = processEdits(contract.extracted_text, edits);
+    const matched_count = processedEdits.filter(e => e.matched).length;
+    const unmatched_count = processedEdits.filter(e => !e.matched).length;
+    console.log("[diag] placed:", matched_count, "unplaced:", unmatched_count);
+
+    // Cache result (best-effort — skip silently if redlines table not created yet)
+    try {
+      await db.from("redlines").insert({
+        contract_id: req.params.id,
+        user_id: req.userId,
+        edits: processedEdits,
+        matched_count,
+        unmatched_count,
+        model,
+      });
+    } catch {
+      // table may not exist yet — non-fatal
+    }
+
+    await logActivity(req.userId, "contract.redlined", req.params.id, { matched_count, unmatched_count });
+    res.json({ edits: processedEdits, matched_count, unmatched_count, model });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/contracts/:id/redline — fetch cached result
+contractsRouter.get("/:id/redline", async (req, res, next) => {
+  try {
+    const { data, error } = await db
+      .from("redlines")
+      .select("edits, matched_count, unmatched_count, model, created_at")
+      .eq("contract_id", req.params.id)
+      .eq("user_id", req.userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error || !data) { res.status(404).json({ error: "No redlines found" }); return; }
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/contracts/:id/redline/export/docx
+// Accepts { edits } in the request body — no DB dependency.
+// Produces a valid DOCX even when edits array is empty or all edits are unplaced.
+contractsRouter.post("/:id/redline/export/docx", async (req, res, next) => {
+  try {
+    const edits = Array.isArray(req.body?.edits) ? (req.body.edits as ProcessedEdit[]) : [];
+
+    const { data: contract, error } = await db
+      .from("contracts")
+      .select("filename, extracted_text")
+      .eq("id", req.params.id)
+      .eq("user_id", req.userId)
+      .single();
+
+    if (error || !contract) {
+      res.status(404).json({ error: "Contract not found" });
+      return;
+    }
+
+    let buffer: Buffer;
+    try {
+      buffer = await exportRedlineDocx(
+        contract.filename,
+        contract.extracted_text ?? "",
+        edits,
+      );
+    } catch (docxErr) {
+      console.error("[redline/export/docx] exportRedlineDocx threw:", (docxErr as Error)?.stack ?? docxErr);
+      throw docxErr;
+    }
+
+    await logActivity(req.userId, "contract.exported", req.params.id, { format: "redline-docx" });
+
+    const baseName = contract.filename.replace(/\.[^.]+$/, "");
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    res.setHeader("Content-Disposition", `attachment; filename="${baseName}-redlines.docx"`);
+    res.send(buffer);
   } catch (err) {
     next(err);
   }

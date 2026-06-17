@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import {
-  ArrowLeft, Download, Loader2, AlertTriangle, FileText, RefreshCw,
+  ArrowLeft, Download, Loader2, AlertTriangle, FileText, RefreshCw, GitPullRequest,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -13,8 +13,13 @@ import { RiskBadge } from "@/components/RiskBadge";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ReviewPanel } from "@/components/ReviewPanel";
 import { DocumentViewer } from "@/components/DocumentViewer";
+import { RedlineViewer } from "@/components/RedlineViewer";
 import { AIChatFloat } from "@/components/AIChatFloat";
-import { getContract, analyzeContract, downloadExport, type ContractDetail } from "@/lib/api";
+import {
+  getContract, analyzeContract, downloadExport,
+  runRedline, downloadRedlineDocx,
+  type ContractDetail, type RedlineResult,
+} from "@/lib/api";
 import { formatDate, formatFileSize, CONTRACT_TYPE_LABELS } from "@/lib/utils";
 
 export default function ContractDetailPage() {
@@ -26,6 +31,29 @@ export default function ContractDetailPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
+  const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
+  const [view, setView] = useState<"review" | "redline">("review");
+  const [redlineResult, setRedlineResult] = useState<RedlineResult | null>(null);
+  const [redlining, setRedlining] = useState(false);
+  const [downloadingRedline, setDownloadingRedline] = useState(false);
+
+  function handleApply(id: string) {
+    setAppliedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function handleApplyAll(analysis: { risk_summary: unknown[]; clause_analysis: unknown[]; negotiation_points: unknown[]; ambiguity_flags?: unknown[] }) {
+    const ids = [
+      ...analysis.risk_summary.map((_, i) => `r-${i}`),
+      ...analysis.clause_analysis.map((_, i) => `c-${i}`),
+      ...analysis.negotiation_points.map((_, i) => `n-${i}`),
+      ...(analysis.ambiguity_flags ?? []).map((_, i) => `a-${i}`),
+    ];
+    setAppliedIds(new Set(ids));
+  }
 
   async function load() {
     try {
@@ -60,10 +88,47 @@ export default function ContractDetailPage() {
     if (!contract) return;
     try {
       const token = await getToken();
-      await downloadExport(token, id, "docx", contract.filename);
+      await downloadExport(token, id, "docx", contract.filename, appliedIds.size > 0 ? appliedIds : undefined);
       toast.success("Download started");
     } catch {
       toast.error("Download failed");
+    }
+  }
+
+  async function handleRedline() {
+    if (!contract) return;
+    setRedlining(true);
+    setView("redline");
+    try {
+      const token = await getToken();
+      const result = await runRedline(token, id);
+      setRedlineResult(result);
+      if (result.matched_count === 0) {
+        toast.warning("Redlines generated but none could be placed — see unplaced edits below the document");
+      } else if (result.unmatched_count > 0) {
+        toast.success(`${result.matched_count} edits placed inline · ${result.unmatched_count} unplaced (see bottom)`);
+      } else {
+        toast.success(`${result.matched_count} redline edits placed inline`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Redline failed");
+      setView("review");
+    } finally {
+      setRedlining(false);
+    }
+  }
+
+  async function handleDownloadRedline() {
+    if (!contract) return;
+    setDownloadingRedline(true);
+    try {
+      const token = await getToken();
+      await downloadRedlineDocx(token, id, contract.filename, redlineResult?.edits ?? []);
+      toast.success("Redline DOCX downloaded");
+    } catch {
+      toast.error("Redline download failed");
+    } finally {
+      setDownloadingRedline(false);
     }
   }
 
@@ -105,10 +170,37 @@ export default function ContractDetailPage() {
         <div className="flex items-center gap-2 shrink-0">
           {isAnalyzed && (
             <>
+              {/* View toggle tabs */}
+              <div className="flex items-center rounded-md border bg-gray-50 p-0.5 gap-0.5">
+                <button
+                  onClick={() => setView("review")}
+                  className={`text-xs px-2.5 py-1 rounded transition-colors font-medium ${
+                    view === "review"
+                      ? "bg-white shadow-sm text-gray-900"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  Review
+                </button>
+                <button
+                  onClick={() => { if (!redlineResult) handleRedline(); else setView("redline"); }}
+                  className={`text-xs px-2.5 py-1 rounded transition-colors font-medium flex items-center gap-1 ${
+                    view === "redline"
+                      ? "bg-white shadow-sm text-gray-900"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  {redlining
+                    ? <><Loader2 className="h-3 w-3 animate-spin" />Redlining…</>
+                    : <><GitPullRequest className="h-3 w-3" />Redline</>
+                  }
+                </button>
+              </div>
+
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/contracts/${id}/export`}>
                   <Download className="h-3.5 w-3.5 mr-1.5" />
-                  Download Review
+                  Download
                 </Link>
               </Button>
               <Button
@@ -118,8 +210,7 @@ export default function ContractDetailPage() {
                 disabled={analyzing}
                 title="Re-run AI analysis"
               >
-                <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${analyzing ? "animate-spin" : ""}`} />
-                Re-analyze
+                <RefreshCw className={`h-3.5 w-3.5 ${analyzing ? "animate-spin" : ""}`} />
               </Button>
             </>
           )}
@@ -147,23 +238,49 @@ export default function ContractDetailPage() {
             analyzing={analyzing}
           />
         </div>
+      ) : view === "redline" ? (
+        // ── Redline view ────────────────────────────────────────────────────
+        redlining ? (
+          <div className="flex-1 flex items-center justify-center bg-gray-50">
+            <div className="flex flex-col items-center gap-3 text-center">
+              <Loader2 className="h-10 w-10 text-primary animate-spin" />
+              <p className="font-medium text-gray-700">Generating redlines…</p>
+              <p className="text-sm text-gray-400">AI is drafting clause-level edits</p>
+            </div>
+          </div>
+        ) : redlineResult ? (
+          <RedlineViewer
+            source={contract.extracted_text ?? ""}
+            edits={redlineResult.edits}
+            matched_count={redlineResult.matched_count}
+            unmatched_count={redlineResult.unmatched_count}
+            onDownloadDocx={handleDownloadRedline}
+            downloadingDocx={downloadingRedline}
+          />
+        ) : null
       ) : (
-        <div className="relative flex-1 min-h-0 overflow-hidden">
-          {/* Document viewer — full width, scrolls independently */}
-          <div className="absolute inset-0">
+        // ── Review view ─────────────────────────────────────────────────────
+        <div className="flex flex-1 min-h-0 overflow-hidden relative">
+          {/* Document viewer — flex-1, re-centers when panel opens/closes */}
+          <div className="flex-1 min-h-0">
             <DocumentViewer
               text={contract.extracted_text}
               analysis={analysis}
               activeId={activeId}
+              appliedIds={appliedIds}
+              panelOpen={panelOpen}
             />
           </div>
 
-          {/* Review panel — floating left overlay */}
+          {/* Review panel — fixed-width inline sidebar */}
           {panelOpen && (
             <ReviewPanel
               analysis={analysis}
               activeId={activeId}
               onActiveChange={newId => setActiveId(prev => prev === newId ? null : newId)}
+              appliedIds={appliedIds}
+              onApply={handleApply}
+              onApplyAll={() => handleApplyAll(analysis)}
               onClose={() => setPanelOpen(false)}
               onDownload={handleDownload}
             />
@@ -173,7 +290,7 @@ export default function ContractDetailPage() {
           {!panelOpen && (
             <button
               onClick={() => setPanelOpen(true)}
-              className="absolute left-0 top-1/2 -translate-y-1/2 z-20 bg-[#1a2035] text-white rounded-r-lg px-1.5 py-4 shadow-lg hover:opacity-90 transition-opacity"
+              className="absolute right-0 top-1/2 -translate-y-1/2 z-20 bg-[#1a2035] text-white rounded-l-lg px-1.5 py-4 shadow-lg hover:opacity-90 transition-opacity"
               title="Show AI Review Panel"
             >
               <span className="[writing-mode:vertical-rl] rotate-180 text-[10px] font-bold tracking-widest uppercase select-none">

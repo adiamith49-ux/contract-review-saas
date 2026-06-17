@@ -60,13 +60,37 @@ async function extractTextWithTextract(buffer: Buffer): Promise<string> {
   return lines.join("\n").trim();
 }
 
+// Normalize extracted text so the stored canonical form is clean ASCII-compatible text.
+// Applied to ALL extraction paths before any text is stored, sent to AI, or matched.
+// NFKC handles the bulk of Unicode compatibility characters; explicit replacements
+// catch the PDF-specific ligature codepoints that NFKC may leave untouched.
+export function normalizeExtractedText(text: string): string {
+  // Unicode NFKC: expands ligatures, compatibility forms, and half-width chars
+  let out = text.normalize("NFKC");
+
+  // Explicit PDF ligature fallback (NFKC should already handle these, belt-and-suspenders)
+  out = out
+    .replace(/ﬀ/g, "ff")
+    .replace(/ﬁ/g, "fi")
+    .replace(/ﬂ/g, "fl")
+    .replace(/ﬃ/g, "ffi")
+    .replace(/ﬄ/g, "ffl")
+    .replace(/ﬅ/g, "st")
+    .replace(/ﬆ/g, "st");
+
+  // Strip soft hyphens (invisible line-break hints left by PDF exporters)
+  out = out.replace(/­/g, "");
+
+  return out;
+}
+
 export async function extractText(buffer: Buffer, mimeType: string): Promise<string> {
   if (
     mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     mimeType === "application/msword"
   ) {
     const result = await mammoth.extractRawText({ buffer });
-    return result.value.trim();
+    return normalizeExtractedText(result.value.trim());
   }
 
   if (mimeType === "application/pdf") {
@@ -76,15 +100,15 @@ export async function extractText(buffer: Buffer, mimeType: string): Promise<str
     // Fallback to Textract if PDF appears to be a scan (no extractable text)
     if (text.length < 100) {
       try {
-        return await extractTextWithTextract(buffer);
+        return normalizeExtractedText(await extractTextWithTextract(buffer));
       } catch (err) {
         // Textract not configured or lacks permissions — return whatever text was extracted
         console.warn("Textract OCR fallback failed:", (err as Error).message);
-        return text;
+        return normalizeExtractedText(text);
       }
     }
 
-    return text;
+    return normalizeExtractedText(text);
   }
 
   throw new Error(`Unsupported file type: ${mimeType}`);

@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import {
-  Upload, FileText, Trash2, Pencil, ShieldCheck, Info, X, Loader2, CheckCircle,
+  Upload, FileText, Trash2, Pencil, Gavel, Info, X, Loader2, CheckCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -498,7 +498,7 @@ function PlaybookCard({
 function EmptyState({ onUpload }: { onUpload: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
-      <ShieldCheck className="h-10 w-10 text-gray-300 mb-3" />
+      <Gavel className="h-10 w-10 text-gray-300 mb-3" />
       <p className="text-sm font-semibold text-gray-700">No playbooks yet</p>
       <p className="text-xs text-gray-400 mt-1 max-w-xs">
         Upload your firm's playbook document (DOCX or PDF). Claude will review every contract against your standards.

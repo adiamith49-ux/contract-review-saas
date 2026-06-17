@@ -160,25 +160,28 @@ function parseContractParagraphs(raw: string): Para[] {
 
 // ─── Annotation collection & matching ────────────────────────────────────────
 
-function collectAnnotations(analysis: AnalysisResult): AnnotationItem[] {
+function collectAnnotations(analysis: AnalysisResult, appliedIds?: Set<string>): AnnotationItem[] {
   const items: AnnotationItem[] = [];
 
-  for (const r of analysis.riskSummary as any[]) {
+  (analysis.riskSummary as any[]).forEach((r, i) => {
+    if (appliedIds && !appliedIds.has(`r-${i}`)) return;
     items.push({
       severity: r.severity ?? r.risk_level ?? "medium",
       heading:  cleanText(r.area ?? ""),
       finding:  cleanText(r.risk ?? ""),
       recommendation: cleanText(r.recommendation ?? ""),
     });
-  }
-  for (const c of analysis.clauseAnalysis) {
+  });
+
+  (analysis.clauseAnalysis as any[]).forEach((c, i) => {
+    if (appliedIds && !appliedIds.has(`c-${i}`)) return;
     items.push({
-      severity: (c as any).risk ?? (c as any).severity ?? "medium",
-      heading:  cleanText((c as any).clause ?? ""),
-      finding:  cleanText((c as any).finding ?? ""),
-      recommendation: cleanText((c as any).recommendation ?? ""),
+      severity: c.risk ?? c.severity ?? "medium",
+      heading:  cleanText(c.clause ?? ""),
+      finding:  cleanText(c.finding ?? ""),
+      recommendation: cleanText(c.recommendation ?? ""),
     });
-  }
+  });
 
   // Deduplicate on heading+finding prefix
   const seen = new Set<string>();
@@ -403,6 +406,7 @@ export function exportToPdf(
   summary?:      string,
   createdAt?:    string,
   extractedText?: string,
+  appliedIds?:   Set<string>,
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
@@ -474,7 +478,7 @@ export function exportToPdf(
       sectionHeading(doc, "Contract Review");
 
       const paragraphs = parseContractParagraphs(cleanText(extractedText!));
-      const allAnnotations = collectAnnotations(analysis);
+      const allAnnotations = collectAnnotations(analysis, appliedIds);
       const { map: annotationMap, unmatched } = buildAnnotationMap(paragraphs, allAnnotations);
 
       for (let i = 0; i < paragraphs.length; i++) {
@@ -532,7 +536,7 @@ export function exportToPdf(
       }
     } else {
       // Fallback: analysis-only two-column report (no contract text)
-      const allAnnotations = collectAnnotations(analysis);
+      const allAnnotations = collectAnnotations(analysis, appliedIds);
       if (allAnnotations.length > 0) {
         sectionHeading(doc, "Analysis Findings");
         allAnnotations.forEach((item, idx) => {
@@ -570,6 +574,7 @@ export async function exportToDocx(
   summary?:      string,
   createdAt?:    string,
   extractedText?: string,
+  appliedIds?:   Set<string>,
 ): Promise<Buffer> {
   const riskColorHex: Record<string, string> = {
     low: "166534", medium: "9A3412", high: "7F1D1D", critical: "4C1D95",
@@ -655,7 +660,7 @@ export async function exportToDocx(
   if (extractedText && extractedText.trim().length > 100) {
     hasBody = true;
     const paragraphs  = parseContractParagraphs(cleanText(extractedText));
-    const allAnnotations = collectAnnotations(analysis);
+    const allAnnotations = collectAnnotations(analysis, appliedIds);
     const { map: annotationMap, unmatched } = buildAnnotationMap(paragraphs, allAnnotations);
 
     // Build negotiation suggestion map using same matching logic
@@ -784,10 +789,13 @@ export async function exportToDocx(
 
   // ─── Negotiation summary appendix ─────────────────────────────────────────
   const negSummary: DocxParagraph[] = [];
-  if ((analysis.negotiationPoints as any[]).length > 0) {
+  const filteredNegPoints = (analysis.negotiationPoints as any[]).filter((_, i) =>
+    !appliedIds || appliedIds.has(`n-${i}`),
+  );
+  if (filteredNegPoints.length > 0) {
     negSummary.push(new DocxParagraph({ text: "" }));
     negSummary.push(new DocxParagraph({ text: "Negotiation Points", heading: HeadingLevel.HEADING_1 }));
-    for (const n of analysis.negotiationPoints as any[]) {
+    for (const n of filteredNegPoints) {
       negSummary.push(new DocxParagraph({ children: [new TextRun({ text: n.point ?? "", bold: true })] }));
       negSummary.push(new DocxParagraph(`Preferred position: ${n.preferredPosition ?? ""}`));
       negSummary.push(new DocxParagraph(`Fallback position: ${n.fallbackPosition ?? ""}`));
