@@ -17,8 +17,8 @@ import { RedlineViewer } from "@/components/RedlineViewer";
 import { AIChatFloat } from "@/components/AIChatFloat";
 import {
   getContract, analyzeContract, downloadExport,
-  runRedline, downloadRedlineDocx,
-  type ContractDetail, type RedlineResult,
+  runRedline, downloadRedlineDocx, getRedlines,
+  type ContractDetail, type RedlineResult, type RedlineStats,
 } from "@/lib/api";
 import { formatDate, formatFileSize, CONTRACT_TYPE_LABELS } from "@/lib/utils";
 
@@ -36,6 +36,7 @@ export default function ContractDetailPage() {
   const [redlineResult, setRedlineResult] = useState<RedlineResult | null>(null);
   const [redlining, setRedlining] = useState(false);
   const [downloadingRedline, setDownloadingRedline] = useState(false);
+  const [redlineStats, setRedlineStats] = useState<RedlineStats | null>(null);
 
   function handleApply(id: string) {
     setAppliedIds(prev => {
@@ -58,8 +59,12 @@ export default function ContractDetailPage() {
   async function load() {
     try {
       const token = await getToken();
-      const { contract } = await getContract(token, id);
+      const [{ contract }, { redlines }] = await Promise.all([
+        getContract(token, id),
+        getRedlines(token, id),
+      ]);
       setContract(contract);
+      setRedlineStats(redlines);
     } catch {
       toast.error("Failed to load contract");
     } finally {
@@ -104,9 +109,9 @@ export default function ContractDetailPage() {
       const result = await runRedline(token, id);
       setRedlineResult(result);
       if (result.matched_count === 0) {
-        toast.warning("Redlines generated but none could be placed — see unplaced edits below the document");
+        toast.warning("Redlines generated but none could be placed — see the Redline Edits panel");
       } else if (result.unmatched_count > 0) {
-        toast.success(`${result.matched_count} edits placed inline · ${result.unmatched_count} unplaced (see bottom)`);
+        toast.success(`${result.matched_count} edits placed inline · ${result.unmatched_count} unplaced`);
       } else {
         toast.success(`${result.matched_count} redline edits placed inline`);
       }
@@ -261,7 +266,7 @@ export default function ContractDetailPage() {
       ) : (
         // ── Review view ─────────────────────────────────────────────────────
         <div className="flex flex-1 min-h-0 overflow-hidden relative">
-          {/* Document viewer — flex-1, re-centers when panel opens/closes */}
+          {/* Document viewer */}
           <div className="flex-1 min-h-0">
             <DocumentViewer
               text={contract.extracted_text}
@@ -272,7 +277,7 @@ export default function ContractDetailPage() {
             />
           </div>
 
-          {/* Review panel — fixed-width inline sidebar */}
+          {/* Review panel */}
           {panelOpen && (
             <ReviewPanel
               analysis={analysis}
@@ -283,6 +288,8 @@ export default function ContractDetailPage() {
               onApplyAll={() => handleApplyAll(analysis)}
               onClose={() => setPanelOpen(false)}
               onDownload={handleDownload}
+              redlinePlaced={redlineStats?.placed_count}
+              redlineTotal={redlineStats?.total_count}
             />
           )}
 
