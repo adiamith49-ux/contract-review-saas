@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import {
   ArrowLeft, Download, Loader2, AlertTriangle, FileText, RefreshCw, GitPullRequest,
+  AlignLeft, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,7 @@ import { IntakePanel } from "@/components/IntakePanel";
 import { AIChatFloat } from "@/components/AIChatFloat";
 import {
   getContract, analyzeContract, downloadExport,
-  runRedline, downloadRedlineDocx,
+  runRedline, downloadRedlineDocx, summarizeContract,
   type ContractDetail, type RedlineResult,
 } from "@/lib/api";
 import { formatDate, formatFileSize, CONTRACT_TYPE_LABELS } from "@/lib/utils";
@@ -37,6 +38,9 @@ export default function ContractDetailPage() {
   const [redlineResult, setRedlineResult] = useState<RedlineResult | null>(null);
   const [redlining, setRedlining] = useState(false);
   const [downloadingRedline, setDownloadingRedline] = useState(false);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
 
   function handleApply(id: string) {
     setAppliedIds(prev => {
@@ -61,10 +65,26 @@ export default function ContractDetailPage() {
       const token = await getToken();
       const { contract } = await getContract(token, id);
       setContract(contract);
+      if (contract.summary) setSummary(contract.summary);
     } catch {
       toast.error("Failed to load contract");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleSummarize() {
+    setSummarizing(true);
+    setSummaryOpen(true);
+    try {
+      const token = await getToken();
+      const { summary: s } = await summarizeContract(token, id);
+      setSummary(s);
+    } catch {
+      toast.error("Failed to generate summary");
+      setSummaryOpen(false);
+    } finally {
+      setSummarizing(false);
     }
   }
 
@@ -207,6 +227,17 @@ export default function ContractDetailPage() {
               <Button
                 variant="ghost"
                 size="sm"
+                onClick={() => summary ? setSummaryOpen(true) : handleSummarize()}
+                disabled={summarizing}
+                title="AI plain-English summary"
+              >
+                {summarizing
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <AlignLeft className="h-3.5 w-3.5" />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={handleAnalyze}
                 disabled={analyzing}
                 title="Re-run AI analysis"
@@ -304,6 +335,35 @@ export default function ContractDetailPage() {
               </span>
             </button>
           )}
+        </div>
+      )}
+
+      {/* ── Summary drawer ──────────────────────────────────────────────── */}
+      {summaryOpen && (
+        <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md shadow-2xl flex flex-col bg-white border-l">
+          <div className="shrink-0 flex items-center gap-2.5 px-4 py-3 border-b bg-[#1a2035] text-white">
+            <AlignLeft className="h-4 w-4 text-white/60 shrink-0" />
+            <span className="text-sm font-semibold flex-1">AI Summary</span>
+            <button
+              onClick={() => setSummaryOpen(false)}
+              className="p-1 rounded hover:bg-white/10 transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-5">
+            {summarizing ? (
+              <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400">
+                <Loader2 className="h-8 w-8 animate-spin" />
+                <p className="text-sm">Generating plain-English summary…</p>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{summary}</p>
+            )}
+          </div>
+          <div className="shrink-0 px-4 py-3 border-t">
+            <p className="text-[10px] text-gray-400 text-center">AI-generated · not legal advice</p>
+          </div>
         </div>
       )}
 

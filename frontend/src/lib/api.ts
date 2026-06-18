@@ -497,9 +497,53 @@ export async function createCalendarEvent(
   return apiFetch("/api/calendar", token, { method: "POST", body: JSON.stringify(data) });
 }
 
+export async function updateCalendarEvent(
+  token: string | null,
+  id: string,
+  data: Partial<Pick<CalEvent, "title" | "date" | "start_hour" | "end_hour" | "color">>
+): Promise<{ event: CalEvent }> {
+  return apiFetch(`/api/calendar/${id}`, token, { method: "PATCH", body: JSON.stringify(data) });
+}
+
 export async function deleteCalendarEvent(token: string | null, id: string): Promise<void> {
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await fetch(`${API_URL}/api/calendar/${id}`, { method: "DELETE", headers });
   if (!res.ok) throw new Error("Failed to delete event");
+}
+
+// ─── Activity log ─────────────────────────────────────────────────────────────
+
+export interface ActivityEntry {
+  id: string;
+  action: string;
+  contract_id: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export async function getActivityLog(
+  token: string | null,
+  limit = 50,
+  offset = 0,
+): Promise<{ activity: ActivityEntry[]; total: number }> {
+  return apiFetch(`/api/activity?limit=${limit}&offset=${offset}`, token);
+}
+
+// ─── Account ──────────────────────────────────────────────────────────────────
+
+export async function deleteAccount(token: string | null): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}/api/account`, { method: "DELETE", headers });
+  if (!res.ok) throw new Error("Failed to delete account");
+}
+
+// ─── Contract summary ─────────────────────────────────────────────────────────
+
+export async function summarizeContract(
+  token: string | null,
+  contractId: string,
+): Promise<{ summary: string }> {
+  return apiFetch(`/api/contracts/${contractId}/summarize`, token, { method: "POST" });
 }

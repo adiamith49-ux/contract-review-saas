@@ -9,6 +9,7 @@ import {
   Library,
   Gavel,
   LineChart,
+  Activity,
   Settings,
   X,
 } from "lucide-react";
@@ -25,6 +26,7 @@ const toolsNav = [
   { href: "/clauses", label: "Clause Library", icon: Library },
   { href: "/rules", label: "Review Rules", icon: Gavel },
   { href: "/analytics", label: "Analytics", icon: LineChart },
+  { href: "/activity", label: "Activity Log", icon: Activity },
 ];
 
 interface SidebarProps {

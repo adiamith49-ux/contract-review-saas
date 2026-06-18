@@ -1,12 +1,12 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useAuth, useUser } from "@clerk/nextjs";
-import { CalendarDays, ChevronLeft, ChevronRight, RefreshCw, Plus, X, Loader2 } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, RefreshCw, Plus, X, Loader2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
-  listCalendarEvents, createCalendarEvent, deleteCalendarEvent, type CalEvent,
+  listCalendarEvents, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, type CalEvent,
 } from "@/lib/api";
 
 type ViewMode = "Day" | "Week" | "Month" | "Year";
@@ -36,10 +36,11 @@ function startOfWeek(d: Date) {
 
 // ─── Week view ────────────────────────────────────────────────────────────────
 
-function WeekView({ anchor, events, onAddSlot, onDelete, deletingId }: {
+function WeekView({ anchor, events, onAddSlot, onEdit, onDelete, deletingId }: {
   anchor: Date;
   events: CalEvent[];
   onAddSlot: (date: string, hour: number) => void;
+  onEdit: (ev: CalEvent) => void;
   onDelete: (id: string) => void;
   deletingId: string | null;
 }) {
@@ -111,21 +112,29 @@ function WeekView({ anchor, events, onAddSlot, onDelete, deletingId }: {
                       {cellEvents.map((ev) => (
                         <div
                           key={ev.id}
-                          onClick={(e) => { e.stopPropagation(); }}
-                          className={cn("absolute inset-x-0.5 top-0.5 rounded border-l-2 px-1.5 py-0.5 flex items-center justify-between group/ev", ev.color)}
+                          onClick={(e) => { e.stopPropagation(); onEdit(ev); }}
+                          className={cn("absolute inset-x-0.5 top-0.5 rounded border-l-2 px-1.5 py-0.5 flex items-center justify-between group/ev cursor-pointer", ev.color)}
                           style={{ minHeight: "calc(100% - 4px)" }}
                         >
                           <span className="text-[11px] font-medium truncate">{ev.title}</span>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onDelete(ev.id); }}
-                            disabled={deletingId === ev.id}
-                            className="opacity-0 group-hover/ev:opacity-100 ml-1 shrink-0 disabled:opacity-50"
-                          >
-                            {deletingId === ev.id
-                              ? <Loader2 className="h-3 w-3 animate-spin" />
-                              : <X className="h-3 w-3" />
-                            }
-                          </button>
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover/ev:opacity-100 ml-1 shrink-0">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onEdit(ev); }}
+                              className="hover:bg-black/10 rounded p-0.5"
+                            >
+                              <Pencil className="h-2.5 w-2.5" />
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onDelete(ev.id); }}
+                              disabled={deletingId === ev.id}
+                              className="hover:bg-black/10 rounded p-0.5 disabled:opacity-50"
+                            >
+                              {deletingId === ev.id
+                                ? <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                                : <X className="h-2.5 w-2.5" />
+                              }
+                            </button>
+                          </div>
                         </div>
                       ))}
                       <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none">
@@ -145,10 +154,11 @@ function WeekView({ anchor, events, onAddSlot, onDelete, deletingId }: {
 
 // ─── Month view ───────────────────────────────────────────────────────────────
 
-function MonthView({ anchor, events, onAddSlot, onDelete, deletingId }: {
+function MonthView({ anchor, events, onAddSlot, onEdit, onDelete, deletingId }: {
   anchor: Date;
   events: CalEvent[];
   onAddSlot: (date: string, hour: number) => void;
+  onEdit: (ev: CalEvent) => void;
   onDelete: (id: string) => void;
   deletingId: string | null;
 }) {
@@ -187,15 +197,22 @@ function MonthView({ anchor, events, onAddSlot, onDelete, deletingId }: {
               )}>{day}</span>
               <div className="mt-1 space-y-0.5">
                 {dayEvents.slice(0, 3).map((ev) => (
-                  <div key={ev.id} className={cn("flex items-center justify-between rounded px-1.5 py-0.5 text-[11px] font-medium border-l-2 group/ev", ev.color)}>
+                  <div key={ev.id} className={cn("flex items-center justify-between rounded px-1.5 py-0.5 text-[11px] font-medium border-l-2 group/ev cursor-pointer", ev.color)}
+                    onClick={(e) => { e.stopPropagation(); onEdit(ev); }}
+                  >
                     <span className="truncate">{ev.title}</span>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onDelete(ev.id); }}
-                      disabled={deletingId === ev.id}
-                      className="opacity-0 group-hover/ev:opacity-100 ml-1 disabled:opacity-50"
-                    >
-                      {deletingId === ev.id ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <X className="h-2.5 w-2.5" />}
-                    </button>
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover/ev:opacity-100 ml-1 shrink-0">
+                      <button onClick={(e) => { e.stopPropagation(); onEdit(ev); }} className="hover:bg-black/10 rounded p-0.5">
+                        <Pencil className="h-2.5 w-2.5" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onDelete(ev.id); }}
+                        disabled={deletingId === ev.id}
+                        className="hover:bg-black/10 rounded p-0.5 disabled:opacity-50"
+                      >
+                        {deletingId === ev.id ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <X className="h-2.5 w-2.5" />}
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {dayEvents.length > 3 && <p className="text-[10px] text-gray-400 pl-1">+{dayEvents.length - 3} more</p>}
@@ -281,6 +298,75 @@ function AddEventModal({ date, hour, saving, onSave, onClose }: {
   );
 }
 
+// ─── Edit event modal ─────────────────────────────────────────────────────────
+
+function EditEventModal({ event, saving, onSave, onClose }: {
+  event: CalEvent;
+  saving: boolean;
+  onSave: (id: string, data: { title: string; start_hour: number; end_hour: number; color: string }) => void;
+  onClose: () => void;
+}) {
+  const [title, setTitle]    = useState(event.title);
+  const [start, setStart]    = useState(event.start_hour);
+  const [end, setEnd]        = useState(event.end_hour);
+  const [colorIdx, setColor] = useState(Math.max(0, EVENT_COLORS.indexOf(event.color)));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-semibold text-gray-900">Edit Event</h3>
+          <button onClick={onClose} disabled={saving} className="text-gray-400 hover:text-gray-600 disabled:opacity-50"><X className="h-4 w-4" /></button>
+        </div>
+        <p className="text-xs text-gray-500">{new Date(event.date + "T00:00:00").toLocaleDateString("en-US", { weekday:"long", month:"long", day:"numeric", year:"numeric" })}</p>
+        <input
+          autoFocus
+          type="text"
+          placeholder="Event title…"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          disabled={saving}
+          className="w-full rounded-lg border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+        />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Start time</label>
+            <select value={start} onChange={(e) => setStart(+e.target.value)} disabled={saving} className="w-full rounded-lg border border-input px-3 py-2 text-sm focus:outline-none">
+              {HOURS.map((h) => <option key={h} value={h}>{String(h).padStart(2,"0")}:00</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">End time</label>
+            <select value={end} onChange={(e) => setEnd(+e.target.value)} disabled={saving} className="w-full rounded-lg border border-input px-3 py-2 text-sm focus:outline-none">
+              {HOURS.filter((h) => h > start).map((h) => <option key={h} value={h}>{String(h).padStart(2,"0")}:00</option>)}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="text-xs text-gray-500 mb-2 block">Color</label>
+          <div className="flex gap-2">
+            {EVENT_COLORS.map((c, i) => (
+              <button key={i} onClick={() => setColor(i)} disabled={saving}
+                className={cn("h-6 w-6 rounded-full border-2 transition-transform disabled:opacity-50", c.split(" ")[0].replace("/20",""), colorIdx === i ? "border-gray-700 scale-110" : "border-transparent")}
+              />
+            ))}
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end pt-1">
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button
+            size="sm"
+            disabled={!title.trim() || saving}
+            onClick={() => onSave(event.id, { title, start_hour: start, end_hour: end, color: EVENT_COLORS[colorIdx] })}
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save Changes"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Calendar page ────────────────────────────────────────────────────────────
 
 export default function CalendarPage() {
@@ -289,9 +375,10 @@ export default function CalendarPage() {
   const [view, setView]         = useState<ViewMode>("Week");
   const [anchor, setAnchor]     = useState(new Date());
   const [events, setEvents]     = useState<CalEvent[]>([]);
-  const [modal, setModal]       = useState<{ date: string; hour: number } | null>(null);
-  const [savingEvent, setSavingEvent] = useState(false);
-  const [deletingId, setDeletingId]   = useState<string | null>(null);
+  const [modal, setModal]           = useState<{ date: string; hour: number } | null>(null);
+  const [editingEvent, setEditingEvent] = useState<CalEvent | null>(null);
+  const [savingEvent, setSavingEvent]   = useState(false);
+  const [deletingId, setDeletingId]     = useState<string | null>(null);
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -314,6 +401,20 @@ export default function CalendarPage() {
       setModal(null);
     } catch {
       toast.error("Failed to save event");
+    } finally {
+      setSavingEvent(false);
+    }
+  }
+
+  async function editEvent(id: string, data: { title: string; start_hour: number; end_hour: number; color: string }) {
+    setSavingEvent(true);
+    try {
+      const token = await getToken();
+      const { event } = await updateCalendarEvent(token, id, data);
+      setEvents(prev => prev.map(e => e.id === id ? event : e));
+      setEditingEvent(null);
+    } catch {
+      toast.error("Failed to update event");
     } finally {
       setSavingEvent(false);
     }
@@ -419,6 +520,7 @@ export default function CalendarPage() {
               anchor={anchor}
               events={events}
               onAddSlot={(date, hour) => setModal({ date, hour })}
+              onEdit={ev => setEditingEvent(ev)}
               onDelete={deleteEvent}
               deletingId={deletingId}
             />
@@ -428,6 +530,7 @@ export default function CalendarPage() {
               anchor={anchor}
               events={events}
               onAddSlot={(date, hour) => setModal({ date, hour })}
+              onEdit={ev => setEditingEvent(ev)}
               onDelete={deleteEvent}
               deletingId={deletingId}
             />
@@ -442,6 +545,16 @@ export default function CalendarPage() {
           )}
         </div>
       </div>
+
+      {/* Edit event modal */}
+      {editingEvent && (
+        <EditEventModal
+          event={editingEvent}
+          saving={savingEvent}
+          onSave={editEvent}
+          onClose={() => { if (!savingEvent) setEditingEvent(null); }}
+        />
+      )}
 
       {/* Add event modal */}
       {modal && (

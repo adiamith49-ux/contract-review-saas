@@ -4,10 +4,13 @@ import { useUser, useClerk } from "@clerk/nextjs";
 import {
   User, SlidersHorizontal, Shield, Info,
   ExternalLink, Check, LogOut, Lock, CreditCard,
-  Bell, CheckCircle2,
+  Bell, CheckCircle2, Trash2, AlertTriangle, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { deleteAccount } from "@/lib/api";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -304,7 +307,7 @@ function PreferencesTab({
 
 // ─── Security tab ─────────────────────────────────────────────────────────────
 
-function SecurityTab({ onOpenProfile }: { onOpenProfile: () => void }) {
+function SecurityTab({ onOpenProfile, onDeleteAccount }: { onOpenProfile: () => void; onDeleteAccount: () => void }) {
   const securityItems = [
     { label: "Authentication", detail: "Clerk — SOC2 certified", ok: true },
     { label: "File storage", detail: "AWS S3 — AES-256 encrypted at rest", ok: true },
@@ -375,6 +378,30 @@ function SecurityTab({ onOpenProfile }: { onOpenProfile: () => void }) {
               View
             </Button>
           </div>
+        </div>
+      </div>
+
+      {/* Danger zone */}
+      <div className="rounded-2xl border border-red-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-red-100 bg-red-50/60">
+          <h3 className="text-sm font-semibold text-red-700">Danger Zone</h3>
+        </div>
+        <div className="px-6 py-5 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-gray-800">Delete Account</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Permanently delete your account and all data — contracts, analyses, and files. This cannot be undone.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onDeleteAccount}
+            className="shrink-0 gap-2 text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Delete Account
+          </Button>
         </div>
       </div>
 
@@ -466,9 +493,13 @@ function AboutTab() {
 export default function SettingsPage() {
   const { user } = useUser();
   const { openUserProfile, signOut } = useClerk();
+  const { getToken } = useAuth();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("profile");
   const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS);
   const [saved, setSaved] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     setPrefs(loadPrefs());
@@ -484,6 +515,19 @@ export default function SettingsPage() {
     setSaved(true);
     toast.success("Preferences saved");
     setTimeout(() => setSaved(false), 3000);
+  }
+
+  async function handleDeleteAccount() {
+    setDeleting(true);
+    try {
+      const token = await getToken();
+      await deleteAccount(token);
+      await signOut({ redirectUrl: "/" });
+    } catch {
+      toast.error("Failed to delete account — please try again");
+      setDeleting(false);
+      setDeleteConfirm(false);
+    }
   }
 
   const fullName  = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "—";
@@ -560,10 +604,64 @@ export default function SettingsPage() {
           />
         )}
         {activeTab === "security" && (
-          <SecurityTab onOpenProfile={() => openUserProfile()} />
+          <SecurityTab
+            onOpenProfile={() => openUserProfile()}
+            onDeleteAccount={() => setDeleteConfirm(true)}
+          />
         )}
         {activeTab === "about" && <AboutTab />}
       </div>
+
+      {/* ── Delete account confirmation dialog ───────────────────────── */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="flex items-center gap-3 px-6 py-5 border-b border-red-100 bg-red-50">
+              <div className="h-9 w-9 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <AlertTriangle className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-red-700">Delete Account</p>
+                <p className="text-xs text-red-500">This action is permanent and cannot be undone</p>
+              </div>
+            </div>
+            <div className="px-6 py-5 space-y-3">
+              <p className="text-sm text-gray-700">
+                All of your data will be permanently deleted, including:
+              </p>
+              <ul className="text-xs text-gray-500 space-y-1 pl-4 list-disc">
+                <li>All uploaded contracts and their analyses</li>
+                <li>All files stored in S3</li>
+                <li>Clause library and review rules</li>
+                <li>Chat history and activity logs</li>
+              </ul>
+              <p className="text-xs font-semibold text-red-600 mt-2">
+                Are you absolutely sure you want to delete your account?
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t bg-gray-50">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteConfirm(false)}
+                disabled={deleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleDeleteAccount}
+                disabled={deleting}
+                className="bg-red-600 hover:bg-red-700 text-white gap-2"
+              >
+                {deleting
+                  ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Deleting…</>
+                  : <><Trash2 className="h-3.5 w-3.5" />Yes, delete everything</>}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
