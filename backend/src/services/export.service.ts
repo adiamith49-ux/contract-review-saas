@@ -397,34 +397,6 @@ function sectionHeading(doc: PDFKit.PDFDocument, title: string) {
   doc.moveDown(0.4);
 }
 
-// ─── Redline placement (exported for caching after analysis) ─────────────────
-
-export function computeRedlinePlacements(
-  extractedText: string,
-  analysis: AnalysisResult,
-): { placedCount: number; totalCount: number } {
-  const negotiationPoints = analysis.negotiationPoints as any[];
-  const totalCount = negotiationPoints.length;
-  if (totalCount === 0 || !extractedText?.trim()) return { placedCount: 0, totalCount: 0 };
-
-  const paragraphs = parseContractParagraphs(cleanText(extractedText));
-  let placedCount = 0;
-
-  for (const np of negotiationPoints) {
-    const idx = findMatchingParagraph(
-      paragraphs,
-      cleanText(np.preferredPosition ?? ""),
-      cleanText(np.point ?? ""),
-    );
-    if (idx !== null) {
-      placedCount++;
-      console.log(`[redline] OK ${paragraphs[idx].text.slice(0, 80)}`);
-    }
-  }
-
-  return { placedCount, totalCount };
-}
-
 // ─── PDF Export ───────────────────────────────────────────────────────────────
 
 export function exportToPdf(

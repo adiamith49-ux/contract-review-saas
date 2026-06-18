@@ -98,23 +98,29 @@ CREATE TABLE IF NOT EXISTS review_rules (
 -- ALTER TABLE review_rules ADD COLUMN IF NOT EXISTS original_filename text;
 -- ALTER TABLE review_rules ADD COLUMN IF NOT EXISTS file_size bigint;
 
--- Redlines (AI clause-level edits + quick placement stats computed at analysis time)
+-- Redlines (AI-generated clause-level track changes per contract)
+-- Each POST /redline creates a new row; GET /redline returns the latest.
 CREATE TABLE IF NOT EXISTS redlines (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  contract_id uuid NOT NULL UNIQUE REFERENCES contracts(id) ON DELETE CASCADE,
+  contract_id uuid NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
   user_id text NOT NULL,
-  -- Quick stats set by the analyze route (computeRedlinePlacements)
-  placed_count integer NOT NULL DEFAULT 0,
-  total_count integer NOT NULL DEFAULT 0,
-  -- Full AI redline edits set by POST /redline
-  edits jsonb NOT NULL DEFAULT '[]',
+  edits jsonb NOT NULL DEFAULT '[]',         -- array of ProcessedEdit objects (matched + unmatched)
   matched_count int NOT NULL DEFAULT 0,
   unmatched_count int NOT NULL DEFAULT 0,
   model text NOT NULL DEFAULT '',
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_redlines_contract ON redlines (contract_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_redlines_contract ON redlines (contract_id, user_id, created_at DESC);
+
+-- Migration (run if redlines table already exists from an older schema):
+-- ALTER TABLE redlines DROP CONSTRAINT IF EXISTS redlines_contract_id_key;
+-- ALTER TABLE redlines ADD COLUMN IF NOT EXISTS edits jsonb NOT NULL DEFAULT '[]';
+-- ALTER TABLE redlines ADD COLUMN IF NOT EXISTS matched_count int NOT NULL DEFAULT 0;
+-- ALTER TABLE redlines ADD COLUMN IF NOT EXISTS unmatched_count int NOT NULL DEFAULT 0;
+-- ALTER TABLE redlines ADD COLUMN IF NOT EXISTS model text NOT NULL DEFAULT '';
+-- ALTER TABLE redlines DROP COLUMN IF EXISTS placed_count;
+-- ALTER TABLE redlines DROP COLUMN IF EXISTS total_count;
+-- ALTER TABLE redlines DROP COLUMN IF EXISTS updated_at;
 
 -- Activity logs (audit trail for all key actions)
 CREATE TABLE IF NOT EXISTS activity_logs (
