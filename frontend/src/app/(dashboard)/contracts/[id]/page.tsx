@@ -14,6 +14,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { ReviewPanel } from "@/components/ReviewPanel";
 import { DocumentViewer } from "@/components/DocumentViewer";
 import { RedlineViewer } from "@/components/RedlineViewer";
+import { IntakePanel } from "@/components/IntakePanel";
 import { AIChatFloat } from "@/components/AIChatFloat";
 import {
   getContract, analyzeContract, downloadExport,
@@ -228,6 +229,9 @@ export default function ContractDetailPage() {
           )}
         </div>
       </div>
+
+      {/* ── Legal intake ─────────────────────────────────────────────────── */}
+      <IntakePanel contractId={id} getToken={getToken} />
 
       {/* ── Body ─────────────────────────────────────────────────────────── */}
       {!isAnalyzed ? (

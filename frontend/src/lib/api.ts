@@ -203,6 +203,37 @@ export async function downloadExport(
   URL.revokeObjectURL(url);
 }
 
+// ─── Legal intake endpoints ───────────────────────────────────────────────────
+
+export interface LegalIntake {
+  counterparty_name?: string;
+  department?: string;
+  urgency?: "low" | "medium" | "high" | "critical";
+  deal_value?: number;
+  jurisdiction?: "us" | "uk" | "eu" | "india" | "other";
+  renewal_date?: string;
+  business_owner?: string;
+  notes?: string;
+}
+
+export async function getIntake(
+  token: string | null,
+  contractId: string,
+): Promise<{ intake: LegalIntake | null }> {
+  return apiFetch(`/api/contracts/${contractId}/intake`, token);
+}
+
+export async function saveIntake(
+  token: string | null,
+  contractId: string,
+  data: LegalIntake,
+): Promise<{ intake: LegalIntake }> {
+  return apiFetch(`/api/contracts/${contractId}/intake`, token, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
 // ─── Chat endpoints ───────────────────────────────────────────────────────────
 
 export async function getChatHistory(
