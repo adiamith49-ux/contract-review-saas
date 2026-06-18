@@ -122,20 +122,45 @@ export function buildRedlinePrompt(
   contractType: ContractType,
   intake?: IntakeContext | null,
   playbookText?: string,
+  clauseLibrary?: ClauseLibraryEntry[],
 ): string {
   const jurisdiction = intake?.jurisdiction ?? "us";
   let ctx = `CONTRACT TYPE: ${contractType.replace("_", " ").toUpperCase()}`;
   ctx += `\nJURISDICTION: ${jurisdiction.toUpperCase()}`;
   if (intake?.counterparty_name) ctx += `\nCOUNTERPARTY: ${intake.counterparty_name}`;
   if (intake?.deal_value) ctx += `\nDEAL VALUE: $${intake.deal_value.toLocaleString()}`;
+  if (intake?.notes) ctx += `\nDEAL NOTES: ${intake.notes}`;
 
   if (playbookText?.trim()) {
-    ctx += `\n\nCOMPANY PLAYBOOK / REVIEW RULES:\n${playbookText.slice(0, 60000)}`;
+    ctx += `\n\nCOMPANY PLAYBOOK / REVIEW RULES:\n${playbookText.slice(0, 40000)}`;
   } else {
     ctx += `\n\nNo company playbook provided. Apply best-practice standards for ${jurisdiction.toUpperCase()} commercial contracts.`;
   }
 
-  return `${ctx}\n\nCONTRACT TEXT — copy original_text VERBATIM from this text:\n${text.slice(0, 180000)}\n\nGenerate redline edits now. Every original_text field must be an exact verbatim substring of the contract text above.`;
+  if (clauseLibrary && clauseLibrary.length > 0) {
+    const approved = clauseLibrary.filter(c => c.clause_type === "approved");
+    const fallback = clauseLibrary.filter(c => c.clause_type === "fallback");
+    let lib = "\n\nCOMPANY CLAUSE LIBRARY — use this language in revised_text where applicable:\n";
+    if (approved.length > 0) {
+      lib += "\nAPPROVED LANGUAGE (use verbatim or adapted in revised_text):\n";
+      for (const c of approved) {
+        const entry = `\n[${c.title}]\n${c.content}\n`;
+        if (ctx.length + lib.length + entry.length > 70000) break;
+        lib += entry;
+      }
+    }
+    if (fallback.length > 0) {
+      lib += "\nFALLBACK LANGUAGE (use if approved version is rejected):\n";
+      for (const c of fallback) {
+        const entry = `\n[${c.title}]\n${c.content}\n`;
+        if (ctx.length + lib.length + entry.length > 70000) break;
+        lib += entry;
+      }
+    }
+    ctx += lib;
+  }
+
+  return `${ctx}\n\nCONTRACT TEXT — copy original_text VERBATIM from this text:\n${text.slice(0, 180000)}\n\nGenerate redline edits now. Every original_text field must be an exact verbatim substring of the contract text above. Where your clause library provides standard language, use it in revised_text.`;
 }
 
 export function buildSummaryPrompt(text: string, contractType: ContractType): string {

@@ -521,12 +521,11 @@ contractsRouter.post("/:id/redline", analyzeLimiter, async (req, res, next) => {
     if (error || !contract) { res.status(404).json({ error: "Contract not found" }); return; }
     if (!contract.extracted_text) { res.status(422).json({ error: "Contract text not extracted yet" }); return; }
 
-    // Fetch active playbook rules — same pattern as analyze route
-    const { data: ruleRows } = await db
-      .from("review_rules")
-      .select("title, playbook_text, rules")
-      .eq("user_id", req.userId)
-      .eq("is_active", true);
+    // Fetch active playbook rules + clause library in parallel
+    const [{ data: ruleRows }, { data: clauseRows }] = await Promise.all([
+      db.from("review_rules").select("title, playbook_text, rules").eq("user_id", req.userId).eq("is_active", true),
+      db.from("clause_library").select("title, clause_type, content").eq("user_id", req.userId),
+    ]);
 
     const playbookParts = (ruleRows ?? []).map((row: any) => {
       if (row.playbook_text?.trim()) return row.playbook_text as string;
@@ -538,6 +537,11 @@ contractsRouter.post("/:id/redline", analyzeLimiter, async (req, res, next) => {
     }).filter((t: unknown): t is string => Boolean(t));
 
     const playbookText = playbookParts.length > 0 ? playbookParts.join("\n\n---\n\n") : undefined;
+    const clauseLibrary = (clauseRows ?? []).map((r: any) => ({
+      title: r.title as string,
+      clause_type: r.clause_type as "approved" | "fallback",
+      content: r.content as string,
+    }));
     const intake = Array.isArray(contract.legal_intake) ? contract.legal_intake[0] : (contract.legal_intake ?? null);
 
     const { edits, model } = await redlineContract(
@@ -545,6 +549,7 @@ contractsRouter.post("/:id/redline", analyzeLimiter, async (req, res, next) => {
       contract.contract_type as ContractType,
       intake,
       playbookText,
+      clauseLibrary.length > 0 ? clauseLibrary : undefined,
     );
 
     console.log("[diag] source head:", JSON.stringify(contract.extracted_text.slice(0, 200)));

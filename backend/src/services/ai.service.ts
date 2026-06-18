@@ -144,6 +144,7 @@ export async function redlineContract(
   contractType: ContractType,
   intake?: IntakeContext | null,
   playbookText?: string,
+  clauseLibrary?: ClauseLibraryEntry[],
 ): Promise<{ edits: RedlineEdit[]; model: string }> {
   const response = await anthropic.beta.promptCaching.messages.create({
     model: config.AI_MODEL,
@@ -153,7 +154,7 @@ export async function redlineContract(
     tool_choice: { type: "tool", name: "generate_redlines" },
     messages: [{
       role: "user",
-      content: buildRedlinePrompt(text, contractType, intake, playbookText),
+      content: buildRedlinePrompt(text, contractType, intake, playbookText, clauseLibrary),
     }],
   });
 
