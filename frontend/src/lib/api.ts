@@ -8,6 +8,48 @@ import type {
   AmbiguityFlag,
 } from "@/lib/types";
 
+// ─── Client types ─────────────────────────────────────────────────────────────
+
+export type ClientStatus = "active" | "inactive";
+
+export interface Client {
+  id: string;
+  user_id: string;
+  name: string;
+  industry: string | null;
+  notes: string | null;
+  status: ClientStatus;
+  contract_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function listClients(token: string | null): Promise<{ clients: Client[] }> {
+  return apiFetch("/api/clients", token);
+}
+
+export async function createClient(
+  token: string | null,
+  data: { name: string; industry?: string; notes?: string }
+): Promise<{ client: Client }> {
+  return apiFetch("/api/clients", token, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function getClient(
+  token: string | null,
+  id: string
+): Promise<{ client: Client; contracts: ContractListItem[] }> {
+  return apiFetch(`/api/clients/${id}`, token);
+}
+
+export async function updateClient(
+  token: string | null,
+  id: string,
+  data: { name?: string; industry?: string | null; notes?: string | null; status?: ClientStatus }
+): Promise<{ client: Client }> {
+  return apiFetch(`/api/clients/${id}`, token, { method: "PATCH", body: JSON.stringify(data) });
+}
+
 // ─── Clause types ─────────────────────────────────────────────────────────────
 
 export interface Clause {
@@ -134,11 +176,13 @@ async function apiFetch<T>(
 export async function uploadContract(
   token: string | null,
   file: File,
-  contractType: ContractType
+  contractType: ContractType,
+  clientId?: string,
 ): Promise<{ contract: { id: string; filename: string; contract_type: ContractType; status: ContractStatus; created_at: string } }> {
   const form = new FormData();
   form.append("file", file);
   form.append("contract_type", contractType);
+  if (clientId) form.append("client_id", clientId);
 
   return apiFetch("/api/contracts/upload", token, { method: "POST", body: form });
 }
@@ -528,6 +572,24 @@ export async function getActivityLog(
   offset = 0,
 ): Promise<{ activity: ActivityEntry[]; total: number }> {
   return apiFetch(`/api/activity?limit=${limit}&offset=${offset}`, token);
+}
+
+// ─── Tickets ─────────────────────────────────────────────────────────────────
+
+export interface UserTicket {
+  id: string; type: string; reference_id: string | null; reference_name: string | null;
+  description: string; status: string; admin_notes: string | null; created_at: string;
+}
+
+export async function submitTicket(
+  token: string | null,
+  data: { type: "clause_change" | "playbook_change" | "other"; reference_id?: string; reference_name?: string; description: string }
+): Promise<{ ticket: UserTicket }> {
+  return apiFetch("/api/tickets", token, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function listMyTickets(token: string | null): Promise<{ tickets: UserTicket[] }> {
+  return apiFetch("/api/tickets", token);
 }
 
 // ─── Account ──────────────────────────────────────────────────────────────────

@@ -1,6 +1,19 @@
 -- Contralyn Database Schema
 -- Run this in Supabase SQL Editor to initialize the database
 
+-- Clients (grouping layer for contracts — each user has their own clients)
+CREATE TABLE IF NOT EXISTS clients (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id text NOT NULL,
+  name text NOT NULL,
+  industry text,
+  notes text,
+  status text NOT NULL DEFAULT 'active',           -- active | inactive
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_clients_user ON clients(user_id, created_at DESC);
+
 -- Users (mirrors Clerk user data; clerk_user_id is the primary identity)
 CREATE TABLE IF NOT EXISTS users (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -13,6 +26,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS contracts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id text NOT NULL,
+  client_id uuid REFERENCES clients(id) ON DELETE SET NULL,
   filename text NOT NULL,
   s3_key text NOT NULL UNIQUE,
   file_size bigint NOT NULL,
@@ -144,3 +158,67 @@ CREATE INDEX IF NOT EXISTS idx_clause_library_user       ON clause_library(user_
 CREATE INDEX IF NOT EXISTS idx_review_rules_user         ON review_rules(user_id, is_active);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_user        ON activity_logs(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_contract    ON activity_logs(contract_id);
+CREATE INDEX IF NOT EXISTS idx_contracts_client          ON contracts(client_id);
+
+-- ─── Migration: admin + RBAC (run in Supabase SQL editor) ────────────────────
+-- Run after the base schema if tables already exist.
+
+-- 1. Admin auth
+-- CREATE TABLE IF NOT EXISTS admins (
+--   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+--   email text NOT NULL UNIQUE,
+--   name text NOT NULL,
+--   password_hash text NOT NULL,
+--   created_at timestamptz NOT NULL DEFAULT now()
+-- );
+
+-- 2. User-to-client many-to-many
+-- CREATE TABLE IF NOT EXISTS client_memberships (
+--   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+--   user_id text NOT NULL,
+--   client_id uuid NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+--   assigned_by text,
+--   created_at timestamptz NOT NULL DEFAULT now(),
+--   UNIQUE(user_id, client_id)
+-- );
+-- CREATE INDEX IF NOT EXISTS idx_memberships_user   ON client_memberships(user_id);
+-- CREATE INDEX IF NOT EXISTS idx_memberships_client ON client_memberships(client_id);
+
+-- 3. Change request tickets
+-- CREATE TABLE IF NOT EXISTS tickets (
+--   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+--   user_id text NOT NULL,
+--   type text NOT NULL,
+--   reference_id uuid,
+--   reference_name text,
+--   description text NOT NULL,
+--   status text NOT NULL DEFAULT 'open',
+--   admin_notes text,
+--   created_at timestamptz NOT NULL DEFAULT now(),
+--   updated_at timestamptz NOT NULL DEFAULT now()
+-- );
+-- CREATE INDEX IF NOT EXISTS idx_tickets_user   ON tickets(user_id, created_at DESC);
+-- CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status, created_at DESC);
+
+-- 4. Make clients.user_id nullable (clients are now admin-managed)
+-- ALTER TABLE clients ALTER COLUMN user_id DROP NOT NULL;
+
+-- 5. Mark existing clauses/rules as admin-managed
+-- ALTER TABLE clause_library  ADD COLUMN IF NOT EXISTS is_admin_managed boolean NOT NULL DEFAULT false;
+-- ALTER TABLE review_rules     ADD COLUMN IF NOT EXISTS is_admin_managed boolean NOT NULL DEFAULT false;
+-- UPDATE clause_library SET is_admin_managed = true;
+-- UPDATE review_rules   SET is_admin_managed = true;
+
+-- 6. Create clients base table (if starting fresh)
+-- CREATE TABLE IF NOT EXISTS clients (
+--   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+--   user_id text,  -- nullable: admin-created clients have no user_id
+--   name text NOT NULL,
+--   industry text,
+--   notes text,
+--   status text NOT NULL DEFAULT 'active',
+--   created_at timestamptz NOT NULL DEFAULT now(),
+--   updated_at timestamptz NOT NULL DEFAULT now()
+-- );
+-- ALTER TABLE contracts ADD COLUMN IF NOT EXISTS client_id uuid REFERENCES clients(id) ON DELETE SET NULL;
+-- CREATE INDEX IF NOT EXISTS idx_contracts_client ON contracts(client_id);

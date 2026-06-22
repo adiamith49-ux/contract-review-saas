@@ -13,6 +13,7 @@ import { chatWithContract } from "../services/chat.service.js";
 import { extractText, validateFileType } from "../services/document.service.js";
 import { exportToDocx, exportToPdf } from "../services/export.service.js";
 import { buildS3Key, deleteFromS3, getPresignedUrl, uploadToS3 } from "../services/storage.service.js";
+import { getUserClientIds, userHasClientAccess } from "../services/membership.service.js";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -56,6 +57,17 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
     await validateFileType(req.file.buffer, req.file.mimetype);
 
     const contractType = contractTypeSchema.default("other").parse(req.body.contract_type);
+    const clientId: string | undefined = req.body.client_id || undefined;
+
+    // Validate user is assigned to the client
+    if (clientId) {
+      const hasAccess = await userHasClientAccess(req.userId, clientId);
+      if (!hasAccess) {
+        res.status(400).json({ error: "Invalid client or access not granted" });
+        return;
+      }
+    }
+
     const fileId = randomUUID();
     const s3Key = buildS3Key(req.userId, fileId, req.file.originalname);
 
@@ -69,6 +81,7 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
       .insert({
         id: fileId,
         user_id: req.userId,
+        client_id: clientId ?? null,
         filename: req.file.originalname,
         s3_key: s3Key,
         file_size: req.file.size,
@@ -93,15 +106,21 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
   }
 });
 
-// GET /api/contracts — with search + filter
+// GET /api/contracts — filtered to user's assigned clients
 contractsRouter.get("/", async (req, res, next) => {
   try {
     const { status, contract_type, risk_level, search, from, to } = req.query;
 
+    const clientIds = await getUserClientIds(req.userId);
+    if (clientIds.length === 0) {
+      res.json({ contracts: [] });
+      return;
+    }
+
     let query = db
       .from("contracts")
       .select("id, filename, contract_type, status, file_size, created_at, analyses(id, risk_level)")
-      .eq("user_id", req.userId)
+      .in("client_id", clientIds)
       .order("created_at", { ascending: false });
 
     if (status) query = query.eq("status", String(status));
@@ -140,12 +159,16 @@ contractsRouter.get("/:id", async (req, res, next) => {
   try {
     const { data, error } = await db
       .from("contracts")
-      .select("id, filename, contract_type, status, file_size, s3_key, summary, extracted_text, created_at, analyses(*), legal_intake(*)")
+      .select("id, filename, contract_type, status, file_size, s3_key, summary, extracted_text, created_at, client_id, analyses(*), legal_intake(*)")
       .eq("id", req.params.id)
-      .eq("user_id", req.userId)
       .single();
 
     if (error || !data) { res.status(404).json({ error: "Contract not found" }); return; }
+
+    const hasAccess = (data as any).client_id
+      ? await userHasClientAccess(req.userId, (data as any).client_id)
+      : (data as any).user_id === req.userId;
+    if (!hasAccess) { res.status(404).json({ error: "Contract not found" }); return; }
 
     const fileUrl = await getPresignedUrl(data.s3_key);
     // Supabase returns analyses as a single object (not array) when contract_id has UNIQUE constraint.

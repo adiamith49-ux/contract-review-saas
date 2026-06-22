@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
 import {
   LayoutDashboard,
-  CloudUpload,
+  Building2,
   FileSearch,
   Library,
   Gavel,
@@ -18,7 +18,7 @@ import { ContralyneLogoMark } from "@/components/ContralyneLogoMark";
 
 const mainNav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/upload", label: "Upload Contract", icon: CloudUpload },
+  { href: "/clients",   label: "Clients",   icon: Building2 },
   { href: "/contracts", label: "All Contracts", icon: FileSearch },
 ];
 

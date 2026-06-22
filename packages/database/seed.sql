@@ -1,0 +1,197 @@
+-- ─── CONTRALYNE SEED DATA ────────────────────────────────────────────────────
+-- Run this in Supabase SQL Editor AFTER logging into the app at least once.
+-- It auto-detects your user_id from existing DB records.
+-- Safe to re-run — clears previous seed data first.
+
+DO $$
+DECLARE
+  v_uid  text;
+  c1 uuid; c2 uuid; c3 uuid;
+  k1 uuid; k2 uuid; k3 uuid; k4 uuid; k5 uuid;
+BEGIN
+
+  -- ── Detect user ──────────────────────────────────────────────────────────
+  SELECT user_id INTO v_uid FROM contracts     LIMIT 1;
+  IF v_uid IS NULL THEN SELECT user_id INTO v_uid FROM activity_logs  LIMIT 1; END IF;
+  IF v_uid IS NULL THEN SELECT user_id INTO v_uid FROM clause_library LIMIT 1; END IF;
+  IF v_uid IS NULL THEN SELECT user_id INTO v_uid FROM review_rules   LIMIT 1; END IF;
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'No user found. Log into the app first, then re-run this seed.';
+  END IF;
+
+  -- ── Wipe previous seed data ───────────────────────────────────────────────
+  DELETE FROM contracts     WHERE user_id = v_uid;   -- cascades to analyses, intake, chat, redlines
+  DELETE FROM clause_library WHERE user_id = v_uid;
+  DELETE FROM review_rules  WHERE user_id = v_uid;
+  DELETE FROM clients       WHERE user_id = v_uid;
+
+  -- ── Clients ──────────────────────────────────────────────────────────────
+  c1 := gen_random_uuid(); c2 := gen_random_uuid(); c3 := gen_random_uuid();
+
+  INSERT INTO clients (id, user_id, name, industry, notes, status) VALUES
+    (c1, v_uid, 'Nexus Technologies', 'Technology',
+      'Primary SaaS client. Active since 2024. High volume of vendor agreements and NDAs. Point of contact: Sarah Lin (General Counsel).', 'active'),
+    (c2, v_uid, 'Meridian Capital', 'Finance',
+      'Investment fund. Requires strict data protection clauses and Delaware governing law on all agreements. Review urgency is always high.', 'active'),
+    (c3, v_uid, 'BluePeak Health', 'Healthcare',
+      'Former client. Engagement ended Q1 2026 after contract dispute over liability terms.', 'inactive');
+
+  -- ── Contracts ─────────────────────────────────────────────────────────────
+  k1 := gen_random_uuid(); k2 := gen_random_uuid(); k3 := gen_random_uuid();
+  k4 := gen_random_uuid(); k5 := gen_random_uuid();
+
+  INSERT INTO contracts (id, user_id, client_id, filename, s3_key, file_size, mime_type, contract_type, status, extracted_text) VALUES
+
+    (k1, v_uid, c1, 'Nexus_NDA_2026.pdf',
+      'seed/' || v_uid || '/nexus-nda-2026.pdf', 245760, 'application/pdf', 'nda', 'analyzed',
+      E'NON-DISCLOSURE AGREEMENT\n\nThis Non-Disclosure Agreement ("Agreement") is entered into as of January 15, 2026, between Nexus Technologies Inc. ("Company") and the Recipient.\n\n1. CONFIDENTIAL INFORMATION\nRecipient agrees to keep confidential all proprietary information disclosed by Company, including trade secrets, business plans, financial data, and technical specifications.\n\n2. OBLIGATIONS\nRecipient shall not disclose Confidential Information to any third party without prior written consent. Recipient shall use Confidential Information solely for evaluation purposes.\n\n3. TERM\nThis Agreement shall remain in effect for a period of three (3) years from the date of execution.\n\n4. GOVERNING LAW\nThis Agreement shall be governed by the laws of the State of California.\n\n5. REMEDIES\nBreach of this Agreement may cause irreparable harm for which monetary damages would be inadequate. Company may seek injunctive relief without bond requirement.\n\n6. RETURN OF INFORMATION\nUpon request, Recipient shall promptly return or destroy all Confidential Information.'
+    ),
+
+    (k2, v_uid, c1, 'Nexus_SaaS_Agreement_v2.docx',
+      'seed/' || v_uid || '/nexus-saas-v2.docx', 512000,
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'saas', 'analyzed',
+      E'SAAS SUBSCRIPTION AGREEMENT\n\nThis SaaS Subscription Agreement is made between Nexus Technologies Inc. ("Customer") and Provider as of March 1, 2026.\n\n1. SERVICES\nProvider will make the platform available to Customer on a subscription basis. Uptime SLA of 99.5% is guaranteed excluding scheduled maintenance.\n\n2. LIMITATION OF LIABILITY\nIN NO EVENT SHALL PROVIDER BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL OR PUNITIVE DAMAGES. PROVIDER''S TOTAL LIABILITY SHALL NOT EXCEED THE AMOUNTS PAID BY CUSTOMER IN THE TWELVE MONTHS PRECEDING THE CLAIM.\n\n3. DATA PROTECTION\nProvider shall implement reasonable security measures. Provider shall notify Customer of any data breach within 72 hours of discovery. Provider may use anonymized aggregate data for product improvement.\n\n4. TERMINATION\nEither party may terminate upon 30 days written notice. Customer may terminate immediately for material breach uncured within 15 days.\n\n5. INTELLECTUAL PROPERTY\nAll Customer data remains Customer''s property. Provider retains ownership of all platform software and improvements, including improvements derived from usage patterns.\n\n6. AUTO-RENEWAL\nThis Agreement shall automatically renew for successive one-year terms unless either party provides 60 days notice of non-renewal.'
+    ),
+
+    (k3, v_uid, c2, 'Meridian_MSA_Draft.pdf',
+      'seed/' || v_uid || '/meridian-msa-draft.pdf', 890000, 'application/pdf', 'msa', 'analyzed',
+      E'MASTER SERVICES AGREEMENT\n\nThis Master Services Agreement is entered into between Meridian Capital Management LLC ("Client") and Service Provider as of February 10, 2026.\n\n1. INDEMNIFICATION\nService Provider shall indemnify, defend, and hold harmless Client and its officers, directors, employees, agents, and successors from and against any and all claims, damages, losses, costs, and expenses (including reasonable attorneys fees) arising out of or relating to: (a) any breach of this Agreement; (b) negligence or willful misconduct; (c) any third-party claims arising from Service Provider''s services.\n\n2. LIABILITY\nNotwithstanding any other provision, Service Provider''s liability under this Agreement shall be unlimited and shall include all direct, indirect, consequential, punitive, and special damages.\n\n3. GOVERNING LAW\nThis Agreement shall be governed by the laws of Delaware. Disputes shall be resolved through binding arbitration in New York with no right of appeal.\n\n4. PAYMENT TERMS\nClient shall pay all invoices within 7 days of receipt. Late payments shall accrue interest at 18% per annum compounded monthly.\n\n5. TERM\nThis Agreement shall continue for a period of 3 years and shall automatically renew for additional 2-year terms unless terminated with 180 days written notice.'
+    ),
+
+    (k4, v_uid, c2, 'Meridian_Vendor_Agreement_Draft.pdf',
+      'seed/' || v_uid || '/meridian-vendor-draft.pdf', 180000, 'application/pdf', 'vendor_agreement', 'uploaded', NULL),
+
+    (k5, v_uid, c3, 'BluePeak_Employment_Contract.pdf',
+      'seed/' || v_uid || '/bluepeak-employment.pdf', 320000, 'application/pdf', 'employment', 'uploaded', NULL);
+
+  -- ── Analyses ──────────────────────────────────────────────────────────────
+  INSERT INTO analyses (contract_id, user_id, risk_level, risk_summary, clause_analysis, negotiation_points, ambiguity_flags, model) VALUES
+
+    (k1, v_uid, 'high',
+      '[
+        {"area":"Injunctive Relief","risk":"No-bond injunction clause heavily favors disclosing party — they can seek emergency court orders at any time with no financial guarantee","severity":"high","recommendation":"Negotiate a mutual notice period before injunctive relief is sought, or require a bond amount tied to claimed damages"},
+        {"area":"Term Length","risk":"3-year confidentiality period is above industry standard (12–18 months for technology NDAs)","severity":"medium","recommendation":"Propose reducing to 18 months with option to extend by mutual agreement"},
+        {"area":"Governing Law","risk":"California governing law with no dispute resolution mechanism specified","severity":"low","recommendation":"Add explicit dispute resolution clause — mediation before litigation"}
+      ]',
+      '[
+        {"clause":"Confidentiality Obligation","finding":"One-sided — only Recipient is bound. No mutual NDA protection for Recipient''s information shared during evaluation.","risk":"high","recommendation":"Propose mutual confidentiality obligations covering both parties"},
+        {"clause":"Remedies — Injunctive Relief","finding":"Waives bond requirement for injunctions. Extremely favorable to disclosing party — allows seeking court orders with no financial skin in the game.","risk":"high","recommendation":"Remove bond waiver or cap to a reasonable bond amount (e.g. $50,000)"},
+        {"clause":"Term","finding":"3-year term is above market standard for a technology NDA. Creates long-term obligation for information that may become public.","risk":"medium","recommendation":"Negotiate to 18 months with mutual extension option"},
+        {"clause":"Return of Information","finding":"Vague ''promptly return or destroy'' with no certification requirement or timeline.","risk":"low","recommendation":"Add 10-business-day deadline and written certification of destruction"}
+      ]',
+      '[
+        {"point":"Mutual vs. one-sided NDA","preferredPosition":"Mutual obligations binding both parties equally","fallbackPosition":"Retain one-sided but add standard exclusions for public domain, independently developed, and third-party received information"},
+        {"point":"Injunction bond waiver","preferredPosition":"Remove waiver entirely — require bond tied to claimed damages","fallbackPosition":"Cap bond waiver to emergency situations only, with 48-hour notice requirement"}
+      ]',
+      '[
+        {"term":"proprietary information","location":"Section 1","issue":"Overly broad — no exclusions listed for publicly available or independently developed information","suggestion":"Add standard exclusions: (a) publicly available; (b) independently developed; (c) received from third parties without restriction; (d) required by law to disclose"}
+      ]',
+      'claude-sonnet-4-6'),
+
+    (k2, v_uid, 'medium',
+      '[
+        {"area":"Auto-Renewal Notice","risk":"60-day non-renewal notice is double the industry standard — creates material risk of unwanted renewal","severity":"medium","recommendation":"Negotiate down to 30 days. Add calendar reminder obligation to mitigate risk."},
+        {"area":"Data Usage","risk":"Clause allows use of anonymized data for product improvement — this should be explicitly prohibited for any identifiable data","severity":"medium","recommendation":"Add explicit prohibition on using Customer data or derivatives to train AI models or for competitive benchmarking"},
+        {"area":"Breach Notification","risk":"72-hour breach notification meets GDPR minimum but may not meet stricter US state laws (e.g. NY SHIELD Act requires ''expedient'' notice)","severity":"low","recommendation":"Specify 48 hours for all breach notifications to meet stricter standards"}
+      ]',
+      '[
+        {"clause":"Limitation of Liability","finding":"Cap at 12-month fees is market standard. However, data breach scenarios are not carved out — cap applies even to catastrophic data loss.","risk":"medium","recommendation":"Add carve-out: data breach liability is uncapped or capped at higher of 24 months fees or $500K"},
+        {"clause":"Auto-Renewal","finding":"60-day notice period for non-renewal is unfavorable. Risk of accidental renewal if reminder is missed.","risk":"medium","recommendation":"Reduce to 30 days. Add obligation for Provider to send renewal reminder 90 days in advance."},
+        {"clause":"Data Protection — AI Training","finding":"''Anonymized aggregate data for product improvement'' is ambiguous — could include training AI models on your data patterns.","risk":"medium","recommendation":"Add: Provider shall not use Customer Data or any derivative thereof to train machine learning models."},
+        {"clause":"Intellectual Property","finding":"''Improvements derived from usage patterns'' is concerning — suggests Provider may claim IP rights to features built using Customer behavior data.","risk":"high","recommendation":"Delete ''improvements derived from usage patterns'' — all platform IP owned solely by Provider without reference to Customer data"}
+      ]',
+      '[
+        {"point":"Auto-renewal notice period","preferredPosition":"30 days notice with Provider reminder obligation at 90 days","fallbackPosition":"45 days notice — absolute maximum acceptable"},
+        {"point":"Data breach liability carve-out","preferredPosition":"Uncapped liability for data breaches, with mandatory cyber insurance","fallbackPosition":"Cap at 24 months fees or $500K, whichever is higher"}
+      ]',
+      '[]',
+      'claude-sonnet-4-6'),
+
+    (k3, v_uid, 'critical',
+      '[
+        {"area":"Unlimited Liability","risk":"CRITICAL: Service Provider accepts unlimited liability including punitive and consequential damages. This is commercially unacceptable and creates existential financial risk.","severity":"high","recommendation":"STOP — Do not sign. Negotiate mutual liability cap tied to contract value before proceeding."},
+        {"area":"Indemnification Scope","risk":"Extremely broad — covers all third-party claims with no materiality threshold or carve-out for Client''s own negligence","severity":"high","recommendation":"Add mutual indemnification, limit to direct losses from proven breach, and add contributory negligence carve-out"},
+        {"area":"Payment Terms","risk":"7-day payment with 18% annual interest compounded monthly. Interest rate may exceed legal usury limits in several US states.","severity":"high","recommendation":"Revise to Net-30, 6% simple annual interest. Check usury limits for applicable jurisdiction."},
+        {"area":"Auto-Renewal","risk":"180-day termination notice for a 3+2 year agreement is extremely unusual and creates multi-year lock-in with virtually no exit","severity":"medium","recommendation":"Reduce to 90-day notice and include termination for convenience with 6-month pro-rated refund"}
+      ]',
+      '[
+        {"clause":"Unlimited Liability","finding":"CRITICAL: No cap on liability — Service Provider exposed to unlimited direct, indirect, consequential, AND punitive damages. This is highly unusual and commercially unacceptable in any standard services agreement.","risk":"critical","recommendation":"Must add mutual liability cap. Propose: each party''s total liability capped at 1x total contract value or $1M, whichever is lower. Walk-away clause if counterparty refuses any cap."},
+        {"clause":"Indemnification","finding":"Covers Service Provider''s negligence, wilful misconduct, AND all third-party claims with no contributory negligence carve-out. Client has no indemnification obligation at all.","risk":"critical","recommendation":"Replace with mutual, balanced indemnification. Add: (a) mutual obligations; (b) limit to proven breach causing direct damages; (c) add contributory negligence exception; (d) cap indemnification at contract value"},
+        {"clause":"Payment Terms — Interest Rate","finding":"18% per annum compounded monthly equals ~19.6% effective annual rate. This exceeds usury limits in California (10%), New York (16% for commercial), and other states.","risk":"high","recommendation":"Revise to Net-30. Maximum 6% simple annual interest. Add 15-business-day cure period before interest accrues."},
+        {"clause":"Auto-Renewal & Termination","finding":"180-day termination notice for auto-renewing 2-year terms creates effectively permanent lock-in. Combined with unlimited liability, this is an extreme position.","risk":"high","recommendation":"Reduce to 90-day notice. Add termination for convenience right at any time with 90 days notice and pro-rated refund."},
+        {"clause":"Arbitration — No Appeal","finding":"Mandatory New York arbitration with no right of appeal for any amount. Extremely unfavorable — removes all legal recourse for erroneous decisions.","risk":"medium","recommendation":"Allow appeal for awards exceeding $250K. Add mediation as mandatory first step before arbitration."}
+      ]',
+      '[
+        {"point":"Liability cap","preferredPosition":"Mutual cap at 1x annual contract value with walk-away if counterparty refuses any cap","fallbackPosition":"Cap at 2x contract value with specific carve-out for gross negligence only"},
+        {"point":"Payment terms","preferredPosition":"Net-30, 6% simple annual interest, 15-day cure period","fallbackPosition":"Net-15, 10% interest, 10-day cure period — absolute minimum"},
+        {"point":"Termination notice","preferredPosition":"90-day notice with termination for convenience right","fallbackPosition":"120-day notice with 50% refund on pro-rated unused term"}
+      ]',
+      '[
+        {"term":"material breach","location":"Section 1(a)","issue":"Undefined — any breach including minor administrative failures could trigger full indemnification obligation","suggestion":"Define: ''material breach means a breach that causes actual financial harm exceeding $10,000 and remains uncured for 30 days after written notice''"},
+        {"term":"reasonable","location":"Section 1(b)","issue":"''Reasonable attorneys fees'' with no cap — could include fees from multi-year litigation","suggestion":"Add: ''reasonable attorneys fees not to exceed $50,000 per claim without prior written approval''"}
+      ]',
+      'claude-sonnet-4-6');
+
+  -- ── Legal Intake ──────────────────────────────────────────────────────────
+  INSERT INTO legal_intake (contract_id, user_id, counterparty_name, department, urgency, deal_value, jurisdiction, business_owner, notes) VALUES
+    (k1, v_uid, 'Nexus Technologies Inc.', 'Legal', 'medium', NULL, 'us', 'Kartik J.',
+      'Standard mutual NDA for technology partnership evaluation. No financial exposure.'),
+    (k2, v_uid, 'Nexus Technologies Inc.', 'Sales', 'high', 120000, 'us', 'Kartik J.',
+      'Annual SaaS renewal. Q3 deadline. Watch auto-renewal notice — 60-day window opens in 45 days.'),
+    (k3, v_uid, 'Meridian Capital Management LLC', 'Finance', 'critical', 500000, 'us', 'Kartik J.',
+      'DO NOT SIGN. Counterparty draft contains unlimited liability and usurious interest rates. Escalate immediately.');
+
+  -- ── Clause Library ────────────────────────────────────────────────────────
+  INSERT INTO clause_library (user_id, title, clause_type, content, notes) VALUES
+
+    (v_uid, 'Standard Limitation of Liability (Mutual)', 'approved',
+      E'IN NO EVENT SHALL EITHER PARTY BE LIABLE TO THE OTHER FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES ARISING OUT OF OR RELATED TO THIS AGREEMENT, EVEN IF SUCH PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES. EACH PARTY''S TOTAL CUMULATIVE LIABILITY ARISING OUT OF OR RELATED TO THIS AGREEMENT, WHETHER IN CONTRACT, TORT, OR OTHERWISE, SHALL NOT EXCEED THE GREATER OF (A) THE AMOUNTS PAID OR PAYABLE BY CUSTOMER IN THE TWELVE (12) MONTHS IMMEDIATELY PRECEDING THE CLAIM, OR (B) ONE HUNDRED THOUSAND DOLLARS (USD $100,000).',
+      'Market standard mutual cap. Use for SaaS and MSA agreements. Preferred position — mutual and symmetric.'),
+
+    (v_uid, 'Mutual Indemnification (Balanced)', 'approved',
+      E'Each party ("Indemnifying Party") shall defend, indemnify, and hold harmless the other party and its officers, directors, employees, and agents from and against any third-party claims, damages, losses, and expenses (including reasonable attorneys'' fees, not to exceed $50,000 per claim without prior written approval) arising directly from the Indemnifying Party''s: (a) material breach of this Agreement; (b) gross negligence or willful misconduct; or (c) infringement of any third-party intellectual property right. The Indemnifying Party''s obligation is contingent upon the Indemnified Party providing prompt written notice within 30 days of any claim and granting the Indemnifying Party sole control of defense.',
+      'Balanced mutual indemnity. Avoids one-sided indemnification. Fee cap included. Preferred for all vendor agreements.'),
+
+    (v_uid, 'Data Breach Notification (48-Hour / GDPR+)', 'approved',
+      E'In the event of a confirmed or reasonably suspected Personal Data Breach, Data Processor shall notify Data Controller without undue delay and in any event no later than forty-eight (48) hours after becoming aware of the breach. Notification shall include: (a) description of the nature of the breach including categories and approximate number of data subjects and records affected; (b) contact details of the data protection officer or designated privacy contact; (c) likely consequences of the breach; and (d) measures taken or proposed to address the breach and mitigate its effects. Where full notification within 48 hours is not possible, an initial notification shall be provided within 24 hours with a commitment to provide complete details within 5 business days.',
+      'Stricter than GDPR 72-hour minimum. 48-hour standard. Use for all agreements involving personal data or EU-facing contracts.'),
+
+    (v_uid, 'Auto-Renewal — 30-Day Notice', 'approved',
+      E'This Agreement shall automatically renew for successive one (1) year terms unless either party provides written notice of non-renewal to the other party at least thirty (30) days prior to the end of the then-current term. Provider shall send a written renewal reminder to Customer at least ninety (90) days before the end of each term. Either party may terminate this Agreement for convenience upon thirty (30) days prior written notice. Termination shall not relieve Customer of payment obligations accrued prior to the termination effective date.',
+      'Preferred auto-renewal with 30-day notice and mandatory provider reminder at 90 days. Use to replace 60-day or longer notice provisions.'),
+
+    (v_uid, 'IP Ownership — Customer Data (AI Prohibition)', 'approved',
+      E'As between the parties, Customer retains all right, title, and interest in and to Customer Data, including all intellectual property rights therein. Provider acquires no rights in Customer Data except the limited, non-exclusive, non-transferable right to access and process Customer Data solely as necessary to provide the Services described in this Agreement. Provider shall not: (a) use Customer Data for any purpose other than providing the Services; (b) sell, license, or otherwise commercialize Customer Data; (c) use Customer Data or any derivative, anonymized, or aggregated version thereof to train, fine-tune, or improve any machine learning model, artificial intelligence system, or algorithm; or (d) use Customer Data for competitive benchmarking or product development purposes, without Customer''s explicit prior written consent.',
+      'Critical for AI/SaaS products. Explicitly prohibits training AI models on customer data. Use in all technology agreements.'),
+
+    (v_uid, 'Governing Law — Delaware (US)', 'approved',
+      E'This Agreement shall be governed by and construed in accordance with the laws of the State of Delaware, without regard to its conflict of law provisions. The parties agree that the United Nations Convention on Contracts for the International Sale of Goods shall not apply to this Agreement. Any legal action or proceeding arising under or relating to this Agreement shall be brought exclusively in the federal or state courts located in New Castle County, Delaware, and the parties hereby irrevocably consent to the personal jurisdiction and venue therein. In any action to enforce this Agreement, the prevailing party shall be entitled to recover reasonable attorneys'' fees and costs.',
+      'Standard Delaware governing law. Preferred for US-incorporated entities. Includes CISG exclusion and fee-shifting.'),
+
+    (v_uid, 'Force Majeure (60-Day Exit)', 'fallback',
+      E'Neither party shall be liable for any failure or delay in performance under this Agreement (other than payment obligations) to the extent such failure or delay is caused by circumstances beyond such party''s reasonable control, including but not limited to acts of God, natural disasters, epidemics or pandemics, war, terrorism, government actions, civil unrest, or failure of third-party telecommunications or cloud infrastructure providers ("Force Majeure Event"). The party experiencing the Force Majeure Event shall: (a) provide written notice to the other party within five (5) business days of the onset of the event, specifying the nature and anticipated duration; (b) use commercially reasonable efforts to resume performance and mitigate the impact; and (c) provide weekly status updates to the other party. If a Force Majeure Event continues for more than sixty (60) consecutive days, either party may terminate this Agreement upon ten (10) days written notice without penalty or further liability.',
+      'Use as fallback when client insists on force majeure clause. Excludes payment obligations. 60-day termination trigger.');
+
+  -- ── Review Rules / Playbooks ──────────────────────────────────────────────
+  INSERT INTO review_rules (user_id, title, description, is_active, rules, playbook_text) VALUES
+
+    (v_uid, 'SaaS Vendor Playbook',
+      'Standard positions for reviewing inbound SaaS subscription and software licensing agreements. Covers liability, data protection, auto-renewal, IP, and termination.',
+      true, '[]',
+      E'CONTRALYNE — SAAS VENDOR PLAYBOOK v1.0\n\nPURPOSE: Governs review of inbound SaaS subscription agreements and software licensing contracts.\n\n────────────────────────────────────────────\n1. LIABILITY CAP\n────────────────────────────────────────────\nPreferred:  Mutual cap at 12 months fees paid in the preceding year\nFallback:   6 months fees; must carve out data breach and IP infringement\nWalk-away:  Any clause imposing unlimited liability on us in any scenario\n\n────────────────────────────────────────────\n2. DATA PROTECTION\n────────────────────────────────────────────\nRequired:   Vendor holds SOC 2 Type II or ISO 27001 certification\nRequired:   48-hour breach notification (not 72-hour GDPR minimum)\nRequired:   Explicit prohibition on using our data to train AI/ML models\nRequired:   Prohibition on selling or sharing data with third parties\nWalk-away:  Any clause permitting use of our data for any purpose beyond service delivery\n\n────────────────────────────────────────────\n3. AUTO-RENEWAL\n────────────────────────────────────────────\nPreferred:  30-day non-renewal notice with vendor reminder at 90 days\nFallback:   45-day notice — absolute maximum acceptable\nWalk-away:  Notice period exceeding 60 days\n\n────────────────────────────────────────────\n4. INTELLECTUAL PROPERTY\n────────────────────────────────────────────\nRequired:   Customer retains all rights to their data and outputs\nRequired:   No license granted to vendor beyond service delivery\nRequired:   Prohibition on AI/ML training using customer data or derivatives\nWalk-away:  Any IP assignment or work-for-hire clause affecting customer content\n\n────────────────────────────────────────────\n5. TERMINATION\n────────────────────────────────────────────\nPreferred:  For convenience with 30 days notice, no penalty, pro-rated refund\nFallback:   60-day notice with pro-rated refund\nWalk-away:  Lock-in exceeding 12 months without an exit clause\n\n────────────────────────────────────────────\n6. GOVERNING LAW\n────────────────────────────────────────────\nPreferred:  Delaware or New York law\nAcceptable: Any US state\nWalk-away:  Non-US jurisdiction for domestic US contracts'
+    ),
+
+    (v_uid, 'NDA Standard Playbook',
+      'Standard positions for reviewing mutual and one-sided non-disclosure agreements. Covers mutuality, term length, exclusions, and remedies.',
+      true, '[]',
+      E'CONTRALYNE — NDA PLAYBOOK v1.0\n\nPURPOSE: Governs review of all inbound and outbound non-disclosure agreements.\n\n────────────────────────────────────────────\n1. MUTUALITY\n────────────────────────────────────────────\nPreferred:  Mutual NDA — both parties equally bound\nFallback:   One-sided acceptable only where we are solely the Recipient\nWalk-away:  One-sided NDA where we are the disclosing party with no protection\n\n────────────────────────────────────────────\n2. TERM\n────────────────────────────────────────────\nPreferred:  12 months from execution date\nFallback:   18 months acceptable\nWalk-away:  Any term exceeding 24 months or perpetual confidentiality obligations\n\n────────────────────────────────────────────\n3. EXCLUSIONS (REQUIRED IN ALL NDAs)\n────────────────────────────────────────────\nRequired:   (a) Information already in public domain through no fault of Recipient\nRequired:   (b) Information independently developed by Recipient without reference to Confidential Information\nRequired:   (c) Information received from a third party without restriction\nRequired:   (d) Information required to be disclosed by law, regulation, or court order (with notice to disclosing party)\nWalk-away:  Any NDA without all four standard exclusions\n\n────────────────────────────────────────────\n4. REMEDIES\n────────────────────────────────────────────\nPreferred:  Mutual right to seek equitable relief with 48-hour notice and bond requirement\nFallback:   Injunctive relief permitted but with bond requirement tied to claimed damages\nWalk-away:  Waiver of bond requirement for injunctions\n\n────────────────────────────────────────────\n5. SCOPE\n────────────────────────────────────────────\nRequired:   Clear, specific definition of Confidential Information\nRequired:   Explicit purpose limitation — information used only for stated evaluation purpose\nRequired:   Return or certified destruction within 10 business days upon request\nWalk-away:  Undefined or overreaching definition of confidential information'
+    ),
+
+    (v_uid, 'MSA / Professional Services Playbook',
+      'Positions for master services agreements and professional services contracts. Focuses on liability, indemnification, IP ownership of work product, and payment.',
+      true, '[]',
+      E'CONTRALYNE — MSA / PROFESSIONAL SERVICES PLAYBOOK v1.0\n\nPURPOSE: Governs review of master services agreements and professional services contracts.\n\n────────────────────────────────────────────\n1. LIABILITY CAP\n────────────────────────────────────────────\nPreferred:  Mutual cap at 1x total contract value, with floor of $250,000\nFallback:   Cap at 2x contract value for gross negligence scenarios only\nWalk-away:  Unlimited liability in any form — immediate escalation required\n\n────────────────────────────────────────────\n2. INDEMNIFICATION\n────────────────────────────────────────────\nPreferred:  Mutual, symmetric indemnification for proven breach only\nFallback:   One-sided acceptable if capped and limited to direct losses from material breach\nWalk-away:  Indemnification covering third-party claims or consequential losses without cap\n\n────────────────────────────────────────────\n3. PAYMENT TERMS\n────────────────────────────────────────────\nPreferred:  Net-30 from invoice date, 6% simple annual interest on late payments\nFallback:   Net-15 with 10% interest and 10-business-day cure period\nWalk-away:  Payment terms shorter than 7 days or interest rate above 12% per annum\n\n────────────────────────────────────────────\n4. WORK PRODUCT IP\n────────────────────────────────────────────\nPreferred:  All custom work product owned by Client upon full payment\nFallback:   License to work product — perpetual, irrevocable, royalty-free\nWalk-away:  Service Provider retains ownership of work product paid for by Client\n\n────────────────────────────────────────────\n5. TERMINATION\n────────────────────────────────────────────\nPreferred:  Termination for convenience with 30 days notice, payment for work completed\nFallback:   60-day notice with milestone-based payment on termination\nWalk-away:  No termination for convenience right, or termination fees exceeding 3 months value'
+    );
+
+  RAISE NOTICE 'Seed complete. User: %. Clients: 3. Contracts: 5 (3 analyzed). Clauses: 7. Playbooks: 3.', v_uid;
+END $$;

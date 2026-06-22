@@ -6,6 +6,9 @@ import { errorHandler } from "./middleware/error.js";
 import { generalLimiter } from "./middleware/rateLimit.js";
 import { accountRouter } from "./routes/account.js";
 import { activityRouter } from "./routes/activity.js";
+import { adminRouter } from "./routes/admin.js";
+import { clientsRouter } from "./routes/clients.js";
+import { ticketsRouter } from "./routes/tickets.js";
 import { analyticsRouter } from "./routes/analytics.js";
 import { calendarRouter } from "./routes/calendar.js";
 import { clausesRouter } from "./routes/clauses.js";
@@ -23,6 +26,9 @@ app.use(generalLimiter);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
+app.use("/admin", adminRouter);
+app.use("/api/clients", clientsRouter);
+app.use("/api/tickets", ticketsRouter);
 app.use("/api/contracts", contractsRouter);
 app.use("/api/clauses", clausesRouter);
 app.use("/api/rules", rulesRouter);

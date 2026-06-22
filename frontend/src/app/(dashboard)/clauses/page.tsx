@@ -1,144 +1,67 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { Plus, Search, Pencil, Trash2, Library, Tag, Globe } from "lucide-react";
+import { Search, Library, Globe, Tag, MessageSquarePlus, Lock, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { listClauses, createClause, updateClause, deleteClause, type Clause } from "@/lib/api";
+import { listClauses, type Clause } from "@/lib/api";
+import { submitTicket } from "@/lib/api";
 import { formatDate, cn } from "@/lib/utils";
 
-const EMPTY_FORM = {
-  title: "",
-  clause_type: "approved" as Clause["clause_type"],
-  jurisdiction: "",
-  content: "",
-  tags: "",
+const TYPE_COLORS = {
+  approved: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  fallback:  "bg-amber-50  text-amber-700  border-amber-200",
 };
 
 export default function ClausesPage() {
   const { getToken } = useAuth();
-  const [clauses, setClauses] = useState<Clause[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [clauses, setClauses]   = useState<Clause[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [search, setSearch]     = useState("");
   const [filterType, setFilterType] = useState<"all" | Clause["clause_type"]>("all");
+  const [expanded, setExpanded] = useState<string | null>(null);
 
-  // Dialog state
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<Clause | null>(null);
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [saving, setSaving] = useState(false);
-
-  // Delete state
-  const [deleteTarget, setDeleteTarget] = useState<Clause | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  // Ticket dialog
+  const [ticketTarget, setTicketTarget] = useState<Clause | null>(null);
+  const [ticketDesc, setTicketDesc]     = useState("");
+  const [submitting, setSubmitting]     = useState(false);
 
   useEffect(() => {
-    load();
-  }, []);
+    getToken().then(t => listClauses(t))
+      .then(({ clauses }) => setClauses(clauses))
+      .catch(() => toast.error("Failed to load clauses"))
+      .finally(() => setLoading(false));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function load() {
+  async function handleSubmitTicket() {
+    if (!ticketTarget || !ticketDesc.trim()) return;
+    setSubmitting(true);
     try {
       const token = await getToken();
-      const { clauses } = await listClauses(token);
-      setClauses(clauses);
-    } catch {
-      toast.error("Failed to load clauses");
+      await submitTicket(token, {
+        type: "clause_change",
+        reference_id: ticketTarget.id,
+        reference_name: ticketTarget.title,
+        description: ticketDesc.trim(),
+      });
+      toast.success("Request submitted — admin will review it");
+      setTicketTarget(null);
+      setTicketDesc("");
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to submit request");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   }
 
-  function openAdd() {
-    setEditTarget(null);
-    setForm(EMPTY_FORM);
-    setDialogOpen(true);
-  }
-
-  function openEdit(clause: Clause) {
-    setEditTarget(clause);
-    setForm({
-      title: clause.title,
-      clause_type: clause.clause_type,
-      jurisdiction: clause.jurisdiction ?? "",
-      content: clause.content,
-      tags: clause.tags.join(", "),
-    });
-    setDialogOpen(true);
-  }
-
-  async function handleSave() {
-    if (!form.title.trim() || !form.content.trim()) {
-      toast.error("Title and content are required");
-      return;
-    }
-    setSaving(true);
-    try {
-      const payload = {
-        title: form.title.trim(),
-        clause_type: form.clause_type,
-        jurisdiction: form.jurisdiction.trim() || null,
-        content: form.content.trim(),
-        tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
-      };
-
-      const token = await getToken();
-      if (editTarget) {
-        const { clause } = await updateClause(token, editTarget.id, payload);
-        setClauses((prev) => prev.map((c) => (c.id === clause.id ? clause : c)));
-        toast.success("Clause updated");
-      } else {
-        const { clause } = await createClause(token, payload);
-        setClauses((prev) => [clause, ...prev]);
-        toast.success("Clause added");
-      }
-      setDialogOpen(false);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to save clause");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDelete() {
-    if (!deleteTarget) return;
-    setDeleting(true);
-    try {
-      const token = await getToken();
-      await deleteClause(token, deleteTarget.id);
-      setClauses((prev) => prev.filter((c) => c.id !== deleteTarget.id));
-      toast.success("Clause deleted");
-      setDeleteTarget(null);
-    } catch {
-      toast.error("Failed to delete clause");
-    } finally {
-      setDeleting(false);
-    }
-  }
-
-  const filtered = clauses.filter((c) => {
-    const matchSearch =
-      !search ||
+  const filtered = clauses.filter(c => {
+    const matchSearch = !search ||
       c.title.toLowerCase().includes(search.toLowerCase()) ||
-      c.content.toLowerCase().includes(search.toLowerCase()) ||
-      c.tags.some((t) => t.toLowerCase().includes(search.toLowerCase()));
+      c.content.toLowerCase().includes(search.toLowerCase());
     const matchType = filterType === "all" || c.clause_type === filterType;
     return matchSearch && matchType;
   });
@@ -148,30 +71,26 @@ export default function ClausesPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Clause Library</h1>
-          <p className="text-gray-500 mt-1 text-sm">
-            Store approved and fallback clauses to reuse across contracts.
+          <div className="flex items-center gap-2 mb-0.5">
+            <h1 className="text-xl font-bold text-gray-900 tracking-tight">Clause Library</h1>
+            <span className="flex items-center gap-1 text-[11px] font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+              <Lock className="h-2.5 w-2.5" /> Admin-managed
+            </span>
+          </div>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {loading ? "Loading…" : `${clauses.length} clause${clauses.length !== 1 ? "s" : ""}`} — to request a change, use the Request Change button on any clause
           </p>
         </div>
-        <Button onClick={openAdd} className="shrink-0">
-          <Plus className="h-4 w-4 mr-2" />
-          Add Clause
-        </Button>
       </div>
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Search clauses…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
+          <Input placeholder="Search clauses…" value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9 text-sm" />
         </div>
-        <Select value={filterType} onValueChange={(v) => setFilterType(v as typeof filterType)}>
-          <SelectTrigger className="w-full sm:w-44">
+        <Select value={filterType} onValueChange={v => setFilterType(v as typeof filterType)}>
+          <SelectTrigger className="w-full sm:w-44 h-9 text-sm">
             <SelectValue placeholder="Type" />
           </SelectTrigger>
           <SelectContent>
@@ -182,201 +101,115 @@ export default function ClausesPage() {
         </Select>
       </div>
 
-      {/* Content */}
+      {/* Clauses */}
       {loading ? (
         <div className="space-y-3">
-          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}
         </div>
       ) : filtered.length === 0 ? (
-        <EmptyState hasSearch={!!search || filterType !== "all"} onAdd={openAdd} />
+        <div className="flex flex-col items-center py-16 text-center">
+          <Library className="h-10 w-10 text-gray-300 mb-3" />
+          <p className="text-sm font-medium text-gray-600">{search || filterType !== "all" ? "No clauses match your search" : "No clauses yet"}</p>
+          <p className="text-xs text-gray-400 mt-1">Contact your admin to add clauses to the library.</p>
+        </div>
       ) : (
-        <div className="space-y-3">
-          {filtered.map((clause) => (
-            <Card key={clause.id} className="group">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-2">
-                      <h3 className="text-sm font-semibold text-gray-900">{clause.title}</h3>
-                      <TypeBadge type={clause.clause_type} />
-                    </div>
-                    <p className="text-sm text-gray-600 line-clamp-2">{clause.content}</p>
-                    <div className="flex items-center gap-4 mt-3 flex-wrap">
-                      {clause.jurisdiction && (
-                        <span className="flex items-center gap-1 text-xs text-gray-500">
-                          <Globe className="h-3 w-3" />
-                          {clause.jurisdiction}
-                        </span>
-                      )}
-                      {clause.tags.length > 0 && (
-                        <div className="flex items-center gap-1 flex-wrap">
-                          <Tag className="h-3 w-3 text-gray-400" />
-                          {clause.tags.map((tag) => (
-                            <span
-                              key={tag}
-                              className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      <span className="text-xs text-gray-400 ml-auto">{formatDate(clause.created_at)}</span>
-                    </div>
+        <div className="rounded-xl border bg-white shadow-sm divide-y overflow-hidden">
+          {filtered.map(c => (
+            <div key={c.id}>
+              <div className="px-5 py-4 flex items-center gap-3 group">
+                <div
+                  className="flex-1 min-w-0 cursor-pointer"
+                  onClick={() => setExpanded(expanded === c.id ? null : c.id)}
+                >
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <span className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full border", TYPE_COLORS[c.clause_type])}>
+                      {c.clause_type === "approved" ? "Approved" : "Fallback"}
+                    </span>
+                    <h3 className="text-sm font-semibold text-gray-900">{c.title}</h3>
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                    <button
-                      onClick={() => openEdit(clause)}
-                      className="rounded p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-                      aria-label="Edit clause"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => setDeleteTarget(clause)}
-                      className="rounded p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                      aria-label="Delete clause"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                  {expanded !== c.id && (
+                    <p className="text-xs text-gray-500 line-clamp-1">{c.content}</p>
+                  )}
+                  <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                    {c.jurisdiction && (
+                      <span className="flex items-center gap-1 text-[11px] text-gray-400">
+                        <Globe className="h-3 w-3" /> {c.jurisdiction}
+                      </span>
+                    )}
+                    {c.tags.length > 0 && (
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <Tag className="h-3 w-3 text-gray-300" />
+                        {c.tags.map(tag => (
+                          <span key={tag} className="text-[11px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{tag}</span>
+                        ))}
+                      </div>
+                    )}
+                    <span className="text-[11px] text-gray-300 ml-auto">{formatDate(c.created_at)}</span>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={() => { setTicketTarget(c); setTicketDesc(""); }}
+                    className="flex items-center gap-1.5 text-xs font-medium text-primary px-2.5 py-1.5 rounded-lg border border-primary/25 hover:bg-primary/5 transition-colors"
+                    title="Request a change to this clause"
+                  >
+                    <MessageSquarePlus className="h-3.5 w-3.5" />
+                    Request change
+                  </button>
+                  <button
+                    onClick={() => setExpanded(expanded === c.id ? null : c.id)}
+                    className="p-1 text-gray-400 hover:text-gray-600"
+                  >
+                    {expanded === c.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              {expanded === c.id && (
+                <div className="px-5 pb-4 border-t bg-gray-50/60">
+                  <pre className="text-xs text-gray-700 font-mono leading-relaxed whitespace-pre-wrap mt-3">{c.content}</pre>
+                </div>
+              )}
+            </div>
           ))}
         </div>
       )}
 
-      {/* Add / Edit dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
+      {/* Request change dialog */}
+      <Dialog open={!!ticketTarget} onOpenChange={open => !open && setTicketTarget(null)}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editTarget ? "Edit Clause" : "Add Clause"}</DialogTitle>
+            <DialogTitle>Request clause change</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 mt-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="title">Title *</Label>
-              <Input
-                id="title"
-                placeholder="e.g. Limitation of Liability"
-                value={form.title}
-                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="clause_type">Type *</Label>
-                <Select
-                  value={form.clause_type}
-                  onValueChange={(v) => setForm((f) => ({ ...f, clause_type: v as Clause["clause_type"] }))}
-                >
-                  <SelectTrigger id="clause_type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="fallback">Fallback</SelectItem>
-                  </SelectContent>
-                </Select>
+          {ticketTarget && (
+            <div className="space-y-4 mt-1">
+              <div className="rounded-lg bg-gray-50 border px-3 py-2.5">
+                <p className="text-xs text-gray-500 mb-0.5">Clause</p>
+                <p className="text-sm font-medium text-gray-900">{ticketTarget.title}</p>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="jurisdiction">Jurisdiction</Label>
-                <Input
-                  id="jurisdiction"
-                  placeholder="e.g. England & Wales"
-                  value={form.jurisdiction}
-                  onChange={(e) => setForm((f) => ({ ...f, jurisdiction: e.target.value }))}
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1.5 block">Describe the change you need *</label>
+                <textarea
+                  className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                  rows={4}
+                  placeholder="What should be changed and why? Include any specific wording if you have it…"
+                  value={ticketDesc}
+                  onChange={e => setTicketDesc(e.target.value)}
+                  autoFocus
                 />
               </div>
+              <p className="text-xs text-gray-400">Your admin will review this request and update the clause library.</p>
+              <div className="flex justify-end gap-3">
+                <DialogClose asChild>
+                  <Button variant="outline" size="sm">Cancel</Button>
+                </DialogClose>
+                <Button size="sm" onClick={handleSubmitTicket} disabled={submitting || !ticketDesc.trim()}>
+                  {submitting ? "Submitting…" : "Submit request"}
+                </Button>
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="content">Clause Text *</Label>
-              <Textarea
-                id="content"
-                placeholder="Paste the full clause text here…"
-                rows={5}
-                value={form.content}
-                onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="tags">Tags <span className="text-gray-400 font-normal">(comma-separated)</span></Label>
-              <Input
-                id="tags"
-                placeholder="e.g. liability, indemnity, SaaS"
-                value={form.tags}
-                onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))}
-              />
-            </div>
-            <div className="flex justify-end gap-3 pt-2">
-              <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
-                Cancel
-              </Button>
-              <Button onClick={handleSave} disabled={saving}>
-                {saving ? "Saving…" : editTarget ? "Save Changes" : "Add Clause"}
-              </Button>
-            </div>
-          </div>
+          )}
         </DialogContent>
       </Dialog>
-
-      {/* Delete confirmation dialog */}
-      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Delete Clause</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-gray-600 mt-1">
-            Are you sure you want to delete{" "}
-            <span className="font-medium text-gray-900">{deleteTarget?.title}</span>? This cannot be undone.
-          </p>
-          <div className="flex justify-end gap-3 pt-2">
-            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? "Deleting…" : "Delete"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-function TypeBadge({ type }: { type: Clause["clause_type"] }) {
-  return (
-    <span
-      className={cn(
-        "text-xs font-medium px-2 py-0.5 rounded-full border",
-        type === "approved"
-          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-          : "bg-amber-50 text-amber-700 border-amber-200"
-      )}
-    >
-      {type === "approved" ? "Approved" : "Fallback"}
-    </span>
-  );
-}
-
-function EmptyState({ hasSearch, onAdd }: { hasSearch: boolean; onAdd: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 text-center">
-      <Library className="h-10 w-10 text-gray-300 mb-3" />
-      <p className="text-sm font-medium text-gray-600">
-        {hasSearch ? "No clauses match your search" : "No clauses yet"}
-      </p>
-      <p className="text-xs text-gray-400 mt-1">
-        {hasSearch
-          ? "Try adjusting your search or filter"
-          : "Build your library of approved and fallback clauses"}
-      </p>
-      {!hasSearch && (
-        <Button size="sm" className="mt-4" onClick={onAdd}>
-          <Plus className="h-4 w-4 mr-1" />
-          Add First Clause
-        </Button>
-      )}
     </div>
   );
 }

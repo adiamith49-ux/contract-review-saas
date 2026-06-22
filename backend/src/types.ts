@@ -1,3 +1,16 @@
+export type ClientStatus = "active" | "inactive";
+
+export interface Client {
+  id: string;
+  user_id: string;
+  name: string;
+  industry: string | null;
+  notes: string | null;
+  status: ClientStatus;
+  created_at: string;
+  updated_at: string;
+}
+
 export type ContractType =
   | "nda"
   | "msa"

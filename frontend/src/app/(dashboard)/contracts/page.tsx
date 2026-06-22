@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import {
-  FileText, Plus, Trash2, Search, SlidersHorizontal, X,
+  FileText, Plus, Trash2, Search, SlidersHorizontal, X, Building2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -123,12 +123,20 @@ export default function ContractsPage() {
             {loading ? "Loading…" : `${contracts.length} contract${contracts.length !== 1 ? "s" : ""}${filtered.length !== contracts.length ? ` · ${filtered.length} shown` : ""}`}
           </p>
         </div>
-        <Button asChild size="sm">
-          <Link href="/upload">
-            <Plus className="h-4 w-4 mr-1.5" />
-            Upload
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button asChild size="sm" variant="outline">
+            <Link href="/clients">
+              <Building2 className="h-4 w-4 mr-1.5" />
+              Clients
+            </Link>
+          </Button>
+          <Button asChild size="sm">
+            <Link href="/upload">
+              <Plus className="h-4 w-4 mr-1.5" />
+              Upload
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* ── Filter bar ───────────────────────────────────────────────────── */}

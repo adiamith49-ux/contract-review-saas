@@ -1,10 +1,10 @@
 "use client";
 import { useState, useRef, useCallback, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import {
   Upload, FileText, X, Loader2, Gavel, CheckSquare, Square,
-  ExternalLink, CheckCircle2,
+  ExternalLink, CheckCircle2, Building2,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { uploadContract, analyzeContract, listRules, type ReviewRule } from "@/lib/api";
+import { uploadContract, analyzeContract, listRules, listClients, type ReviewRule, type Client } from "@/lib/api";
 import { formatFileSize, CONTRACT_TYPE_LABELS } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +27,7 @@ type Stage = "idle" | "uploading" | "analyzing" | "done";
 
 export default function UploadPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { getToken } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -36,21 +37,32 @@ export default function UploadPage() {
   const [stage, setStage]             = useState<Stage>("idle");
   const [progress, setProgress]       = useState(0);
 
+  const [clients, setClients]             = useState<Client[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string>("");
+
   const [rules, setRules]                   = useState<ReviewRule[]>([]);
   const [rulesLoading, setRulesLoading]     = useState(true);
   const [selectedRuleIds, setSelectedRuleIds] = useState<string[]>([]);
   const [playbookEnabled, setPlaybookEnabled] = useState(true);
 
   useEffect(() => {
-    getToken()
-      .then(token => listRules(token))
-      .then(({ rules: r }) => {
-        const active = r.filter(rule => rule.is_active);
-        setRules(active);
-        setSelectedRuleIds(active.map(rule => rule.id));
-      })
-      .catch(() => {})
-      .finally(() => setRulesLoading(false));
+    const preselect = searchParams.get("client_id") ?? "";
+    getToken().then(async token => {
+      const [{ clients: c }, { rules: r }] = await Promise.all([
+        listClients(token),
+        listRules(token),
+      ]);
+      setClients(c);
+      // Pre-select from URL param if valid, otherwise first active client
+      if (preselect && c.find(cl => cl.id === preselect)) {
+        setSelectedClientId(preselect);
+      } else if (c.length > 0) {
+        setSelectedClientId(c[0].id);
+      }
+      const active = r.filter(rule => rule.is_active);
+      setRules(active);
+      setSelectedRuleIds(active.map(rule => rule.id));
+    }).catch(() => {}).finally(() => setRulesLoading(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleRule(id: string) {
@@ -86,12 +98,13 @@ export default function UploadPage() {
 
   const handleSubmit = async () => {
     if (!file) return;
+    if (!selectedClientId) { toast.error("Please select a client first"); return; }
     const ruleIds = playbookEnabled ? selectedRuleIds : [];
     try {
       const token = await getToken();
       setStage("uploading");
       setProgress(30);
-      const { contract } = await uploadContract(token, file, contractType);
+      const { contract } = await uploadContract(token, file, contractType, selectedClientId);
       setProgress(60);
       setStage("analyzing");
       toast.info("Analyzing contract with AI…");
@@ -108,15 +121,23 @@ export default function UploadPage() {
   };
 
   const isProcessing = stage === "uploading" || stage === "analyzing";
-
   const activeCount = selectedRuleIds.length;
+  const selectedClient = clients.find(c => c.id === selectedClientId);
 
   return (
     <div className="h-full flex flex-col">
       {/* ── Compact header ───────────────────────────────────────────────── */}
-      <div className="shrink-0 px-8 pt-6 pb-4 border-b bg-white">
-        <h1 className="text-lg font-bold text-gray-900 tracking-tight">Upload Contract</h1>
-        <p className="text-xs text-gray-400 mt-0.5">Upload a PDF or DOCX for AI-powered risk review and negotiation guidance.</p>
+      <div className="shrink-0 px-8 pt-6 pb-4 border-b bg-white flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-lg font-bold text-gray-900 tracking-tight">Upload Contract</h1>
+          <p className="text-xs text-gray-400 mt-0.5">Upload a PDF or DOCX for AI-powered risk review and negotiation guidance.</p>
+        </div>
+        <Button asChild size="sm" variant="outline">
+          <Link href="/clients">
+            <Building2 className="h-4 w-4 mr-1.5" />
+            Manage Clients
+          </Link>
+        </Button>
       </div>
 
       {/* ── Two-column body ──────────────────────────────────────────────── */}
@@ -179,6 +200,46 @@ export default function UploadPage() {
                 )}
               </div>
 
+              {/* Client selector */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    Client <span className="text-red-500">*</span>
+                  </Label>
+                  <Link href="/clients" className="text-[11px] text-primary hover:underline">
+                    + New client
+                  </Link>
+                </div>
+                {clients.length === 0 ? (
+                  <div className="flex items-center gap-3 rounded-lg border border-dashed border-amber-300 bg-amber-50 px-4 py-3">
+                    <Building2 className="h-4 w-4 text-amber-500 shrink-0" />
+                    <p className="text-xs text-amber-700">
+                      No clients yet.{" "}
+                      <Link href="/clients" className="font-semibold underline">Create a client</Link>
+                      {" "}before uploading.
+                    </p>
+                  </div>
+                ) : (
+                  <Select value={selectedClientId} onValueChange={setSelectedClientId} disabled={isProcessing}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Select client…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {clients.map(c => (
+                        <SelectItem key={c.id} value={c.id}>
+                          <span className="flex items-center gap-2">
+                            {c.name}
+                            {c.status === "inactive" && (
+                              <span className="text-[10px] text-red-500">(inactive)</span>
+                            )}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+
               {/* Contract type */}
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Contract Type</Label>
@@ -213,7 +274,7 @@ export default function UploadPage() {
               {/* Submit */}
               <Button
                 onClick={handleSubmit}
-                disabled={!file || isProcessing}
+                disabled={!file || isProcessing || !selectedClientId || clients.length === 0}
                 size="lg"
                 className="w-full"
               >

@@ -19,6 +19,7 @@ const EnvSchema = z.object({
   S3_BUCKET_NAME: str("contralyn-contracts"),
   ANTHROPIC_API_KEY: str("dev-placeholder"),
   AI_MODEL: str("claude-sonnet-4-6"),
+  ADMIN_JWT_SECRET: str("change-me-admin-secret"),
 });
 
 export const config = EnvSchema.parse(process.env);

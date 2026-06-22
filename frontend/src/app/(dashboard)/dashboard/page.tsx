@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useAuth, useUser } from "@clerk/nextjs";
 import {
   FileText, Upload, CheckCircle2, Clock, ShieldAlert, Plus,
-  ArrowRight, TrendingUp, LineChart, Library, Gavel,
+  ArrowRight, TrendingUp, LineChart, Library, Gavel, Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -91,12 +91,20 @@ export default function DashboardPage() {
              `${total} contract${total !== 1 ? "s" : ""}${pending > 0 ? ` · ${pending} pending review` : " · all up to date"}`}
           </p>
         </div>
-        <Button asChild size="sm" className="shrink-0">
-          <Link href="/upload">
-            <Plus className="h-4 w-4 mr-1.5" />
-            Upload Contract
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button asChild size="sm" variant="outline">
+            <Link href="/clients">
+              <Building2 className="h-4 w-4 mr-1.5" />
+              Clients
+            </Link>
+          </Button>
+          <Button asChild size="sm">
+            <Link href="/upload">
+              <Plus className="h-4 w-4 mr-1.5" />
+              Upload Contract
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* ── Stat cards ───────────────────────────────────────────────────── */}
@@ -204,7 +212,8 @@ export default function DashboardPage() {
                 Upload New Contract
               </Link>
               {[
-                { label: "Browse All Contracts", href: "/contracts",  icon: FileText  },
+                { label: "Clients",               href: "/clients",   icon: Building2 },
+                { label: "Browse All Contracts",  href: "/contracts", icon: FileText  },
                 { label: "Clause Library",        href: "/clauses",   icon: Library   },
                 { label: "Playbooks",             href: "/rules",     icon: Gavel     },
                 { label: "Analytics",             href: "/analytics", icon: LineChart },
