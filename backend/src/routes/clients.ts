@@ -1,36 +1,33 @@
 import { Router } from "express";
+import { z } from "zod";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
-import { getUserClientIds } from "../services/membership.service.js";
 
 export const clientsRouter = Router();
 clientsRouter.use(requireAuth);
 
-// GET /api/clients — clients the user is assigned to
+// GET /api/clients — all active clients (V1: no multi-tenant, all users see all clients)
 clientsRouter.get("/", async (req, res, next) => {
   try {
-    const clientIds = await getUserClientIds(req.userId);
-    if (clientIds.length === 0) {
-      res.json({ clients: [] });
-      return;
-    }
-
     const { data, error } = await db
       .from("clients")
       .select("id, name, industry, notes, status, created_at, updated_at")
-      .in("id", clientIds)
+      .eq("status", "active")
       .order("name");
 
     if (error) throw error;
 
-    const { data: countRows } = await db
-      .from("contracts")
-      .select("client_id")
-      .in("client_id", clientIds);
-
+    // Count contracts per client
+    const clientIds = (data ?? []).map((c: any) => c.id);
     const counts: Record<string, number> = {};
-    for (const row of countRows ?? []) {
-      if (row.client_id) counts[row.client_id] = (counts[row.client_id] ?? 0) + 1;
+    if (clientIds.length > 0) {
+      const { data: countRows } = await db
+        .from("contracts")
+        .select("client_id")
+        .in("client_id", clientIds);
+      for (const row of countRows ?? []) {
+        if (row.client_id) counts[row.client_id] = (counts[row.client_id] ?? 0) + 1;
+      }
     }
 
     res.json({
@@ -41,15 +38,31 @@ clientsRouter.get("/", async (req, res, next) => {
   }
 });
 
-// GET /api/clients/:id — client detail (must be assigned)
+// POST /api/clients — create a new client
+clientsRouter.post("/", async (req, res, next) => {
+  try {
+    const body = z.object({
+      name: z.string().min(1).max(200),
+      industry: z.string().max(100).optional(),
+      notes: z.string().max(2000).optional(),
+    }).parse(req.body);
+
+    const { data, error } = await db
+      .from("clients")
+      .insert({ ...body, status: "active" })
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json({ client: data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/clients/:id — client detail
 clientsRouter.get("/:id", async (req, res, next) => {
   try {
-    const clientIds = await getUserClientIds(req.userId);
-    if (!clientIds.includes(req.params.id)) {
-      res.status(404).json({ error: "Client not found" });
-      return;
-    }
-
     const { data, error } = await db
       .from("clients")
       .select("id, name, industry, notes, status, created_at, updated_at")
