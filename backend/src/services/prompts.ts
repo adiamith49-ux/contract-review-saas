@@ -104,10 +104,10 @@ export function buildContractPrompt(
    - governingLaw, disputeResolution, totalValue, paymentTerms
    - Use "Not specified" for any metadata not found in the contract
 
-2. extractedClauses — identify and extract EVERY substantive clause in the contract:
-   - For each clause: classify its type, copy the EXACT verbatim text from the contract, summarize it in plain English, assess its risk level, note the section reference, and list specific issues
-   - You MUST extract at least these clause types if they exist: confidentiality, indemnification, limitation_of_liability, termination, ip_ownership, data_protection, governing_law, payment_terms
-   - The verbatimText field MUST contain the exact text copied from the contract — never paraphrase
+2. extractedClauses — identify the KEY substantive clauses (top 6-10 most important):
+   - For each clause: classify its type, copy the KEY sentence or phrase verbatim (1-3 sentences max, not the full clause), summarize in plain English, assess risk, note section reference, list issues
+   - Prioritize: indemnification, limitation_of_liability, termination, ip_ownership, data_protection, governing_law, payment_terms, confidentiality
+   - Keep verbatimText SHORT — the most legally significant sentence only
 
 3. missingClauses — identify standard commercial clauses that SHOULD be in this type of contract but are missing:
    - For each missing clause: state its type, importance (critical/important/recommended), recommendation for what to add, and suggested draft language
@@ -125,8 +125,10 @@ export function buildContractPrompt(
 
 Never return empty arrays for extractedClauses, riskSummary, clauseAnalysis, or negotiationPoints — every commercial contract has clauses, risks, and negotiable terms.
 
+Be concise — keep total output under 3500 tokens.
+
 CONTRACT TEXT:
-${text.slice(0, 180000)}`;
+${text.slice(0, 80000)}`;
 }
 
 // ─── Redline prompts ──────────────────────────────────────────────────────────
@@ -196,6 +198,8 @@ export function buildRedlinePrompt(
 export function buildSummaryPrompt(text: string, contractType: ContractType): string {
   return `Summarize this ${contractType.replace("_", " ")} contract in plain English. Write 3–4 short paragraphs covering: (1) what the contract is about and who the parties are, (2) the key obligations and rights of each party, (3) important dates, payment terms, and duration, (4) any immediately notable risks or unusual terms. Write for a non-lawyer business reader. Be factual and concise.
 
+Be concise — keep total output under 3500 tokens.
+
 CONTRACT TEXT:
-${text.slice(0, 180000)}`;
+${text.slice(0, 80000)}`;
 }

@@ -66,7 +66,7 @@ const analysisTool: Anthropic.Tool = {
               description: "Standard clause category",
             },
             title: { type: "string", description: "Clause heading as it appears in the contract, e.g. 'Section 8 — Limitation of Liability'" },
-            verbatimText: { type: "string", description: "EXACT verbatim text of the clause from the contract. Copy the full clause text character-for-character." },
+            verbatimText: { type: "string", description: "Key sentence or phrase from the clause verbatim (1-3 sentences max, not the full clause). Must be exact text from the contract." },
             summary: { type: "string", description: "Plain-English summary of what this clause means and its practical implications" },
             risk: { type: "string", enum: ["low", "medium", "high", "critical"], description: "Risk level of this specific clause" },
             section: { type: "string", description: "Section/article number reference, e.g. 'Section 8.2', 'Article IV'" },
@@ -173,7 +173,7 @@ export async function analyzeContract(
 ): Promise<AnalysisResult & { model: string }> {
   const response = await anthropic.beta.promptCaching.messages.create({
     model: config.AI_MODEL,
-    max_tokens: 8192,
+    max_tokens: 4096,
     system: [{ type: "text", text: legalSystemPrompt, cache_control: { type: "ephemeral" } }],
     tools: [analysisTool],
     tool_choice: { type: "tool", name: "analyze_contract" },
