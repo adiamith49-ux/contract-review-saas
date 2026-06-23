@@ -111,7 +111,6 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
       .insert({
         id: fileId,
         user_id: req.userId,
-        client_id: clientId ?? null,
         filename: req.file.originalname,
         s3_key: s3Key,
         file_size: req.file.size,
@@ -161,7 +160,7 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
   }
 });
 
-// GET /api/contracts — filtered to user's assigned clients
+// GET /api/contracts — with search + filter
 contractsRouter.get("/", async (req, res, next) => {
   try {
     const { status, contract_type, risk_level, search, from, to, counterparty, owner_name, contract_status, lifecycle } = req.query;
@@ -236,6 +235,7 @@ contractsRouter.get("/:id", async (req, res, next) => {
 
     if (error || !data) { res.status(404).json({ error: "Contract not found" }); return; }
 
+    // Membership check: contracts linked to a client use membership; legacy contracts fall back to user_id
     const hasAccess = (data as any).client_id
       ? await userHasClientAccess(req.userId, (data as any).client_id)
       : (data as any).user_id === req.userId;
