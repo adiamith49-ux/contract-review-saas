@@ -68,3 +68,69 @@ export const STATUS_COLORS: Record<ContractStatus, string> = {
   analyzed: "bg-emerald-100 text-emerald-700 border-emerald-200",
   failed: "bg-red-100 text-red-700 border-red-200",
 };
+
+export const CONTRACT_BUSINESS_STATUS_LABELS: Record<string, string> = {
+  draft: "Draft",
+  under_review: "Under Review",
+  executed: "Executed",
+  expired: "Expired",
+  on_hold: "On Hold",
+  terminated: "Terminated",
+};
+
+export type LifecycleBadge = {
+  label: string;
+  className: string;
+  type: "active" | "expired" | "renewal_due" | "neutral";
+};
+
+export function getLifecycleBadge(contract: {
+  end_date?: string | null;
+  renewal_date?: string | null;
+  contract_status?: string | null;
+}): LifecycleBadge {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (contract.end_date) {
+    const ed = new Date(contract.end_date);
+    if (ed < today) {
+      return { label: "Expired", className: "bg-red-100 text-red-700 border border-red-200", type: "expired" };
+    }
+  }
+
+  if (contract.renewal_date) {
+    const rd = new Date(contract.renewal_date);
+    const daysUntil = Math.ceil((rd.getTime() - today.getTime()) / 86400000);
+    if (daysUntil >= 0 && daysUntil <= 90) {
+      return {
+        label: daysUntil === 0 ? "Renewal Today" : `Renewal in ${daysUntil}d`,
+        className: "bg-amber-100 text-amber-700 border border-amber-200",
+        type: "renewal_due",
+      };
+    }
+  }
+
+  if (contract.contract_status === "executed") {
+    return { label: "Active", className: "bg-emerald-100 text-emerald-700 border border-emerald-200", type: "active" };
+  }
+
+  const label = CONTRACT_BUSINESS_STATUS_LABELS[contract.contract_status ?? "draft"] ?? "Draft";
+  return { label, className: "bg-gray-100 text-gray-600 border border-gray-200", type: "neutral" };
+}
+
+export function formatDateShort(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+export function formatCurrency(value: number | null | undefined): string {
+  if (value == null) return "—";
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `$${(value / 1_000).toFixed(0)}K`;
+  return `$${value.toLocaleString()}`;
+}

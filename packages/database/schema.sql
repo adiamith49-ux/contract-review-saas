@@ -222,3 +222,26 @@ CREATE INDEX IF NOT EXISTS idx_contracts_client          ON contracts(client_id)
 -- );
 -- ALTER TABLE contracts ADD COLUMN IF NOT EXISTS client_id uuid REFERENCES clients(id) ON DELETE SET NULL;
 -- CREATE INDEX IF NOT EXISTS idx_contracts_client ON contracts(client_id);
+
+-- ─── Migration: contract metadata + version history (run in Supabase SQL editor) ─
+-- Adds rich metadata to each contract record so every upload becomes a full CLM record.
+
+-- 7. Contract metadata fields
+-- ALTER TABLE contracts ADD COLUMN IF NOT EXISTS title text;
+-- ALTER TABLE contracts ADD COLUMN IF NOT EXISTS counterparty text;
+-- ALTER TABLE contracts ADD COLUMN IF NOT EXISTS start_date date;
+-- ALTER TABLE contracts ADD COLUMN IF NOT EXISTS end_date date;
+-- ALTER TABLE contracts ADD COLUMN IF NOT EXISTS renewal_date date;
+-- ALTER TABLE contracts ADD COLUMN IF NOT EXISTS owner_name text;
+-- ALTER TABLE contracts ADD COLUMN IF NOT EXISTS contract_value numeric;
+-- ALTER TABLE contracts ADD COLUMN IF NOT EXISTS contract_status text NOT NULL DEFAULT 'draft';
+-- -- contract_status values: draft | under_review | executed | expired | on_hold | terminated
+
+-- 8. Version history (upload negotiation rounds under the same record)
+-- ALTER TABLE contracts ADD COLUMN IF NOT EXISTS version_number int NOT NULL DEFAULT 1;
+-- ALTER TABLE contracts ADD COLUMN IF NOT EXISTS parent_contract_id uuid REFERENCES contracts(id) ON DELETE SET NULL;
+
+-- 9. Indexes for metadata lookups
+-- CREATE INDEX IF NOT EXISTS idx_contracts_parent ON contracts(parent_contract_id);
+-- CREATE INDEX IF NOT EXISTS idx_contracts_counterparty ON contracts(client_id, counterparty);
+-- CREATE INDEX IF NOT EXISTS idx_contracts_dates ON contracts(client_id, end_date, renewal_date);

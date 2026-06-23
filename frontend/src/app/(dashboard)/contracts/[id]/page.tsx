@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import {
   ArrowLeft, Download, Loader2, AlertTriangle, FileText, RefreshCw, GitPullRequest,
-  AlignLeft, X,
+  AlignLeft, X, Pencil, Building2, Calendar, User, DollarSign, Globe, Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -19,10 +19,15 @@ import { IntakePanel } from "@/components/IntakePanel";
 import { AIChatFloat } from "@/components/AIChatFloat";
 import {
   getContract, analyzeContract, downloadExport,
-  runRedline, downloadRedlineDocx, summarizeContract,
+  runRedline, downloadRedlineDocx, summarizeContract, updateContractMetadata,
   type ContractDetail, type RedlineResult,
 } from "@/lib/api";
-import { formatDate, formatFileSize, CONTRACT_TYPE_LABELS } from "@/lib/utils";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
+import { formatDate, formatDateShort, formatCurrency, formatFileSize, CONTRACT_TYPE_LABELS, getLifecycleBadge, CONTRACT_BUSINESS_STATUS_LABELS } from "@/lib/utils";
+import type { ContractType } from "@/lib/types";
 
 export default function ContractDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -41,6 +46,8 @@ export default function ContractDetailPage() {
   const [summary, setSummary] = useState<string | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [summarizing, setSummarizing] = useState(false);
+  const [editMetaOpen, setEditMetaOpen] = useState(false);
+  const [metaSaving, setMetaSaving] = useState(false);
 
   function handleApply(id: string) {
     setAppliedIds(prev => {
@@ -89,6 +96,21 @@ export default function ContractDetailPage() {
   }
 
   useEffect(() => { load(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleSaveMetadata(data: Parameters<typeof updateContractMetadata>[2]) {
+    setMetaSaving(true);
+    try {
+      const token = await getToken();
+      await updateContractMetadata(token, id, data);
+      await load();
+      setEditMetaOpen(false);
+      toast.success("Contract updated");
+    } catch {
+      toast.error("Failed to update contract");
+    } finally {
+      setMetaSaving(false);
+    }
+  }
 
   async function handleAnalyze() {
     if (!contract) return;
@@ -174,7 +196,7 @@ export default function ContractDetailPage() {
           <span className="text-gray-200 select-none">|</span>
           <div className="flex items-center gap-2 min-w-0 flex-wrap">
             <h1 className="text-sm font-semibold text-gray-900 truncate max-w-xs">
-              {contract.filename}
+              {contract.title || contract.filename}
             </h1>
             <StatusBadge status={contract.status} />
             {analysis && <RiskBadge level={analysis.risk_level} />}
@@ -260,6 +282,59 @@ export default function ContractDetailPage() {
           )}
         </div>
       </div>
+
+      {/* ── Metadata band ─────────────────────────────────────────────── */}
+      {(() => {
+        const hasAny = contract.counterparty || contract.start_date || contract.end_date || contract.renewal_date || contract.owner_name || contract.contract_value;
+        const lifecycle = getLifecycleBadge(contract);
+        return (
+          <div className="shrink-0 border-b bg-gray-50/60">
+            <div className="px-5 py-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-gray-600">
+              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${lifecycle.className}`}>
+                {lifecycle.label}
+              </span>
+              {contract.counterparty && (
+                <span className="flex items-center gap-1 text-gray-600">
+                  <Building2 className="h-3 w-3 text-gray-400" />{contract.counterparty}
+                </span>
+              )}
+              {(contract.start_date || contract.end_date) && (
+                <span className="flex items-center gap-1 text-gray-600">
+                  <Calendar className="h-3 w-3 text-gray-400" />
+                  {formatDateShort(contract.start_date)} → {formatDateShort(contract.end_date)}
+                </span>
+              )}
+              {contract.renewal_date && (
+                <span className="flex items-center gap-1 text-amber-600 font-medium">
+                  <Calendar className="h-3 w-3" />Renewal: {formatDateShort(contract.renewal_date)}
+                </span>
+              )}
+              {contract.owner_name && (
+                <span className="flex items-center gap-1 text-gray-600">
+                  <User className="h-3 w-3 text-gray-400" />{contract.owner_name}
+                </span>
+              )}
+              {contract.contract_value && (
+                <span className="flex items-center gap-1 text-gray-600">
+                  <DollarSign className="h-3 w-3 text-gray-400" />{formatCurrency(contract.contract_value)}
+                </span>
+              )}
+              {contract.version_number > 1 && (
+                <span className="text-gray-400 font-medium">v{contract.version_number}</span>
+              )}
+              {!hasAny && (
+                <span className="text-gray-400 italic">No metadata — </span>
+              )}
+              <button
+                onClick={() => setEditMetaOpen(true)}
+                className="ml-auto flex items-center gap-1 text-primary hover:underline text-[11px] font-medium shrink-0"
+              >
+                <Pencil className="h-3 w-3" />Edit metadata
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Legal intake ─────────────────────────────────────────────────── */}
       <IntakePanel contractId={id} getToken={getToken} />
@@ -367,6 +442,17 @@ export default function ContractDetailPage() {
         </div>
       )}
 
+      {/* Metadata edit dialog */}
+      {editMetaOpen && (
+        <MetadataEditDialog
+          contract={contract}
+          open={editMetaOpen}
+          onClose={() => setEditMetaOpen(false)}
+          onSave={handleSaveMetadata}
+          saving={metaSaving}
+        />
+      )}
+
       {/* Floating AI Chat button */}
       <AIChatFloat contractId={id} isAnalyzed={isAnalyzed} />
     </div>
@@ -448,5 +534,143 @@ function LoadingSkeleton() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Metadata Edit Dialog ─────────────────────────────────────────────────────
+
+const CONTRACT_TYPES = Object.entries(CONTRACT_TYPE_LABELS) as [ContractType, string][];
+
+const BUSINESS_STATUS_OPTIONS = [
+  { value: "draft",        label: "Draft"        },
+  { value: "under_review", label: "Under Review" },
+  { value: "executed",     label: "Executed"     },
+  { value: "expired",      label: "Expired"      },
+  { value: "on_hold",      label: "On Hold"      },
+  { value: "terminated",   label: "Terminated"   },
+];
+
+function MetadataEditDialog({
+  contract, open, onClose, onSave, saving,
+}: {
+  contract: ContractDetail;
+  open: boolean;
+  onClose: () => void;
+  onSave: (data: Parameters<typeof updateContractMetadata>[2]) => Promise<void>;
+  saving: boolean;
+}) {
+  const [title, setTitle]           = useState(contract.title ?? "");
+  const [counterparty, setCounterparty] = useState(contract.counterparty ?? "");
+  const [contractType, setContractType] = useState<ContractType>(contract.contract_type);
+  const [contractStatus, setContractStatus] = useState(contract.contract_status ?? "draft");
+  const [startDate, setStartDate]   = useState(contract.start_date ?? "");
+  const [endDate, setEndDate]       = useState(contract.end_date ?? "");
+  const [renewalDate, setRenewalDate] = useState(contract.renewal_date ?? "");
+  const [ownerName, setOwnerName]   = useState(contract.owner_name ?? "");
+  const [contractValue, setContractValue] = useState(contract.contract_value != null ? String(contract.contract_value) : "");
+
+  async function handleSave() {
+    await onSave({
+      title: title.trim() || null,
+      counterparty: counterparty.trim() || null,
+      contract_type: contractType,
+      contract_status: contractStatus,
+      start_date: startDate || null,
+      end_date: endDate || null,
+      renewal_date: renewalDate || null,
+      owner_name: ownerName.trim() || null,
+      contract_value: contractValue ? Number(contractValue) : null,
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={open => !open && onClose()}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Pencil className="h-4 w-4 text-primary" />
+            Edit Contract Metadata
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="grid grid-cols-2 gap-4 mt-2">
+          <div className="col-span-2 space-y-1.5">
+            <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Contract Title</Label>
+            <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. MSA 2026 — Acme Corp" className="h-9" />
+          </div>
+
+          <div className="col-span-2 space-y-1.5">
+            <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              <Building2 className="h-3 w-3 inline mr-1" />Counterparty / Vendor
+            </Label>
+            <Input value={counterparty} onChange={e => setCounterparty(e.target.value)} placeholder="e.g. Acme Corporation" className="h-9" />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Contract Type</Label>
+            <Select value={contractType} onValueChange={v => setContractType(v as ContractType)}>
+              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {CONTRACT_TYPES.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Contract Status</Label>
+            <Select value={contractStatus} onValueChange={setContractStatus}>
+              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {BUSINESS_STATUS_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              <Calendar className="h-3 w-3 inline mr-1" />Start Date
+            </Label>
+            <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="h-9" />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              <Calendar className="h-3 w-3 inline mr-1" />End / Expiry Date
+            </Label>
+            <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="h-9" />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              <Calendar className="h-3 w-3 inline mr-1" />Renewal Date
+            </Label>
+            <Input type="date" value={renewalDate} onChange={e => setRenewalDate(e.target.value)} className="h-9" />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              <User className="h-3 w-3 inline mr-1" />Contract Owner
+            </Label>
+            <Input value={ownerName} onChange={e => setOwnerName(e.target.value)} placeholder="e.g. Jane Smith" className="h-9" />
+          </div>
+
+          <div className="col-span-2 space-y-1.5">
+            <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              <DollarSign className="h-3 w-3 inline mr-1" />Contract Value (USD)
+            </Label>
+            <Input type="number" value={contractValue} onChange={e => setContractValue(e.target.value)} placeholder="e.g. 500000" className="h-9" min="0" />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 mt-4">
+          <DialogClose asChild>
+            <Button variant="outline" size="sm">Cancel</Button>
+          </DialogClose>
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            {saving ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Saving…</> : "Save Changes"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

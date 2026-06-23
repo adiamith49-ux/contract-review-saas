@@ -12,6 +12,16 @@ export type RiskLevel = "low" | "medium" | "high" | "critical";
 
 export type ContractStatus = "uploaded" | "processing" | "analyzed" | "failed";
 
+export type ContractBusinessStatus =
+  | "draft"
+  | "under_review"
+  | "executed"
+  | "expired"
+  | "on_hold"
+  | "terminated";
+
+export type ContractLifecycle = "active" | "expired" | "renewal_due";
+
 export interface RiskSummaryItem {
   area: string;
   risk: string;

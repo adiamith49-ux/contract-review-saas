@@ -13,12 +13,11 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { RiskBadge } from "@/components/RiskBadge";
-import { StatusBadge } from "@/components/StatusBadge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose,
 } from "@/components/ui/dialog";
 import { getClient, updateClient, type Client, type ContractListItem } from "@/lib/api";
-import { formatDate, formatFileSize, CONTRACT_TYPE_LABELS } from "@/lib/utils";
+import { formatDateShort, formatFileSize, getLifecycleBadge, CONTRACT_TYPE_LABELS } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
 export default function ClientDetailPage() {
@@ -213,8 +212,8 @@ export default function ClientDetailPage() {
 
         <div className="rounded-xl border bg-white shadow-sm overflow-hidden">
           {/* Table header */}
-          <div className="grid grid-cols-[minmax(0,2fr)_160px_120px_120px_110px] border-b bg-gray-50/80 px-5 py-2.5">
-            {["Contract", "Type", "Risk", "Status", "Uploaded"].map((h, i) => (
+          <div className="grid grid-cols-[minmax(0,2fr)_140px_150px_110px_100px] border-b bg-gray-50/80 px-5 py-2.5">
+            {["Contract", "Type", "Status", "Risk", "End Date"].map((h, i) => (
               <div key={i} className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">{h}</div>
             ))}
           </div>
@@ -279,10 +278,11 @@ function fileExt(filename: string): "pdf" | "docx" | "other" {
 
 function ContractRow({ contract: c, onNavigate }: { contract: ContractListItem; onNavigate: () => void }) {
   const ext = fileExt(c.filename);
+  const lifecycle = getLifecycleBadge(c);
   return (
     <div
       onClick={onNavigate}
-      className="grid grid-cols-[minmax(0,2fr)_160px_120px_120px_110px] items-center px-5 py-3.5 border-b last:border-b-0 hover:bg-gray-50 transition-colors cursor-pointer group"
+      className="grid grid-cols-[minmax(0,2fr)_140px_150px_110px_100px] items-center px-5 py-3.5 border-b last:border-b-0 hover:bg-gray-50/60 transition-colors cursor-pointer group"
     >
       <div className="flex items-center gap-3 min-w-0 pr-4">
         <div className={cn(
@@ -294,14 +294,22 @@ function ContractRow({ contract: c, onNavigate }: { contract: ContractListItem; 
           {ext === "other" ? <FileText className="h-4 w-4" /> : ext.toUpperCase()}
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-medium text-gray-900 truncate group-hover:text-primary transition-colors">{c.filename}</p>
-          <p className="text-[11px] text-gray-400 mt-0.5">{formatFileSize(c.file_size)}</p>
+          <p className="text-sm font-medium text-gray-900 truncate group-hover:text-primary transition-colors">
+            {c.title || c.filename}
+          </p>
+          <p className="text-[11px] text-gray-400 mt-0.5 truncate">
+            {c.counterparty || formatFileSize(c.file_size)}
+          </p>
         </div>
       </div>
       <span className="text-xs text-gray-600 truncate pr-2">{CONTRACT_TYPE_LABELS[c.contract_type]}</span>
+      <div>
+        <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium", lifecycle.className)}>
+          {lifecycle.label}
+        </span>
+      </div>
       <div>{c.analyses?.[0] ? <RiskBadge level={c.analyses[0].risk_level} /> : <span className="text-xs text-gray-300">—</span>}</div>
-      <div><StatusBadge status={c.status} /></div>
-      <span className="text-xs text-gray-500">{formatDate(c.created_at)}</span>
+      <span className="text-xs text-gray-500">{c.end_date ? formatDateShort(c.end_date) : <span className="text-gray-300">—</span>}</span>
     </div>
   );
 }

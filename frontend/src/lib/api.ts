@@ -117,9 +117,19 @@ export interface AnalysisOut {
 export interface ContractListItem {
   id: string;
   filename: string;
+  title: string | null;
+  counterparty: string | null;
   contract_type: ContractType;
+  contract_status: string;
   status: ContractStatus;
   file_size: number;
+  start_date: string | null;
+  end_date: string | null;
+  renewal_date: string | null;
+  owner_name: string | null;
+  contract_value: number | null;
+  version_number: number;
+  parent_contract_id: string | null;
   created_at: string;
   analyses: { id: string; risk_level: RiskLevel }[];
 }
@@ -127,7 +137,10 @@ export interface ContractListItem {
 export interface ContractDetail {
   id: string;
   filename: string;
+  title: string | null;
+  counterparty: string | null;
   contract_type: ContractType;
+  contract_status: string;
   status: ContractStatus;
   file_size: number;
   s3_key: string;
@@ -135,6 +148,13 @@ export interface ContractDetail {
   fileUrl: string;
   extracted_text?: string | null;
   summary?: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  renewal_date: string | null;
+  owner_name: string | null;
+  contract_value: number | null;
+  version_number: number;
+  parent_contract_id: string | null;
   analyses: AnalysisOut[];
 }
 
@@ -173,18 +193,63 @@ async function apiFetch<T>(
 
 // ─── Contract endpoints ───────────────────────────────────────────────────────
 
+export interface UploadContractMeta {
+  contractType: ContractType;
+  clientId?: string;
+  title?: string;
+  counterparty?: string;
+  startDate?: string;
+  endDate?: string;
+  renewalDate?: string;
+  ownerName?: string;
+  contractValue?: number;
+  contractStatus?: string;
+  governingLaw?: string;
+  parentContractId?: string;
+}
+
 export async function uploadContract(
   token: string | null,
   file: File,
-  contractType: ContractType,
-  clientId?: string,
-): Promise<{ contract: { id: string; filename: string; contract_type: ContractType; status: ContractStatus; created_at: string } }> {
+  meta: UploadContractMeta,
+): Promise<{ contract: { id: string; filename: string; title: string | null; contract_type: ContractType; status: ContractStatus; created_at: string } }> {
   const form = new FormData();
   form.append("file", file);
-  form.append("contract_type", contractType);
-  if (clientId) form.append("client_id", clientId);
+  form.append("contract_type", meta.contractType);
+  if (meta.clientId) form.append("client_id", meta.clientId);
+  if (meta.title) form.append("title", meta.title);
+  if (meta.counterparty) form.append("counterparty", meta.counterparty);
+  if (meta.startDate) form.append("start_date", meta.startDate);
+  if (meta.endDate) form.append("end_date", meta.endDate);
+  if (meta.renewalDate) form.append("renewal_date", meta.renewalDate);
+  if (meta.ownerName) form.append("owner_name", meta.ownerName);
+  if (meta.contractValue != null) form.append("contract_value", String(meta.contractValue));
+  if (meta.contractStatus) form.append("contract_status", meta.contractStatus);
+  if (meta.governingLaw) form.append("governing_law", meta.governingLaw);
+  if (meta.parentContractId) form.append("parent_contract_id", meta.parentContractId);
 
   return apiFetch("/api/contracts/upload", token, { method: "POST", body: form });
+}
+
+export async function updateContractMetadata(
+  token: string | null,
+  id: string,
+  data: {
+    title?: string | null;
+    counterparty?: string | null;
+    contract_type?: ContractType;
+    contract_status?: string;
+    start_date?: string | null;
+    end_date?: string | null;
+    renewal_date?: string | null;
+    owner_name?: string | null;
+    contract_value?: number | null;
+  }
+): Promise<{ contract: ContractListItem }> {
+  return apiFetch(`/api/contracts/${id}`, token, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
 export async function analyzeContract(

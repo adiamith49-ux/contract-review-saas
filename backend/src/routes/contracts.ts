@@ -46,6 +46,19 @@ const intakeSchema = z.object({
 export const contractsRouter = Router();
 contractsRouter.use(requireAuth);
 
+const metaSchema = z.object({
+  title: z.string().max(500).optional(),
+  counterparty: z.string().max(500).optional(),
+  start_date: z.string().optional(),
+  end_date: z.string().optional(),
+  renewal_date: z.string().optional(),
+  owner_name: z.string().max(500).optional(),
+  contract_value: z.coerce.number().positive().optional(),
+  contract_status: z.enum(["draft", "under_review", "executed", "expired", "on_hold", "terminated"]).optional(),
+  governing_law: z.enum(["us", "uk", "eu", "india", "other"]).optional(),
+  parent_contract_id: z.string().uuid().optional(),
+});
+
 // POST /api/contracts/upload
 contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req, res, next) => {
   try {
@@ -58,6 +71,7 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
 
     const contractType = contractTypeSchema.default("other").parse(req.body.contract_type);
     const clientId: string | undefined = req.body.client_id || undefined;
+    const meta = metaSchema.parse(req.body);
 
     // Validate user is assigned to the client
     if (clientId) {
@@ -66,6 +80,22 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
         res.status(400).json({ error: "Invalid client or access not granted" });
         return;
       }
+    }
+
+    // Determine version number if uploading a new version of an existing contract
+    let versionNumber = 1;
+    if (meta.parent_contract_id) {
+      const { data: existing } = await db
+        .from("contracts")
+        .select("version_number")
+        .eq("parent_contract_id", meta.parent_contract_id)
+        .order("version_number", { ascending: false })
+        .limit(1)
+        .single();
+      // Also check the parent itself
+      const { data: parent } = await db.from("contracts").select("version_number").eq("id", meta.parent_contract_id).single();
+      const maxVersion = Math.max(existing?.version_number ?? 1, parent?.version_number ?? 1);
+      versionNumber = maxVersion + 1;
     }
 
     const fileId = randomUUID();
@@ -89,15 +119,40 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
         contract_type: contractType,
         status: "uploaded",
         extracted_text: extractedText,
+        title: meta.title ?? null,
+        counterparty: meta.counterparty ?? null,
+        start_date: meta.start_date ?? null,
+        end_date: meta.end_date ?? null,
+        renewal_date: meta.renewal_date ?? null,
+        owner_name: meta.owner_name ?? null,
+        contract_value: meta.contract_value ?? null,
+        contract_status: meta.contract_status ?? "draft",
+        version_number: versionNumber,
+        parent_contract_id: meta.parent_contract_id ?? null,
       })
-      .select("id, filename, contract_type, status, created_at")
+      .select("id, filename, title, contract_type, status, created_at")
       .single();
 
     if (error) throw error;
 
+    // Auto-populate legal_intake from metadata so AI analysis is pre-contextualized
+    if (meta.counterparty || meta.renewal_date || meta.contract_value || meta.governing_law || meta.owner_name) {
+      await db.from("legal_intake").upsert({
+        contract_id: fileId,
+        user_id: req.userId,
+        counterparty_name: meta.counterparty ?? null,
+        renewal_date: meta.renewal_date ?? null,
+        deal_value: meta.contract_value ?? null,
+        jurisdiction: meta.governing_law ?? "us",
+        business_owner: meta.owner_name ?? null,
+      });
+    }
+
     await logActivity(req.userId, "contract.uploaded", fileId, {
       filename: req.file.originalname,
       contract_type: contractType,
+      counterparty: meta.counterparty,
+      version_number: versionNumber,
     });
 
     res.status(201).json({ contract: data });
@@ -109,7 +164,7 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
 // GET /api/contracts — filtered to user's assigned clients
 contractsRouter.get("/", async (req, res, next) => {
   try {
-    const { status, contract_type, risk_level, search, from, to } = req.query;
+    const { status, contract_type, risk_level, search, from, to, counterparty, owner_name, contract_status, lifecycle } = req.query;
 
     const clientIds = await getUserClientIds(req.userId);
     if (clientIds.length === 0) {
@@ -119,20 +174,37 @@ contractsRouter.get("/", async (req, res, next) => {
 
     let query = db
       .from("contracts")
-      .select("id, filename, contract_type, status, file_size, created_at, analyses(id, risk_level)")
+      .select("id, filename, title, counterparty, contract_type, contract_status, status, file_size, start_date, end_date, renewal_date, owner_name, contract_value, version_number, parent_contract_id, created_at, analyses(id, risk_level)")
       .in("client_id", clientIds)
       .order("created_at", { ascending: false });
 
     if (status) query = query.eq("status", String(status));
     if (contract_type) query = query.eq("contract_type", String(contract_type));
-    if (search) query = query.ilike("filename", `%${search}%`);
+    if (contract_status) query = query.eq("contract_status", String(contract_status));
+    if (counterparty) query = query.ilike("counterparty", `%${String(counterparty)}%`);
+    if (owner_name) query = query.ilike("owner_name", `%${String(owner_name)}%`);
     if (from) query = query.gte("created_at", String(from));
     if (to) query = query.lte("created_at", String(to));
+    if (search) {
+      const s = String(search);
+      query = query.or(`filename.ilike.%${s}%,title.ilike.%${s}%,counterparty.ilike.%${s}%`);
+    }
 
-    // risk_level filter requires post-filtering since it's on the joined table
+    // Lifecycle filter: computed from dates server-side
+    const today = new Date().toISOString().split("T")[0];
+    const in90Days = new Date(Date.now() + 90 * 86400000).toISOString().split("T")[0];
+    if (lifecycle === "expired") {
+      query = query.lt("end_date", today);
+    } else if (lifecycle === "renewal_due") {
+      query = query.gte("renewal_date", today).lte("renewal_date", in90Days);
+    } else if (lifecycle === "active") {
+      query = query.eq("contract_status", "executed").or(`end_date.is.null,end_date.gte.${today}`);
+    }
+
     let { data, error } = await query;
     if (error) throw error;
 
+    // risk_level filter: post-filter (joined table)
     if (risk_level && data) {
       data = data.filter((c: any) => {
         const a = Array.isArray(c.analyses) ? c.analyses[0] : c.analyses;
@@ -140,7 +212,6 @@ contractsRouter.get("/", async (req, res, next) => {
       });
     }
 
-    // Normalize analyses to always be an array for consistent frontend types
     const contracts = (data ?? []).map((c: any) => ({
       ...c,
       analyses: c.analyses
@@ -159,7 +230,7 @@ contractsRouter.get("/:id", async (req, res, next) => {
   try {
     const { data, error } = await db
       .from("contracts")
-      .select("id, filename, contract_type, status, file_size, s3_key, summary, extracted_text, created_at, client_id, analyses(*), legal_intake(*)")
+      .select("id, filename, title, counterparty, contract_type, contract_status, status, file_size, s3_key, summary, extracted_text, start_date, end_date, renewal_date, owner_name, contract_value, version_number, parent_contract_id, created_at, client_id, analyses(*), legal_intake(*)")
       .eq("id", req.params.id)
       .single();
 
@@ -501,12 +572,20 @@ contractsRouter.delete("/:id/chat", async (req, res, next) => {
   }
 });
 
-// PATCH /api/contracts/:id — update filename or contract_type
+// PATCH /api/contracts/:id — update metadata
 contractsRouter.patch("/:id", async (req, res, next) => {
   try {
     const body = z.object({
       filename: z.string().min(1).max(255).optional(),
       contract_type: contractTypeSchema.optional(),
+      title: z.string().max(500).optional().nullable(),
+      counterparty: z.string().max(500).optional().nullable(),
+      start_date: z.string().optional().nullable(),
+      end_date: z.string().optional().nullable(),
+      renewal_date: z.string().optional().nullable(),
+      owner_name: z.string().max(500).optional().nullable(),
+      contract_value: z.coerce.number().positive().optional().nullable(),
+      contract_status: z.enum(["draft", "under_review", "executed", "expired", "on_hold", "terminated"]).optional(),
     }).parse(req.body);
 
     if (Object.keys(body).length === 0) {
@@ -516,10 +595,10 @@ contractsRouter.patch("/:id", async (req, res, next) => {
 
     const { data, error } = await db
       .from("contracts")
-      .update(body)
+      .update({ ...body, updated_at: new Date().toISOString() })
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
-      .select("id, filename, contract_type, status, updated_at")
+      .select("id, filename, title, counterparty, contract_type, contract_status, status, start_date, end_date, renewal_date, owner_name, contract_value, updated_at")
       .single();
 
     if (error || !data) { res.status(404).json({ error: "Contract not found" }); return; }

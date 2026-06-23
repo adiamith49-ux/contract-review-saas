@@ -224,6 +224,13 @@ export const MOCK_ANALYTICS: AnalyticsData = {
 
 // ─── Dashboard contracts (for the dashboard page) ─────────────────────────────
 
+const nullMeta = {
+  title: null, counterparty: null, contract_status: "draft",
+  start_date: null, end_date: null, renewal_date: null,
+  owner_name: null, contract_value: null,
+  version_number: 1, parent_contract_id: null,
+};
+
 export const MOCK_CONTRACTS: ContractListItem[] = [
   {
     id: "c1",
@@ -233,6 +240,11 @@ export const MOCK_CONTRACTS: ContractListItem[] = [
     file_size: 245760,
     created_at: "2026-06-04T10:00:00Z",
     analyses: [{ id: "an1", risk_level: "medium" }],
+    ...nullMeta,
+    title: "Acme Corp NDA 2026",
+    counterparty: "Acme Corporation",
+    contract_status: "executed",
+    end_date: "2027-06-03",
   },
   {
     id: "c2",
@@ -242,6 +254,10 @@ export const MOCK_CONTRACTS: ContractListItem[] = [
     file_size: 819200,
     created_at: "2026-06-03T15:30:00Z",
     analyses: [{ id: "an2", risk_level: "critical" }],
+    ...nullMeta,
+    title: "DataFlow MSA v3",
+    counterparty: "DataFlow Inc.",
+    contract_status: "under_review",
   },
   {
     id: "c3",
@@ -251,6 +267,11 @@ export const MOCK_CONTRACTS: ContractListItem[] = [
     file_size: 512000,
     created_at: "2026-06-02T09:15:00Z",
     analyses: [{ id: "an3", risk_level: "high" }],
+    ...nullMeta,
+    title: "TechVentures SaaS Agreement",
+    counterparty: "TechVentures Ltd",
+    contract_status: "executed",
+    renewal_date: "2026-09-01",
   },
   {
     id: "c4",
@@ -260,6 +281,8 @@ export const MOCK_CONTRACTS: ContractListItem[] = [
     file_size: 102400,
     created_at: "2026-06-05T08:00:00Z",
     analyses: [],
+    ...nullMeta,
+    contract_status: "draft",
   },
   {
     id: "c5",
@@ -269,5 +292,10 @@ export const MOCK_CONTRACTS: ContractListItem[] = [
     file_size: 358400,
     created_at: "2026-05-28T11:00:00Z",
     analyses: [{ id: "an5", risk_level: "low" }],
+    ...nullMeta,
+    title: "UK Vendor Agreement",
+    counterparty: "Global Supplies Ltd",
+    contract_status: "executed",
+    end_date: "2025-12-31",
   },
 ];
