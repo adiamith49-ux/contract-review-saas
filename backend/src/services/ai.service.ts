@@ -101,8 +101,9 @@ const analysisTool: Anthropic.Tool = {
           properties: {
             area: { type: "string" },
             risk: { type: "string" },
-            severity: { type: "string", enum: ["low", "medium", "high"] },
+            severity: { type: "string", enum: ["low", "medium", "high", "critical"] },
             recommendation: { type: "string" },
+            clauseRef: { type: "string", description: "Section or clause reference, e.g. 'Section 8.2' or 'Limitation of Liability'" },
           },
         },
       },
@@ -118,6 +119,7 @@ const analysisTool: Anthropic.Tool = {
             risk: { type: "string", enum: ["low", "medium", "high", "critical"] },
             recommendation: { type: "string" },
             contractText: { type: "string", description: "The exact contract text that triggered this finding" },
+            suggestedLanguage: { type: "string", description: "Practical replacement clause language the user can adopt or edit. Must be real legal text, not generic advice." },
           },
         },
       },

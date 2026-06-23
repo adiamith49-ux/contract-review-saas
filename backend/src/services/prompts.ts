@@ -113,9 +113,11 @@ export function buildContractPrompt(
    - For each missing clause: state its type, importance (critical/important/recommended), recommendation for what to add, and suggested draft language
    - Common missing clauses to check: force majeure, data protection/GDPR, insurance, audit rights, assignment restrictions, survival, entire agreement
 
-4. riskSummary — high-level risk areas (always at least 2–4 findings)
+4. riskSummary — high-level risk areas (always at least 2–4 findings). Each finding MUST include clauseRef: the specific section or clause reference (e.g. "Section 8.2", "Limitation of Liability clause"). Severity can be low/medium/high/critical.
 
-5. clauseAnalysis — clause-by-clause risk findings (always at least 3–5 findings). Each finding MUST include contractText: the exact quote from the contract that triggered the risk finding.
+5. clauseAnalysis — clause-by-clause risk findings (always at least 3–5 findings). Each finding MUST include:
+   - contractText: the exact quote from the contract that triggered the risk finding
+   - suggestedLanguage: practical replacement clause language the user can adopt directly — must be real legal text ready for insertion, not generic advice like "consider adding..." Write the actual clause text.
 
 6. negotiationPoints — concrete leverage points with preferred and fallback positions (always at least 2–4 items)
 

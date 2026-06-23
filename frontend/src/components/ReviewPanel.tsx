@@ -4,6 +4,7 @@ import {
   X, ChevronDown, ChevronUp, ShieldAlert, FileWarning,
   Handshake, HelpCircle, Check, FileDown, ListChecks,
   FileText, AlertCircle, Users, Calendar, Scale, BookOpen,
+  XCircle, Pencil,
 } from "lucide-react";
 import { RiskBadge } from "@/components/RiskBadge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,8 @@ import type { RiskLevel, AmbiguityFlag, ExtractedClause, MissingClause, Contract
 import { cn } from "@/lib/utils";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
+
+type ItemDecision = "accepted" | "rejected" | "edited";
 
 interface Props {
   analysis: AnalysisOut;
@@ -257,8 +260,9 @@ function MissingClauseItem({ clause, isOpen, onToggle }: { clause: MissingClause
 // ─── Accordion item (Risk Areas, Clause Issues, Ambiguity Flags) ──────────────
 
 function AccordionItem({
-  id, title, risk, body, recommendation, contractText,
+  id, title, risk, body, recommendation, contractText, suggestedLanguage, clauseRef,
   isOpen, isApplied, onToggle, onApply, onScrollToText,
+  decision, onDecision, editedText, onEditedTextChange,
 }: {
   id: string;
   title: string;
@@ -266,19 +270,33 @@ function AccordionItem({
   body: string;
   recommendation: string;
   contractText?: string;
+  suggestedLanguage?: string;
+  clauseRef?: string;
   isOpen: boolean;
   isApplied: boolean;
   onToggle: (id: string) => void;
   onApply: (id: string) => void;
   onScrollToText?: (text: string) => void;
+  decision?: ItemDecision;
+  onDecision?: (id: string, d: ItemDecision) => void;
+  editedText?: string;
+  onEditedTextChange?: (id: string, text: string) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+
   return (
     <div className={cn("border-b border-r-2 transition-colors", isOpen ? riskBorderL(risk) : "border-r-transparent")}>
       <button onClick={() => onToggle(id)} className={cn("w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors", isOpen ? "bg-gray-50" : "hover:bg-gray-50")}>
         <span className={cn("h-2 w-2 rounded-full shrink-0", riskDot(risk))} />
-        <span className="text-[11px] font-semibold text-gray-800 flex-1 leading-snug line-clamp-2 pr-1">{title}</span>
+        <div className="flex-1 min-w-0">
+          <span className="text-[11px] font-semibold text-gray-800 leading-snug line-clamp-2 pr-1">{title}</span>
+          {clauseRef && <span className="text-[9px] text-gray-400 ml-1">{clauseRef}</span>}
+        </div>
         <RiskBadge level={risk as RiskLevel} className="text-[9px] px-1.5 py-0 shrink-0" />
-        {isApplied && <Check className="h-3 w-3 text-emerald-500 shrink-0" />}
+        {decision === "accepted" && <Check className="h-3 w-3 text-emerald-500 shrink-0" />}
+        {decision === "rejected" && <XCircle className="h-3 w-3 text-red-400 shrink-0" />}
+        {decision === "edited" && <Pencil className="h-3 w-3 text-blue-500 shrink-0" />}
+        {!decision && isApplied && <Check className="h-3 w-3 text-emerald-500 shrink-0" />}
         {isOpen ? <ChevronUp className="h-3.5 w-3.5 text-gray-400 shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 text-gray-400 shrink-0" />}
       </button>
 
@@ -304,14 +322,76 @@ function AccordionItem({
             <p className="text-[9px] font-bold text-blue-700 uppercase tracking-wide mb-0.5">Recommendation</p>
             <p className="text-[11px] text-blue-800 leading-relaxed">{recommendation}</p>
           </div>
-          <Button
-            size="sm"
-            variant={isApplied ? "outline" : "default"}
-            className={cn("w-full h-7 text-[11px]", isApplied && "border-emerald-500 text-emerald-700 hover:bg-emerald-50")}
-            onClick={() => onApply(id)}
-          >
-            {isApplied ? <><Check className="h-3 w-3 mr-1" />Applied</> : "Apply Change"}
-          </Button>
+
+          {/* Suggested replacement language */}
+          {suggestedLanguage && (
+            <div className={cn("rounded-md px-2.5 py-2", decision === "rejected" ? "bg-red-50/50 opacity-60" : "bg-emerald-50")}>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[9px] font-bold text-emerald-700 uppercase tracking-wide">Suggested Language</p>
+                {!editing && onDecision && (
+                  <button
+                    onClick={() => { setEditing(true); onDecision(id, "edited"); }}
+                    className="text-[9px] text-blue-600 hover:text-blue-800 font-medium flex items-center gap-0.5"
+                  >
+                    <Pencil className="h-2.5 w-2.5" /> Edit
+                  </button>
+                )}
+              </div>
+              {editing ? (
+                <textarea
+                  className="w-full text-[10px] text-gray-800 leading-relaxed border rounded px-2 py-1.5 min-h-[60px] focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
+                  value={editedText ?? suggestedLanguage}
+                  onChange={(e) => onEditedTextChange?.(id, e.target.value)}
+                  rows={4}
+                />
+              ) : (
+                <p className="text-[10px] text-emerald-800 leading-relaxed italic">
+                  &ldquo;{decision === "edited" && editedText ? editedText : suggestedLanguage}&rdquo;
+                </p>
+              )}
+              {editing && (
+                <div className="flex gap-1.5 mt-1.5">
+                  <Button size="sm" className="h-6 text-[10px] flex-1" onClick={() => { setEditing(false); onDecision?.(id, "edited"); onApply(id); }}>
+                    <Check className="h-2.5 w-2.5 mr-1" />Save & Apply
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => { setEditing(false); onEditedTextChange?.(id, suggestedLanguage); }}>
+                    Cancel
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Accept / Reject / Apply buttons */}
+          {suggestedLanguage && onDecision && !editing ? (
+            <div className="flex gap-1.5">
+              <Button
+                size="sm"
+                variant={decision === "accepted" ? "outline" : "default"}
+                className={cn("flex-1 h-7 text-[11px]", decision === "accepted" && "border-emerald-500 text-emerald-700 hover:bg-emerald-50")}
+                onClick={() => { onDecision(id, "accepted"); onApply(id); }}
+              >
+                {decision === "accepted" ? <><Check className="h-3 w-3 mr-1" />Accepted</> : <><Check className="h-3 w-3 mr-1" />Accept</>}
+              </Button>
+              <Button
+                size="sm"
+                variant={decision === "rejected" ? "outline" : "outline"}
+                className={cn("h-7 text-[11px] px-3", decision === "rejected" && "border-red-400 text-red-600 hover:bg-red-50")}
+                onClick={() => onDecision(id, "rejected")}
+              >
+                {decision === "rejected" ? <><XCircle className="h-3 w-3 mr-1" />Rejected</> : <><XCircle className="h-3 w-3 mr-1" />Reject</>}
+              </Button>
+            </div>
+          ) : !suggestedLanguage ? (
+            <Button
+              size="sm"
+              variant={isApplied ? "outline" : "default"}
+              className={cn("w-full h-7 text-[11px]", isApplied && "border-emerald-500 text-emerald-700 hover:bg-emerald-50")}
+              onClick={() => onApply(id)}
+            >
+              {isApplied ? <><Check className="h-3 w-3 mr-1" />Applied</> : "Apply Change"}
+            </Button>
+          ) : null}
         </div>
       )}
     </div>
@@ -364,6 +444,15 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
   const [tab, setTab] = useState<Tab>("overview");
   const [openClauseIdx, setOpenClauseIdx] = useState<number | null>(null);
   const [openMissingIdx, setOpenMissingIdx] = useState<number | null>(null);
+  const [decisions, setDecisions] = useState<Record<string, ItemDecision>>({});
+  const [editedTexts, setEditedTexts] = useState<Record<string, string>>({});
+
+  function handleDecision(id: string, d: ItemDecision) {
+    setDecisions(prev => ({ ...prev, [id]: d }));
+  }
+  function handleEditedTextChange(id: string, text: string) {
+    setEditedTexts(prev => ({ ...prev, [id]: text }));
+  }
 
   const ambiguityFlags = (analysis.ambiguity_flags ?? []) as AmbiguityFlag[];
   const extractedClauses = (analysis.extracted_clauses ?? []) as ExtractedClause[];
@@ -436,8 +525,14 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
             {redlinePlaced}/{redlineTotal} redlined
           </span></>
         )}
-        {appliedIds.size > 0 && (
-          <><span>·</span><span className="text-emerald-600 font-medium">{appliedIds.size} applied</span></>
+        {Object.values(decisions).filter(d => d === "accepted").length > 0 && (
+          <><span>·</span><span className="text-emerald-600 font-medium">{Object.values(decisions).filter(d => d === "accepted").length} accepted</span></>
+        )}
+        {Object.values(decisions).filter(d => d === "rejected").length > 0 && (
+          <><span>·</span><span className="text-red-500 font-medium">{Object.values(decisions).filter(d => d === "rejected").length} rejected</span></>
+        )}
+        {Object.values(decisions).filter(d => d === "edited").length > 0 && (
+          <><span>·</span><span className="text-blue-600 font-medium">{Object.values(decisions).filter(d => d === "edited").length} edited</span></>
         )}
       </div>
 
@@ -472,8 +567,11 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
                   <AccordionItem
                     key={`r-${i}`} id={`r-${i}`}
                     title={item.area} body={item.risk} recommendation={item.recommendation} risk={item.severity}
+                    clauseRef={(item as any).clauseRef}
                     isOpen={activeId === `r-${i}`} isApplied={appliedIds.has(`r-${i}`)}
                     onToggle={handleToggle} onApply={onApply}
+                    decision={decisions[`r-${i}`]} onDecision={handleDecision}
+                    editedText={editedTexts[`r-${i}`]} onEditedTextChange={handleEditedTextChange}
                   />
                 ))}
               </>
@@ -489,6 +587,8 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
                     title={`"${item.term}" — ${item.location}`} body={item.issue} recommendation={item.suggestion} risk="medium"
                     isOpen={activeId === `a-${i}`} isApplied={appliedIds.has(`a-${i}`)}
                     onToggle={handleToggle} onApply={onApply}
+                    decision={decisions[`a-${i}`]} onDecision={handleDecision}
+                    editedText={editedTexts[`a-${i}`]} onEditedTextChange={handleEditedTextChange}
                   />
                 ))}
               </>
@@ -544,8 +644,11 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
                   <AccordionItem
                     key={`r-${i}`} id={`r-${i}`}
                     title={item.area} body={item.risk} recommendation={item.recommendation} risk={item.severity}
+                    clauseRef={(item as any).clauseRef}
                     isOpen={activeId === `r-${i}`} isApplied={appliedIds.has(`r-${i}`)}
                     onToggle={handleToggle} onApply={onApply}
+                    decision={decisions[`r-${i}`]} onDecision={handleDecision}
+                    editedText={editedTexts[`r-${i}`]} onEditedTextChange={handleEditedTextChange}
                   />
                 ))}
               </>
@@ -557,8 +660,11 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
                 key={`c-${i}`} id={`c-${i}`}
                 title={item.clause} body={item.finding} recommendation={item.recommendation} risk={item.risk}
                 contractText={item.contractText}
+                suggestedLanguage={(item as any).suggestedLanguage}
                 isOpen={activeId === `c-${i}`} isApplied={appliedIds.has(`c-${i}`)}
                 onToggle={handleToggle} onApply={onApply} onScrollToText={onScrollToText}
+                decision={decisions[`c-${i}`]} onDecision={handleDecision}
+                editedText={editedTexts[`c-${i}`]} onEditedTextChange={handleEditedTextChange}
               />
             )) : (
               <div className="px-4 py-3 text-[11px] text-gray-400 italic border-b">
@@ -575,6 +681,8 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
                     title={`"${item.term}" — ${item.location}`} body={item.issue} recommendation={item.suggestion} risk="medium"
                     isOpen={activeId === `a-${i}`} isApplied={appliedIds.has(`a-${i}`)}
                     onToggle={handleToggle} onApply={onApply}
+                    decision={decisions[`a-${i}`]} onDecision={handleDecision}
+                    editedText={editedTexts[`a-${i}`]} onEditedTextChange={handleEditedTextChange}
                   />
                 ))}
               </>

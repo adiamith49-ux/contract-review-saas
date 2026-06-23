@@ -25,8 +25,9 @@ export type ContractLifecycle = "active" | "expired" | "renewal_due";
 export interface RiskSummaryItem {
   area: string;
   risk: string;
-  severity: "low" | "medium" | "high";
+  severity: "low" | "medium" | "high" | "critical";
   recommendation: string;
+  clauseRef?: string;
 }
 
 export interface ClauseAnalysisItem {
@@ -35,6 +36,7 @@ export interface ClauseAnalysisItem {
   risk: RiskLevel;
   recommendation: string;
   contractText?: string;
+  suggestedLanguage?: string;
 }
 
 export interface NegotiationPoint {

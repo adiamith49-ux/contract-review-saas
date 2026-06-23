@@ -179,7 +179,18 @@ function collectAnnotations(analysis: AnalysisResult, appliedIds?: Set<string>):
       severity: c.risk ?? c.severity ?? "medium",
       heading:  cleanText(c.clause ?? ""),
       finding:  cleanText(c.finding ?? ""),
-      recommendation: cleanText(c.recommendation ?? ""),
+      recommendation: cleanText(c.recommendation ?? "") + (c.suggestedLanguage ? `\n\nSuggested language: "${cleanText(c.suggestedLanguage)}"` : ""),
+    });
+  });
+
+  // Include ambiguity flags in export
+  ((analysis as any).ambiguityFlags ?? []).forEach((a: any, i: number) => {
+    if (appliedIds && !appliedIds.has(`a-${i}`)) return;
+    items.push({
+      severity: "medium",
+      heading:  cleanText(`Ambiguity: "${a.term}" — ${a.location}`),
+      finding:  cleanText(a.issue ?? ""),
+      recommendation: cleanText(a.suggestion ?? ""),
     });
   });
 
