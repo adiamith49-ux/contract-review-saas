@@ -150,13 +150,17 @@ export default function UploadPage() {
         contractStatus,
         governingLaw: governingLaw || undefined,
       });
-      setProgress(60);
+      setProgress(80);
       setStage("analyzing");
       toast.info("Analyzing contract with AI…");
-      await analyzeContract(token, contract.id, ruleIds);
-      setProgress(100);
-      setStage("done");
-      toast.success("Contract uploaded and analyzed!");
+      try {
+        await analyzeContract(token, contract.id, ruleIds);
+        setProgress(100);
+        setStage("done");
+        toast.success("Contract uploaded and analyzed!");
+      } catch {
+        toast.success("Contract uploaded! Click 'Analyze' on the contract page to run AI review.");
+      }
       router.push(`/contracts/${contract.id}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");

@@ -11,7 +11,7 @@ const analysisTool: Anthropic.Tool = {
   description: "Analyze a legal contract and return structured findings",
   input_schema: {
     type: "object",
-    required: ["riskLevel", "riskSummary", "clauseAnalysis", "negotiationPoints", "extractedClauses", "missingClauses", "contractMetadata"],
+    required: ["riskLevel", "riskSummary", "clauseAnalysis", "negotiationPoints"],
     properties: {
       riskLevel: {
         type: "string",
@@ -173,7 +173,7 @@ export async function analyzeContract(
 ): Promise<AnalysisResult & { model: string }> {
   const response = await anthropic.beta.promptCaching.messages.create({
     model: config.AI_MODEL,
-    max_tokens: 4096,
+    max_tokens: 3000,
     system: [{ type: "text", text: legalSystemPrompt, cache_control: { type: "ephemeral" } }],
     tools: [analysisTool],
     tool_choice: { type: "tool", name: "analyze_contract" },

@@ -96,7 +96,7 @@ export function buildContractPrompt(
     context += clauseSection;
   }
 
-  return `${context}\n\nAnalyze this contract thoroughly. You MUST populate ALL seven output fields:
+  return `${context}\n\nAnalyze this contract. You MUST populate the four REQUIRED fields (riskSummary, clauseAnalysis, negotiationPoints, riskLevel). Also populate the optional fields (contractMetadata, extractedClauses, missingClauses, ambiguityFlags) if token budget allows. Prioritize quality over quantity — fewer items with better analysis beats many shallow items.
 
 1. contractMetadata — extract key metadata from the contract text:
    - parties: ALL parties with their names (as written) and roles
