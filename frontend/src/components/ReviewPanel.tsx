@@ -278,7 +278,7 @@ function AccordionItem({
   onApply: (id: string) => void;
   onScrollToText?: (text: string) => void;
   decision?: ItemDecision;
-  onDecision?: (id: string, d: ItemDecision) => void;
+  onDecision?: (id: string, d: ItemDecision | undefined) => void;
   editedText?: string;
   onEditedTextChange?: (id: string, text: string) => void;
 }) {
@@ -354,7 +354,7 @@ function AccordionItem({
                   <Button size="sm" className="h-6 text-[10px] flex-1" onClick={() => { setEditing(false); onDecision?.(id, "edited"); onApply(id); }}>
                     <Check className="h-2.5 w-2.5 mr-1" />Save & Apply
                   </Button>
-                  <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => { setEditing(false); onEditedTextChange?.(id, suggestedLanguage); }}>
+                  <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => { setEditing(false); onEditedTextChange?.(id, suggestedLanguage); onDecision?.(id, undefined); }}>
                     Cancel
                   </Button>
                 </div>
@@ -447,8 +447,13 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
   const [decisions, setDecisions] = useState<Record<string, ItemDecision>>({});
   const [editedTexts, setEditedTexts] = useState<Record<string, string>>({});
 
-  function handleDecision(id: string, d: ItemDecision) {
-    setDecisions(prev => ({ ...prev, [id]: d }));
+  function handleDecision(id: string, d: ItemDecision | undefined) {
+    setDecisions(prev => {
+      const next = { ...prev };
+      if (d === undefined) delete next[id];
+      else next[id] = d;
+      return next;
+    });
   }
   function handleEditedTextChange(id: string, text: string) {
     setEditedTexts(prev => ({ ...prev, [id]: text }));
