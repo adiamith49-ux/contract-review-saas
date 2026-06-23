@@ -6,6 +6,9 @@ import type {
   ClauseAnalysisItem,
   NegotiationPoint,
   AmbiguityFlag,
+  ContractMetadata,
+  ExtractedClause,
+  MissingClause,
 } from "@/lib/types";
 
 // ─── Client types ─────────────────────────────────────────────────────────────
@@ -106,6 +109,9 @@ export interface AnalysisOut {
   contract_id: string;
   user_id: string;
   risk_level: RiskLevel;
+  contract_metadata?: ContractMetadata;
+  extracted_clauses?: ExtractedClause[];
+  missing_clauses?: MissingClause[];
   risk_summary: RiskSummaryItem[];
   clause_analysis: ClauseAnalysisItem[];
   negotiation_points: NegotiationPoint[];

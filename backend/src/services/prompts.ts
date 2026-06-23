@@ -96,7 +96,35 @@ export function buildContractPrompt(
     context += clauseSection;
   }
 
-  return `${context}\n\nAnalyze this contract thoroughly. You MUST populate ALL four output fields:\n1. riskSummary — high-level risk areas (always at least 2–4 findings)\n2. clauseAnalysis — clause-by-clause review of every substantive clause (always at least 3–5 findings; flag gaps, weak language, missing protections, and unfavorable terms)\n3. negotiationPoints — concrete leverage points with preferred and fallback positions (always at least 2–4 items; focus on terms that are negotiable in practice)\n4. ambiguityFlags — vague or undefined terms that could create disputes\n\nNever return empty arrays for riskSummary, clauseAnalysis, or negotiationPoints — every commercial contract has risks and negotiable terms.\n\nCONTRACT TEXT:\n${text.slice(0, 180000)}`;
+  return `${context}\n\nAnalyze this contract thoroughly. You MUST populate ALL seven output fields:
+
+1. contractMetadata — extract key metadata from the contract text:
+   - parties: ALL parties with their names (as written) and roles
+   - effectiveDate, expirationDate, term, renewalTerms, noticePeriod
+   - governingLaw, disputeResolution, totalValue, paymentTerms
+   - Use "Not specified" for any metadata not found in the contract
+
+2. extractedClauses — identify and extract EVERY substantive clause in the contract:
+   - For each clause: classify its type, copy the EXACT verbatim text from the contract, summarize it in plain English, assess its risk level, note the section reference, and list specific issues
+   - You MUST extract at least these clause types if they exist: confidentiality, indemnification, limitation_of_liability, termination, ip_ownership, data_protection, governing_law, payment_terms
+   - The verbatimText field MUST contain the exact text copied from the contract — never paraphrase
+
+3. missingClauses — identify standard commercial clauses that SHOULD be in this type of contract but are missing:
+   - For each missing clause: state its type, importance (critical/important/recommended), recommendation for what to add, and suggested draft language
+   - Common missing clauses to check: force majeure, data protection/GDPR, insurance, audit rights, assignment restrictions, survival, entire agreement
+
+4. riskSummary — high-level risk areas (always at least 2–4 findings)
+
+5. clauseAnalysis — clause-by-clause risk findings (always at least 3–5 findings). Each finding MUST include contractText: the exact quote from the contract that triggered the risk finding.
+
+6. negotiationPoints — concrete leverage points with preferred and fallback positions (always at least 2–4 items)
+
+7. ambiguityFlags — vague or undefined terms that could create disputes
+
+Never return empty arrays for extractedClauses, riskSummary, clauseAnalysis, or negotiationPoints — every commercial contract has clauses, risks, and negotiable terms.
+
+CONTRACT TEXT:
+${text.slice(0, 180000)}`;
 }
 
 // ─── Redline prompts ──────────────────────────────────────────────────────────

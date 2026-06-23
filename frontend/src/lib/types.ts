@@ -34,6 +34,7 @@ export interface ClauseAnalysisItem {
   finding: string;
   risk: RiskLevel;
   recommendation: string;
+  contractText?: string;
 }
 
 export interface NegotiationPoint {
@@ -49,8 +50,46 @@ export interface AmbiguityFlag {
   suggestion: string;
 }
 
+export interface ContractParty {
+  name: string;
+  role: string;
+}
+
+export interface ContractMetadata {
+  parties: ContractParty[];
+  effectiveDate: string;
+  expirationDate?: string;
+  term?: string;
+  renewalTerms?: string;
+  noticePeriod?: string;
+  governingLaw: string;
+  disputeResolution?: string;
+  totalValue?: string;
+  paymentTerms?: string;
+}
+
+export interface ExtractedClause {
+  clauseType: string;
+  title: string;
+  verbatimText: string;
+  summary: string;
+  risk: RiskLevel;
+  section: string;
+  issues?: string[];
+}
+
+export interface MissingClause {
+  clauseType: string;
+  importance: "critical" | "important" | "recommended";
+  recommendation: string;
+  suggestedLanguage?: string;
+}
+
 export interface AnalysisResult {
   riskLevel: RiskLevel;
+  contractMetadata?: ContractMetadata;
+  extractedClauses?: ExtractedClause[];
+  missingClauses?: MissingClause[];
   riskSummary: RiskSummaryItem[];
   clauseAnalysis: ClauseAnalysisItem[];
   negotiationPoints: NegotiationPoint[];

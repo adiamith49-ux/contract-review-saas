@@ -11,12 +11,86 @@ const analysisTool: Anthropic.Tool = {
   description: "Analyze a legal contract and return structured findings",
   input_schema: {
     type: "object",
-    required: ["riskLevel", "riskSummary", "clauseAnalysis", "negotiationPoints"],
+    required: ["riskLevel", "riskSummary", "clauseAnalysis", "negotiationPoints", "extractedClauses", "missingClauses", "contractMetadata"],
     properties: {
       riskLevel: {
         type: "string",
         enum: ["low", "medium", "high", "critical"],
         description: "Overall risk level of the contract",
+      },
+      contractMetadata: {
+        type: "object",
+        description: "Key metadata extracted from the contract text",
+        required: ["parties", "effectiveDate", "governingLaw"],
+        properties: {
+          parties: {
+            type: "array",
+            description: "All parties to the contract with their roles",
+            items: {
+              type: "object",
+              required: ["name", "role"],
+              properties: {
+                name: { type: "string", description: "Party name as written in the contract" },
+                role: { type: "string", description: "Role: e.g. 'Disclosing Party', 'Service Provider', 'Customer', 'Vendor', 'Licensor'" },
+              },
+            },
+          },
+          effectiveDate: { type: "string", description: "Contract effective/start date, or 'Not specified'" },
+          expirationDate: { type: "string", description: "Contract end/expiration date, or 'Not specified'" },
+          term: { type: "string", description: "Contract duration/term, e.g. '2 years', 'Perpetual', or 'Not specified'" },
+          renewalTerms: { type: "string", description: "Auto-renewal terms and notice period, or 'Not specified'" },
+          noticePeriod: { type: "string", description: "Required notice period for termination or non-renewal, or 'Not specified'" },
+          governingLaw: { type: "string", description: "Governing law and jurisdiction as stated in the contract" },
+          disputeResolution: { type: "string", description: "How disputes are resolved: arbitration, mediation, litigation, or 'Not specified'" },
+          totalValue: { type: "string", description: "Total contract value or fee structure, or 'Not specified'" },
+          paymentTerms: { type: "string", description: "Payment schedule/terms, or 'Not specified'" },
+        },
+      },
+      extractedClauses: {
+        type: "array",
+        description: "All standard commercial clauses found in the contract. Extract every substantive clause with its verbatim text.",
+        items: {
+          type: "object",
+          required: ["clauseType", "title", "verbatimText", "summary", "risk", "section"],
+          properties: {
+            clauseType: {
+              type: "string",
+              enum: [
+                "confidentiality", "indemnification", "limitation_of_liability",
+                "termination", "ip_ownership", "data_protection", "governing_law",
+                "payment_terms", "representations_warranties", "non_compete",
+                "non_solicitation", "force_majeure", "assignment", "dispute_resolution",
+                "insurance", "audit_rights", "compliance", "notice_provisions",
+                "entire_agreement", "amendment", "severability", "survival", "other"
+              ],
+              description: "Standard clause category",
+            },
+            title: { type: "string", description: "Clause heading as it appears in the contract, e.g. 'Section 8 — Limitation of Liability'" },
+            verbatimText: { type: "string", description: "EXACT verbatim text of the clause from the contract. Copy the full clause text character-for-character." },
+            summary: { type: "string", description: "Plain-English summary of what this clause means and its practical implications" },
+            risk: { type: "string", enum: ["low", "medium", "high", "critical"], description: "Risk level of this specific clause" },
+            section: { type: "string", description: "Section/article number reference, e.g. 'Section 8.2', 'Article IV'" },
+            issues: {
+              type: "array",
+              description: "Specific issues or concerns with this clause",
+              items: { type: "string" },
+            },
+          },
+        },
+      },
+      missingClauses: {
+        type: "array",
+        description: "Standard commercial clauses that SHOULD be present in this type of contract but are missing or inadequately addressed",
+        items: {
+          type: "object",
+          required: ["clauseType", "importance", "recommendation"],
+          properties: {
+            clauseType: { type: "string", description: "Type of missing clause, e.g. 'Data Protection', 'Force Majeure'" },
+            importance: { type: "string", enum: ["critical", "important", "recommended"], description: "How important this missing clause is" },
+            recommendation: { type: "string", description: "What should be added and why" },
+            suggestedLanguage: { type: "string", description: "Draft language for the missing clause" },
+          },
+        },
       },
       riskSummary: {
         type: "array",
@@ -34,7 +108,7 @@ const analysisTool: Anthropic.Tool = {
       },
       clauseAnalysis: {
         type: "array",
-        description: "Clause-by-clause findings",
+        description: "Clause-by-clause risk findings — each finding must reference specific contract language",
         items: {
           type: "object",
           required: ["clause", "finding", "risk", "recommendation"],
@@ -43,6 +117,7 @@ const analysisTool: Anthropic.Tool = {
             finding: { type: "string" },
             risk: { type: "string", enum: ["low", "medium", "high", "critical"] },
             recommendation: { type: "string" },
+            contractText: { type: "string", description: "The exact contract text that triggered this finding" },
           },
         },
       },
@@ -96,7 +171,7 @@ export async function analyzeContract(
 ): Promise<AnalysisResult & { model: string }> {
   const response = await anthropic.beta.promptCaching.messages.create({
     model: config.AI_MODEL,
-    max_tokens: 4096,
+    max_tokens: 8192,
     system: [{ type: "text", text: legalSystemPrompt, cache_control: { type: "ephemeral" } }],
     tools: [analysisTool],
     tool_choice: { type: "tool", name: "analyze_contract" },
