@@ -153,9 +153,14 @@ export async function redlineContract(
 
   const response = await stream.finalMessage();
 
+  console.log("[redline] stop_reason:", response.stop_reason, "content_types:", response.content.map(c => c.type));
   const toolUse = response.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
-  if (!toolUse) throw new Error("AI did not return redline edits");
+  if (!toolUse) {
+    console.log("[redline] no tool_use block, content:", JSON.stringify(response.content).slice(0, 500));
+    throw new Error("AI did not return redline edits");
+  }
 
+  console.log("[redline] raw edits count:", Array.isArray((toolUse.input as any)?.edits) ? (toolUse.input as any).edits.length : "not array");
   const { edits } = toolUse.input as { edits: RedlineEdit[] };
   return { edits: Array.isArray(edits) ? edits : [], model: config.AI_MODEL };
 }
