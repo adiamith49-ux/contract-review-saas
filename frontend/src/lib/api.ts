@@ -262,11 +262,53 @@ export async function analyzeContract(
   token: string | null,
   id: string,
   selectedRuleIds?: string[]
-): Promise<{ analysisId: string; status: string }> {
-  return apiFetch(`/api/contracts/${id}/analyze`, token, {
+): Promise<{ analysisId: string; status: string; riskLevel: string }> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_URL}/api/contracts/${id}/analyze`, {
     method: "POST",
+    headers,
     body: JSON.stringify(selectedRuleIds !== undefined ? { selectedRuleIds } : {}),
   });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Request failed" }));
+    throw new Error(err.error ?? `HTTP ${res.status}`);
+  }
+
+  // SSE stream — read until we get a "result" or "error" event
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("No response body");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let currentEvent = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // Process complete lines
+    while (buffer.includes("\n")) {
+      const newlineIdx = buffer.indexOf("\n");
+      const line = buffer.slice(0, newlineIdx).trim();
+      buffer = buffer.slice(newlineIdx + 1);
+
+      if (line.startsWith("event: ")) {
+        currentEvent = line.slice(7);
+      } else if (line.startsWith("data: ")) {
+        const payload = JSON.parse(line.slice(6));
+        if (currentEvent === "error") throw new Error(payload.error ?? "Analysis failed");
+        if (currentEvent === "result") return payload;
+        currentEvent = "";
+      }
+      // ignore comments (": keepalive") and blank lines
+    }
+  }
+
+  throw new Error("Analysis stream ended without result");
 }
 
 export async function listContracts(

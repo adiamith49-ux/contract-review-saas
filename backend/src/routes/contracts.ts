@@ -279,20 +279,39 @@ contractsRouter.get("/:id/intake", async (req, res, next) => {
 });
 
 // POST /api/contracts/:id/analyze
-contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
+// Uses SSE streaming to keep the connection alive past Vercel's 60s idle timeout.
+// Sends periodic keepalive comments while the AI processes, then the final result.
+contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res) => {
+  // --- Validate contract ---
+  const { data: contract, error: fetchError } = await db
+    .from("contracts")
+    .select("id, user_id, contract_type, extracted_text, status")
+    .eq("id", req.params.id)
+    .eq("user_id", req.userId)
+    .single();
+
+  if (fetchError || !contract) { res.status(404).json({ error: "Contract not found" }); return; }
+  if (!contract.extracted_text) { res.status(422).json({ error: "Contract text could not be extracted" }); return; }
+
+  // --- Switch to SSE streaming ---
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+
+  // Keepalive: send a comment every 10s so Vercel doesn't consider the connection idle
+  const keepalive = setInterval(() => {
+    res.write(": keepalive\n\n");
+  }, 10_000);
+
+  const sendEvent = (event: string, data: unknown) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
   try {
-    const { data: contract, error: fetchError } = await db
-      .from("contracts")
-      .select("id, user_id, contract_type, extracted_text, status")
-      .eq("id", req.params.id)
-      .eq("user_id", req.userId)
-      .single();
+    sendEvent("status", { stage: "preparing" });
 
-    if (fetchError || !contract) { res.status(404).json({ error: "Contract not found" }); return; }
-    if (!contract.extracted_text) { res.status(422).json({ error: "Contract text could not be extracted" }); return; }
-
-    // selectedRuleIds from body: string[] = use those specific rules,
-    // empty array = standard review (no rules), undefined = all active rules
     const { selectedRuleIds } = req.body as { selectedRuleIds?: string[] };
 
     const [intakeResult, clauseResult] = await Promise.all([
@@ -302,7 +321,6 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
     const intake = intakeResult.data ?? null;
     const clauseLibrary = (clauseResult.data ?? []) as Array<{ title: string; clause_type: "approved" | "fallback"; content: string }>;
 
-    // Build combined playbook text from selected (or all active) review rules
     let playbookText: string | undefined;
     const selectFields = "playbook_text, rules";
     let ruleRows: any[] = [];
@@ -316,9 +334,7 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
     }
 
     const playbookParts = ruleRows.map((row: any) => {
-      // New document-based playbooks
       if (row.playbook_text?.trim()) return row.playbook_text as string;
-      // Backward compat: old text-form rules stored as JSONB
       const legacyRules = row.rules as Array<{ clause_type: string; requirement: string; severity: string }> | null;
       if (legacyRules?.length) {
         return legacyRules.map(r => `[${(r.severity ?? "medium").toUpperCase()}] ${r.clause_type}: ${r.requirement}`).join("\n");
@@ -331,6 +347,7 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
     }
 
     await db.from("contracts").update({ status: "processing" }).eq("id", contract.id);
+    sendEvent("status", { stage: "analyzing" });
 
     const analysis = await analyzeContract(
       contract.extracted_text,
@@ -339,6 +356,8 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
       playbookText,
       clauseLibrary.length > 0 ? clauseLibrary : undefined
     );
+
+    sendEvent("status", { stage: "saving" });
 
     const { data: saved, error: saveError } = await db
       .from("analyses")
@@ -350,6 +369,9 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
         clause_analysis: analysis.clauseAnalysis,
         negotiation_points: analysis.negotiationPoints,
         ambiguity_flags: analysis.ambiguityFlags ?? [],
+        extracted_clauses: analysis.extractedClauses ?? [],
+        missing_clauses: analysis.missingClauses ?? [],
+        contract_metadata: analysis.contractMetadata ?? null,
         model: analysis.model,
       }, { onConflict: "contract_id" })
       .select("id")
@@ -364,10 +386,13 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
       analysis_id: saved.id,
     });
 
-    res.json({ analysisId: saved.id, status: "analyzed", riskLevel: analysis.riskLevel });
+    sendEvent("result", { analysisId: saved.id, status: "analyzed", riskLevel: analysis.riskLevel });
   } catch (err) {
     await db.from("contracts").update({ status: "failed" }).eq("id", req.params.id);
-    next(err);
+    sendEvent("error", { error: err instanceof Error ? err.message : "Analysis failed" });
+  } finally {
+    clearInterval(keepalive);
+    res.end();
   }
 });
 
