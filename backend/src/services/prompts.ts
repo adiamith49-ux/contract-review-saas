@@ -82,13 +82,13 @@ export function buildContractPrompt(
     context += clauseSection;
   }
 
-  return `${context}\n\nAnalyze this contract concisely. Return:
-1. riskLevel — overall risk (low/medium/high/critical)
-2. riskSummary — top 3 risk areas with clauseRef, severity, recommendation
-3. clauseAnalysis — top 4 clause findings with contractText quote and suggestedLanguage
-4. negotiationPoints — top 3 leverage points with preferred and fallback positions
+  return `${context}\n\nAnalyze this contract. Return ALL four fields:
+- riskLevel: overall risk
+- riskSummary: 3 items max, 1-2 sentences each
+- clauseAnalysis: 3 items max, keep contractText to 1 sentence, suggestedLanguage to 1-2 sentences
+- negotiationPoints: 2 items max, 1 sentence each field
 
-Be brief. Max 3-4 items per array. Include contractText (exact quote) and suggestedLanguage (real legal text) in clauseAnalysis.
+CRITICAL: Keep every string value under 2 sentences. Do NOT write paragraphs.
 
 CONTRACT TEXT:
 ${text.slice(0, 40000)}`;
