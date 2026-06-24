@@ -93,7 +93,6 @@ export function IntakePanel({ contractId, getToken, onSaved }: Props) {
             notes: intake.notes ?? "",
           });
           setFilled(true);
-          setOpen(true); // auto-open if intake exists
         }
       } catch {
         // no intake yet — fine

@@ -248,7 +248,7 @@ contractsRouter.post("/:id/intake", async (req, res, next) => {
 
     const { data, error } = await db
       .from("legal_intake")
-      .upsert({ ...body, contract_id: req.params.id, user_id: req.userId })
+      .upsert({ ...body, contract_id: req.params.id, user_id: req.userId }, { onConflict: "contract_id" })
       .select()
       .single();
 
