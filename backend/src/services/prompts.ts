@@ -1,20 +1,6 @@
 import type { ContractType } from "../types.js";
 
-export const legalSystemPrompt = `You are a senior corporate lawyer specializing in commercial contracts, with deep expertise in US and UK commercial law.
-
-Your primary jurisdictions are:
-- United States: UCC, Delaware corporate law, applicable state commercial law, federal regulations
-- United Kingdom: English contract law, Companies Act 2006, UK commercial practice, applicable English common law
-
-Your role is to analyze contracts and provide:
-- Precise identification of legal and business risks
-- Clause-by-clause review highlighting unfavorable or missing terms
-- Practical negotiation strategies with concrete fallback positions
-- Business impact analysis for each key finding
-
-Focus areas: liability caps, indemnification, payment terms, termination rights, IP ownership, data protection, confidentiality, governing law, dispute resolution, assignment, SLA and remedy provisions, auto-renewal, limitation of liability, representations and warranties.
-
-Always call the analyze_contract tool with structured JSON findings. Never provide general legal advice — flag specific contract risks only. Append to all outputs: "AI-generated insights are for informational purposes only and do not constitute legal advice."`;
+export const legalSystemPrompt = `You are a senior corporate lawyer. Analyze contracts for risks, unfavorable clauses, and negotiation leverage. Focus on: liability, indemnification, termination, IP, data protection, payment terms, governing law. Be concise. Always use the analyze_contract tool.`;
 
 interface IntakeContext {
   counterparty_name?: string | null;
@@ -96,36 +82,13 @@ export function buildContractPrompt(
     context += clauseSection;
   }
 
-  return `${context}\n\nAnalyze this contract. You MUST populate the four REQUIRED fields (riskSummary, clauseAnalysis, negotiationPoints, riskLevel). Also populate the optional fields (contractMetadata, extractedClauses, missingClauses, ambiguityFlags) if token budget allows. Prioritize quality over quantity — fewer items with better analysis beats many shallow items.
+  return `${context}\n\nAnalyze this contract concisely. Return:
+1. riskLevel — overall risk (low/medium/high/critical)
+2. riskSummary — top 3 risk areas with clauseRef, severity, recommendation
+3. clauseAnalysis — top 4 clause findings with contractText quote and suggestedLanguage
+4. negotiationPoints — top 3 leverage points with preferred and fallback positions
 
-1. contractMetadata — extract key metadata from the contract text:
-   - parties: ALL parties with their names (as written) and roles
-   - effectiveDate, expirationDate, term, renewalTerms, noticePeriod
-   - governingLaw, disputeResolution, totalValue, paymentTerms
-   - Use "Not specified" for any metadata not found in the contract
-
-2. extractedClauses — identify the KEY substantive clauses (top 6-10 most important):
-   - For each clause: classify its type, copy the KEY sentence or phrase verbatim (1-3 sentences max, not the full clause), summarize in plain English, assess risk, note section reference, list issues
-   - Prioritize: indemnification, limitation_of_liability, termination, ip_ownership, data_protection, governing_law, payment_terms, confidentiality
-   - Keep verbatimText SHORT — the most legally significant sentence only
-
-3. missingClauses — identify standard commercial clauses that SHOULD be in this type of contract but are missing:
-   - For each missing clause: state its type, importance (critical/important/recommended), recommendation for what to add, and suggested draft language
-   - Common missing clauses to check: force majeure, data protection/GDPR, insurance, audit rights, assignment restrictions, survival, entire agreement
-
-4. riskSummary — high-level risk areas (always at least 2–4 findings). Each finding MUST include clauseRef: the specific section or clause reference (e.g. "Section 8.2", "Limitation of Liability clause"). Severity can be low/medium/high/critical.
-
-5. clauseAnalysis — clause-by-clause risk findings (always at least 3–5 findings). Each finding MUST include:
-   - contractText: the exact quote from the contract that triggered the risk finding
-   - suggestedLanguage: practical replacement clause language the user can adopt directly — must be real legal text ready for insertion, not generic advice like "consider adding..." Write the actual clause text.
-
-6. negotiationPoints — concrete leverage points with preferred and fallback positions (always at least 2–4 items)
-
-7. ambiguityFlags — vague or undefined terms that could create disputes
-
-Never return empty arrays for extractedClauses, riskSummary, clauseAnalysis, or negotiationPoints — every commercial contract has clauses, risks, and negotiable terms.
-
-Be concise — keep total output under 2500 tokens.
+Be brief. Max 3-4 items per array. Include contractText (exact quote) and suggestedLanguage (real legal text) in clauseAnalysis.
 
 CONTRACT TEXT:
 ${text.slice(0, 40000)}`;

@@ -18,83 +18,9 @@ const analysisTool: Anthropic.Tool = {
         enum: ["low", "medium", "high", "critical"],
         description: "Overall risk level of the contract",
       },
-      contractMetadata: {
-        type: "object",
-        description: "Key metadata extracted from the contract text",
-        required: ["parties", "effectiveDate", "governingLaw"],
-        properties: {
-          parties: {
-            type: "array",
-            description: "All parties to the contract with their roles",
-            items: {
-              type: "object",
-              required: ["name", "role"],
-              properties: {
-                name: { type: "string", description: "Party name as written in the contract" },
-                role: { type: "string", description: "Role: e.g. 'Disclosing Party', 'Service Provider', 'Customer', 'Vendor', 'Licensor'" },
-              },
-            },
-          },
-          effectiveDate: { type: "string", description: "Contract effective/start date, or 'Not specified'" },
-          expirationDate: { type: "string", description: "Contract end/expiration date, or 'Not specified'" },
-          term: { type: "string", description: "Contract duration/term, e.g. '2 years', 'Perpetual', or 'Not specified'" },
-          renewalTerms: { type: "string", description: "Auto-renewal terms and notice period, or 'Not specified'" },
-          noticePeriod: { type: "string", description: "Required notice period for termination or non-renewal, or 'Not specified'" },
-          governingLaw: { type: "string", description: "Governing law and jurisdiction as stated in the contract" },
-          disputeResolution: { type: "string", description: "How disputes are resolved: arbitration, mediation, litigation, or 'Not specified'" },
-          totalValue: { type: "string", description: "Total contract value or fee structure, or 'Not specified'" },
-          paymentTerms: { type: "string", description: "Payment schedule/terms, or 'Not specified'" },
-        },
-      },
-      extractedClauses: {
-        type: "array",
-        description: "All standard commercial clauses found in the contract. Extract every substantive clause with its verbatim text.",
-        items: {
-          type: "object",
-          required: ["clauseType", "title", "verbatimText", "summary", "risk", "section"],
-          properties: {
-            clauseType: {
-              type: "string",
-              enum: [
-                "confidentiality", "indemnification", "limitation_of_liability",
-                "termination", "ip_ownership", "data_protection", "governing_law",
-                "payment_terms", "representations_warranties", "non_compete",
-                "non_solicitation", "force_majeure", "assignment", "dispute_resolution",
-                "insurance", "audit_rights", "compliance", "notice_provisions",
-                "entire_agreement", "amendment", "severability", "survival", "other"
-              ],
-              description: "Standard clause category",
-            },
-            title: { type: "string", description: "Clause heading as it appears in the contract, e.g. 'Section 8 — Limitation of Liability'" },
-            verbatimText: { type: "string", description: "Key sentence or phrase from the clause verbatim (1-3 sentences max, not the full clause). Must be exact text from the contract." },
-            summary: { type: "string", description: "Plain-English summary of what this clause means and its practical implications" },
-            risk: { type: "string", enum: ["low", "medium", "high", "critical"], description: "Risk level of this specific clause" },
-            section: { type: "string", description: "Section/article number reference, e.g. 'Section 8.2', 'Article IV'" },
-            issues: {
-              type: "array",
-              description: "Specific issues or concerns with this clause",
-              items: { type: "string" },
-            },
-          },
-        },
-      },
-      missingClauses: {
-        type: "array",
-        description: "Standard commercial clauses that SHOULD be present in this type of contract but are missing or inadequately addressed",
-        items: {
-          type: "object",
-          required: ["clauseType", "importance", "recommendation"],
-          properties: {
-            clauseType: { type: "string", description: "Type of missing clause, e.g. 'Data Protection', 'Force Majeure'" },
-            importance: { type: "string", enum: ["critical", "important", "recommended"], description: "How important this missing clause is" },
-            recommendation: { type: "string", description: "What should be added and why" },
-            suggestedLanguage: { type: "string", description: "Draft language for the missing clause" },
-          },
-        },
-      },
       riskSummary: {
         type: "array",
-        description: "High-level risk areas identified",
+        description: "Top 3-4 high-level risk areas",
         items: {
           type: "object",
           required: ["area", "risk", "severity", "recommendation"],
@@ -103,13 +29,13 @@ const analysisTool: Anthropic.Tool = {
             risk: { type: "string" },
             severity: { type: "string", enum: ["low", "medium", "high", "critical"] },
             recommendation: { type: "string" },
-            clauseRef: { type: "string", description: "Section or clause reference, e.g. 'Section 8.2' or 'Limitation of Liability'" },
+            clauseRef: { type: "string" },
           },
         },
       },
       clauseAnalysis: {
         type: "array",
-        description: "Clause-by-clause risk findings — each finding must reference specific contract language",
+        description: "Top 3-5 clause-level risk findings",
         items: {
           type: "object",
           required: ["clause", "finding", "risk", "recommendation"],
@@ -118,14 +44,14 @@ const analysisTool: Anthropic.Tool = {
             finding: { type: "string" },
             risk: { type: "string", enum: ["low", "medium", "high", "critical"] },
             recommendation: { type: "string" },
-            contractText: { type: "string", description: "The exact contract text that triggered this finding" },
-            suggestedLanguage: { type: "string", description: "Practical replacement clause language the user can adopt or edit. Must be real legal text, not generic advice." },
+            contractText: { type: "string" },
+            suggestedLanguage: { type: "string" },
           },
         },
       },
       negotiationPoints: {
         type: "array",
-        description: "Negotiation strategies with fallback positions",
+        description: "Top 2-3 negotiation leverage points",
         items: {
           type: "object",
           required: ["point", "preferredPosition", "fallbackPosition"],
@@ -133,20 +59,6 @@ const analysisTool: Anthropic.Tool = {
             point: { type: "string" },
             preferredPosition: { type: "string" },
             fallbackPosition: { type: "string" },
-          },
-        },
-      },
-      ambiguityFlags: {
-        type: "array",
-        description: "Vague, contradictory, or undefined terms that could create disputes",
-        items: {
-          type: "object",
-          required: ["term", "location", "issue", "suggestion"],
-          properties: {
-            term: { type: "string", description: "The ambiguous term or phrase" },
-            location: { type: "string", description: "Clause or section where it appears" },
-            issue: { type: "string", description: "Why this is ambiguous or risky" },
-            suggestion: { type: "string", description: "Recommended replacement or clarification" },
           },
         },
       },
@@ -175,7 +87,7 @@ export async function analyzeContract(
   // instead of waiting for the full response to be computed.
   const stream = anthropic.messages.stream({
     model: config.AI_MODEL,
-    max_tokens: 2500,
+    max_tokens: 1500,
     system: [{ type: "text", text: legalSystemPrompt }],
     tools: [analysisTool],
     tool_choice: { type: "tool", name: "analyze_contract" },
