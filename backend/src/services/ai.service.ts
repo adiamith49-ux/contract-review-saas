@@ -171,14 +171,18 @@ export async function analyzeContract(
   playbookText?: string,
   clauseLibrary?: ClauseLibraryEntry[]
 ): Promise<AnalysisResult & { model: string }> {
-  const response = await anthropic.beta.promptCaching.messages.create({
+  // Use streaming to reduce wall-clock time — tokens arrive incrementally
+  // instead of waiting for the full response to be computed.
+  const stream = anthropic.messages.stream({
     model: config.AI_MODEL,
-    max_tokens: 3000,
-    system: [{ type: "text", text: legalSystemPrompt, cache_control: { type: "ephemeral" } }],
+    max_tokens: 2500,
+    system: [{ type: "text", text: legalSystemPrompt }],
     tools: [analysisTool],
     tool_choice: { type: "tool", name: "analyze_contract" },
     messages: [{ role: "user", content: buildContractPrompt(text, contractType, intake, playbookText, clauseLibrary) }],
   });
+
+  const response = await stream.finalMessage();
 
   const toolUse = response.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
   if (!toolUse) throw new Error("AI did not return structured analysis");

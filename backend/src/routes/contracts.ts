@@ -279,9 +279,7 @@ contractsRouter.get("/:id/intake", async (req, res, next) => {
 });
 
 // POST /api/contracts/:id/analyze
-// Returns immediately with { status: "processing" }.
-// AI analysis runs in the background via waitUntil (survives past response).
-// Frontend polls GET /:id until status flips to "analyzed" or "failed".
+// Synchronous — uses Anthropic streaming to complete within 60s.
 contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
   try {
     const { data: contract, error: fetchError } = await db
@@ -296,7 +294,6 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
 
     const { selectedRuleIds } = req.body as { selectedRuleIds?: string[] };
 
-    // Gather context before responding (fast DB queries)
     const [intakeResult, clauseResult] = await Promise.all([
       db.from("legal_intake").select("*").eq("contract_id", contract.id).single(),
       db.from("clause_library").select("title, clause_type, content").eq("user_id", req.userId),
@@ -331,54 +328,44 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
 
     await db.from("contracts").update({ status: "processing" }).eq("id", contract.id);
 
-    // Respond immediately — frontend will poll for results
-    res.json({ status: "processing" });
-
-    // Run AI analysis in the background (survives past response on Vercel via waitUntil)
-    const { waitUntil } = await import("@vercel/functions");
-    waitUntil(
-      (async () => {
-        try {
-          const analysis = await analyzeContract(
-            contract.extracted_text,
-            contract.contract_type as ContractType,
-            intake,
-            playbookText,
-            clauseLibrary.length > 0 ? clauseLibrary : undefined
-          );
-
-          const { data: saved, error: saveError } = await db
-            .from("analyses")
-            .upsert({
-              contract_id: contract.id,
-              user_id: req.userId,
-              risk_level: analysis.riskLevel,
-              risk_summary: analysis.riskSummary,
-              clause_analysis: analysis.clauseAnalysis,
-              negotiation_points: analysis.negotiationPoints,
-              ambiguity_flags: analysis.ambiguityFlags ?? [],
-              extracted_clauses: analysis.extractedClauses ?? [],
-              missing_clauses: analysis.missingClauses ?? [],
-              contract_metadata: analysis.contractMetadata ?? null,
-              model: analysis.model,
-            }, { onConflict: "contract_id" })
-            .select("id")
-            .single();
-
-          if (saveError) throw saveError;
-
-          await db.from("contracts").update({ status: "analyzed" }).eq("id", contract.id);
-          await logActivity(req.userId, "contract.analyzed", contract.id, {
-            risk_level: analysis.riskLevel,
-            analysis_id: saved.id,
-          });
-        } catch (err) {
-          console.error("[analyze bg]", err);
-          await db.from("contracts").update({ status: "failed" }).eq("id", contract.id);
-        }
-      })()
+    const analysis = await analyzeContract(
+      contract.extracted_text,
+      contract.contract_type as ContractType,
+      intake,
+      playbookText,
+      clauseLibrary.length > 0 ? clauseLibrary : undefined
     );
+
+    const { data: saved, error: saveError } = await db
+      .from("analyses")
+      .upsert({
+        contract_id: contract.id,
+        user_id: req.userId,
+        risk_level: analysis.riskLevel,
+        risk_summary: analysis.riskSummary,
+        clause_analysis: analysis.clauseAnalysis,
+        negotiation_points: analysis.negotiationPoints,
+        ambiguity_flags: analysis.ambiguityFlags ?? [],
+        extracted_clauses: analysis.extractedClauses ?? [],
+        missing_clauses: analysis.missingClauses ?? [],
+        contract_metadata: analysis.contractMetadata ?? null,
+        model: analysis.model,
+      }, { onConflict: "contract_id" })
+      .select("id")
+      .single();
+
+    if (saveError) throw saveError;
+
+    await db.from("contracts").update({ status: "analyzed" }).eq("id", contract.id);
+
+    await logActivity(req.userId, "contract.analyzed", contract.id, {
+      risk_level: analysis.riskLevel,
+      analysis_id: saved.id,
+    });
+
+    res.json({ analysisId: saved.id, status: "analyzed", riskLevel: analysis.riskLevel });
   } catch (err) {
+    await db.from("contracts").update({ status: "failed" }).eq("id", req.params.id);
     next(err);
   }
 });

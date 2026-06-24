@@ -262,24 +262,11 @@ export async function analyzeContract(
   token: string | null,
   id: string,
   selectedRuleIds?: string[]
-): Promise<{ status: string }> {
-  // Trigger analysis — returns immediately with { status: "processing" }
-  const result = await apiFetch<{ status: string }>(`/api/contracts/${id}/analyze`, token, {
+): Promise<{ analysisId: string; status: string }> {
+  return apiFetch(`/api/contracts/${id}/analyze`, token, {
     method: "POST",
     body: JSON.stringify(selectedRuleIds !== undefined ? { selectedRuleIds } : {}),
   });
-
-  if (result.status !== "processing") return result;
-
-  // Poll until status changes to "analyzed" or "failed"
-  for (let i = 0; i < 60; i++) {
-    await new Promise(r => setTimeout(r, 3000)); // poll every 3s
-    const contract = await apiFetch<{ contract: { status: string } }>(`/api/contracts/${id}`, token);
-    if (contract.contract.status === "analyzed") return { status: "analyzed" };
-    if (contract.contract.status === "failed") throw new Error("Analysis failed — please try again");
-  }
-
-  throw new Error("Analysis timed out — please refresh and try again");
 }
 
 export async function listContracts(

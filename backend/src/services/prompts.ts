@@ -125,10 +125,10 @@ export function buildContractPrompt(
 
 Never return empty arrays for extractedClauses, riskSummary, clauseAnalysis, or negotiationPoints — every commercial contract has clauses, risks, and negotiable terms.
 
-Be concise — keep total output under 3500 tokens.
+Be concise — keep total output under 2500 tokens.
 
 CONTRACT TEXT:
-${text.slice(0, 80000)}`;
+${text.slice(0, 40000)}`;
 }
 
 // ─── Redline prompts ──────────────────────────────────────────────────────────
