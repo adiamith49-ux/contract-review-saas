@@ -139,10 +139,10 @@ export async function redlineContract(
   playbookText?: string,
   clauseLibrary?: ClauseLibraryEntry[],
 ): Promise<{ edits: RedlineEdit[]; model: string }> {
-  const response = await anthropic.beta.promptCaching.messages.create({
+  const stream = anthropic.messages.stream({
     model: config.AI_MODEL,
-    max_tokens: 4096,
-    system: [{ type: "text", text: redlineSystemPrompt, cache_control: { type: "ephemeral" } }],
+    max_tokens: 3000,
+    system: [{ type: "text", text: redlineSystemPrompt }],
     tools: [redlineTool],
     tool_choice: { type: "tool", name: "generate_redlines" },
     messages: [{
@@ -151,12 +151,12 @@ export async function redlineContract(
     }],
   });
 
+  const response = await stream.finalMessage();
+
   const toolUse = response.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
   if (!toolUse) throw new Error("AI did not return redline edits");
 
-  console.log("[diag] raw AI response:", JSON.stringify(toolUse.input));
   const { edits } = toolUse.input as { edits: RedlineEdit[] };
-  console.log("[diag] parsed edits count:", Array.isArray(edits) ? edits.length : 0);
   return { edits: Array.isArray(edits) ? edits : [], model: config.AI_MODEL };
 }
 
@@ -164,12 +164,14 @@ export async function summarizeContract(
   text: string,
   contractType: ContractType
 ): Promise<string> {
-  const response = await anthropic.beta.promptCaching.messages.create({
+  const stream = anthropic.messages.stream({
     model: config.AI_MODEL,
     max_tokens: 1024,
-    system: [{ type: "text", text: legalSystemPrompt, cache_control: { type: "ephemeral" } }],
+    system: [{ type: "text", text: legalSystemPrompt }],
     messages: [{ role: "user", content: buildSummaryPrompt(text, contractType) }],
   });
+
+  const response = await stream.finalMessage();
 
   const textBlock = response.content.find((c): c is Anthropic.TextBlock => c.type === "text");
   if (!textBlock) throw new Error("AI did not return summary");

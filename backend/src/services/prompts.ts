@@ -155,7 +155,7 @@ export function buildRedlinePrompt(
     ctx += lib;
   }
 
-  return `${ctx}\n\nCONTRACT TEXT — copy original_text VERBATIM from this text:\n${text.slice(0, 180000)}\n\nGenerate redline edits now. Every original_text field must be an exact verbatim substring of the contract text above. Where your clause library provides standard language, use it in revised_text.`;
+  return `${ctx}\n\nCONTRACT TEXT — copy original_text VERBATIM from this text:\n${text.slice(0, 40000)}\n\nGenerate 3-10 redline edits focused on the highest-impact issues. Keep each field concise (1-2 sentences max). Every original_text field must be an exact verbatim substring of the contract text above. Where your clause library provides standard language, use it in revised_text.`;
 }
 
 export function buildSummaryPrompt(text: string, contractType: ContractType): string {
