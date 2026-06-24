@@ -184,7 +184,7 @@ export default function ContractDetailPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* ── Contract header bar ─────────────────────────────────────────── */}
-      <div className="shrink-0 px-5 py-2.5 border-b bg-white flex items-center justify-between gap-4 z-20">
+      <div className="shrink-0 px-3 md:px-5 py-2.5 border-b bg-white flex items-center justify-between gap-2 md:gap-4 z-20">
         <div className="flex items-center gap-3 min-w-0">
           <Link
             href="/contracts"
@@ -370,9 +370,9 @@ export default function ContractDetailPage() {
         ) : null
       ) : (
         // ── Review view ─────────────────────────────────────────────────────
-        <div className="flex flex-1 min-h-0 overflow-hidden relative">
+        <div className="flex flex-col lg:flex-row flex-1 min-h-0 overflow-hidden relative">
           {/* Document viewer */}
-          <div className="flex-1 min-h-0">
+          <div className="flex-1 min-h-0 min-w-0">
             <DocumentViewer
               text={contract.extracted_text}
               analysis={analysis}
@@ -517,8 +517,8 @@ function LoadingSkeleton() {
         <Skeleton className="h-5 w-48" />
         <Skeleton className="h-5 w-20" />
       </div>
-      <div className="flex flex-1 min-h-0">
-        <div className="w-[310px] border-r p-4 space-y-3">
+      <div className="flex flex-col lg:flex-row flex-1 min-h-0">
+        <div className="w-full lg:w-[340px] border-r p-4 space-y-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-20 w-full" />
           ))}

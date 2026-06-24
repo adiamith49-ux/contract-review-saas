@@ -487,7 +487,7 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
   ];
 
   return (
-    <div className="w-[380px] shrink-0 flex flex-col bg-white border-l shadow-[-2px_0_12px_rgba(0,0,0,0.08)]">
+    <div className="w-full lg:w-[340px] xl:w-[420px] 2xl:w-[480px] max-h-[50vh] lg:max-h-none shrink-0 flex flex-col bg-white border-t lg:border-t-0 lg:border-l shadow-[-2px_0_12px_rgba(0,0,0,0.08)]">
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="shrink-0 flex items-center gap-2.5 px-4 py-3 bg-[#1a2035] text-white">
         <ListChecks className="h-4 w-4 text-white/60 shrink-0" />
@@ -505,7 +505,7 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
             key={t.key}
             onClick={() => setTab(t.key)}
             className={cn(
-              "flex-1 text-[10px] font-medium py-2 border-b-2 transition-colors",
+              "flex-1 text-[10px] xl:text-[11px] font-medium py-2 border-b-2 transition-colors whitespace-nowrap",
               tab === t.key
                 ? "border-blue-600 text-blue-700 bg-white"
                 : "border-transparent text-gray-500 hover:text-gray-700"
