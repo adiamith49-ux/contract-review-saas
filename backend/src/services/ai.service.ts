@@ -116,7 +116,7 @@ const redlineTool: Anthropic.Tool = {
         description: "List of clause-level edits. original_text must be verbatim from the contract.",
         items: {
           type: "object",
-          required: ["clause_ref", "original_text", "revised_text", "edit_type", "risk", "playbook_rule", "rationale"],
+          required: ["clause_ref", "original_text", "revised_text", "edit_type", "risk", "rationale"],
           properties: {
             clause_ref:   { type: "string", description: "Section reference, e.g. 'Section 8.2' or 'Indemnification'" },
             original_text: { type: "string", description: "EXACT verbatim substring from the contract to change" },
