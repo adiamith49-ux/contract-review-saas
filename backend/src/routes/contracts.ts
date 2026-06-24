@@ -346,9 +346,6 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
         clause_analysis: analysis.clauseAnalysis,
         negotiation_points: analysis.negotiationPoints,
         ambiguity_flags: analysis.ambiguityFlags ?? [],
-        extracted_clauses: analysis.extractedClauses ?? [],
-        missing_clauses: analysis.missingClauses ?? [],
-        contract_metadata: analysis.contractMetadata ?? null,
         model: analysis.model,
       }, { onConflict: "contract_id" })
       .select("id")
