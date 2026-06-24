@@ -279,41 +279,24 @@ contractsRouter.get("/:id/intake", async (req, res, next) => {
 });
 
 // POST /api/contracts/:id/analyze
-// Uses SSE streaming to keep the connection alive past Vercel's 60s idle timeout.
-// Sends periodic keepalive comments while the AI processes, then the final result.
-contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res) => {
-  // --- Validate contract ---
-  const { data: contract, error: fetchError } = await db
-    .from("contracts")
-    .select("id, user_id, contract_type, extracted_text, status")
-    .eq("id", req.params.id)
-    .eq("user_id", req.userId)
-    .single();
-
-  if (fetchError || !contract) { res.status(404).json({ error: "Contract not found" }); return; }
-  if (!contract.extracted_text) { res.status(422).json({ error: "Contract text could not be extracted" }); return; }
-
-  // --- Switch to SSE streaming ---
-  res.writeHead(200, {
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    Connection: "keep-alive",
-  });
-
-  // Keepalive: send a comment every 10s so Vercel doesn't consider the connection idle
-  const keepalive = setInterval(() => {
-    res.write(": keepalive\n\n");
-  }, 10_000);
-
-  const sendEvent = (event: string, data: unknown) => {
-    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-  };
-
+// Returns immediately with { status: "processing" }.
+// AI analysis runs in the background via waitUntil (survives past response).
+// Frontend polls GET /:id until status flips to "analyzed" or "failed".
+contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
   try {
-    sendEvent("status", { stage: "preparing" });
+    const { data: contract, error: fetchError } = await db
+      .from("contracts")
+      .select("id, user_id, contract_type, extracted_text, status")
+      .eq("id", req.params.id)
+      .eq("user_id", req.userId)
+      .single();
+
+    if (fetchError || !contract) { res.status(404).json({ error: "Contract not found" }); return; }
+    if (!contract.extracted_text) { res.status(422).json({ error: "Contract text could not be extracted" }); return; }
 
     const { selectedRuleIds } = req.body as { selectedRuleIds?: string[] };
 
+    // Gather context before responding (fast DB queries)
     const [intakeResult, clauseResult] = await Promise.all([
       db.from("legal_intake").select("*").eq("contract_id", contract.id).single(),
       db.from("clause_library").select("title, clause_type, content").eq("user_id", req.userId),
@@ -347,52 +330,56 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res) => {
     }
 
     await db.from("contracts").update({ status: "processing" }).eq("id", contract.id);
-    sendEvent("status", { stage: "analyzing" });
 
-    const analysis = await analyzeContract(
-      contract.extracted_text,
-      contract.contract_type as ContractType,
-      intake,
-      playbookText,
-      clauseLibrary.length > 0 ? clauseLibrary : undefined
+    // Respond immediately — frontend will poll for results
+    res.json({ status: "processing" });
+
+    // Run AI analysis in the background (survives past response on Vercel via waitUntil)
+    const { waitUntil } = await import("@vercel/functions");
+    waitUntil(
+      (async () => {
+        try {
+          const analysis = await analyzeContract(
+            contract.extracted_text,
+            contract.contract_type as ContractType,
+            intake,
+            playbookText,
+            clauseLibrary.length > 0 ? clauseLibrary : undefined
+          );
+
+          const { data: saved, error: saveError } = await db
+            .from("analyses")
+            .upsert({
+              contract_id: contract.id,
+              user_id: req.userId,
+              risk_level: analysis.riskLevel,
+              risk_summary: analysis.riskSummary,
+              clause_analysis: analysis.clauseAnalysis,
+              negotiation_points: analysis.negotiationPoints,
+              ambiguity_flags: analysis.ambiguityFlags ?? [],
+              extracted_clauses: analysis.extractedClauses ?? [],
+              missing_clauses: analysis.missingClauses ?? [],
+              contract_metadata: analysis.contractMetadata ?? null,
+              model: analysis.model,
+            }, { onConflict: "contract_id" })
+            .select("id")
+            .single();
+
+          if (saveError) throw saveError;
+
+          await db.from("contracts").update({ status: "analyzed" }).eq("id", contract.id);
+          await logActivity(req.userId, "contract.analyzed", contract.id, {
+            risk_level: analysis.riskLevel,
+            analysis_id: saved.id,
+          });
+        } catch (err) {
+          console.error("[analyze bg]", err);
+          await db.from("contracts").update({ status: "failed" }).eq("id", contract.id);
+        }
+      })()
     );
-
-    sendEvent("status", { stage: "saving" });
-
-    const { data: saved, error: saveError } = await db
-      .from("analyses")
-      .upsert({
-        contract_id: contract.id,
-        user_id: req.userId,
-        risk_level: analysis.riskLevel,
-        risk_summary: analysis.riskSummary,
-        clause_analysis: analysis.clauseAnalysis,
-        negotiation_points: analysis.negotiationPoints,
-        ambiguity_flags: analysis.ambiguityFlags ?? [],
-        extracted_clauses: analysis.extractedClauses ?? [],
-        missing_clauses: analysis.missingClauses ?? [],
-        contract_metadata: analysis.contractMetadata ?? null,
-        model: analysis.model,
-      }, { onConflict: "contract_id" })
-      .select("id")
-      .single();
-
-    if (saveError) throw saveError;
-
-    await db.from("contracts").update({ status: "analyzed" }).eq("id", contract.id);
-
-    await logActivity(req.userId, "contract.analyzed", contract.id, {
-      risk_level: analysis.riskLevel,
-      analysis_id: saved.id,
-    });
-
-    sendEvent("result", { analysisId: saved.id, status: "analyzed", riskLevel: analysis.riskLevel });
   } catch (err) {
-    await db.from("contracts").update({ status: "failed" }).eq("id", req.params.id);
-    sendEvent("error", { error: err instanceof Error ? err.message : "Analysis failed" });
-  } finally {
-    clearInterval(keepalive);
-    res.end();
+    next(err);
   }
 });
 
