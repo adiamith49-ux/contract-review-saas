@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "npx tsc",
     "start": "node dist/index.js"
   },
   "dependencies": {
@@ -14,6 +14,7 @@
     "@aws-sdk/s3-request-presigner": "^3.600.0",
     "@clerk/backend": "^1.0.0",
     "@supabase/supabase-js": "^2.45.0",
+    "@vercel/functions": "^3.7.3",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "docx": "^9.0.0",
