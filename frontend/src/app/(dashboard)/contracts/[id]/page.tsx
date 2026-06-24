@@ -289,7 +289,7 @@ export default function ContractDetailPage() {
         const lifecycle = getLifecycleBadge(contract);
         return (
           <div className="shrink-0 border-b bg-gray-50/60">
-            <div className="px-5 py-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-gray-600">
+            <div className="px-3 md:px-5 py-1.5 flex flex-wrap items-center gap-x-3 md:gap-x-5 gap-y-1 text-xs text-gray-600">
               <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${lifecycle.className}`}>
                 {lifecycle.label}
               </span>

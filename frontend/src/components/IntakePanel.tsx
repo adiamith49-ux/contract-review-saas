@@ -134,7 +134,7 @@ export function IntakePanel({ contractId, getToken, onSaved }: Props) {
   }
 
   return (
-    <div className="shrink-0 border-b bg-white">
+    <div className="shrink-0 border-b bg-white max-h-[35vh] overflow-y-auto">
       {/* ── Toggle header ─────────────────────────────────────────────── */}
       <button
         onClick={() => setOpen(o => !o)}
