@@ -1,12 +1,13 @@
 {
   "version": 2,
-  "functions": {
-    "api/index.ts": {
-      "runtime": "@vercel/node@5.8.19",
-      "maxDuration": 60
+  "builds": [
+    {
+      "src": "src/app.ts",
+      "use": "@vercel/node",
+      "config": { "maxLambdaSize": "50mb" }
     }
-  },
+  ],
   "routes": [
-    { "src": "/(.*)", "dest": "api/index.ts" }
+    { "src": "/(.*)", "dest": "src/app.ts" }
   ]
 }
