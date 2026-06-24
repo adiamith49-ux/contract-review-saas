@@ -1,18 +1,11 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "src/app.ts",
-      "use": "@vercel/node",
-      "config": { "maxLambdaSize": "50mb" }
-    }
-  ],
   "functions": {
-    "src/**/*.ts": {
+    "api/index.ts": {
       "maxDuration": 60
     }
   },
   "routes": [
-    { "src": "/(.*)", "dest": "src/app.ts" }
+    { "src": "/(.*)", "dest": "api/index.ts" }
   ]
 }
