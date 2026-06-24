@@ -154,7 +154,11 @@ export async function redlineContract(
   const toolUse = response.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
   if (!toolUse) throw new Error("AI did not return redline edits");
 
-  const { edits } = toolUse.input as { edits: RedlineEdit[] };
+  let { edits } = toolUse.input as { edits: RedlineEdit[] | string };
+  // AI sometimes returns edits as a JSON string instead of an array
+  if (typeof edits === "string") {
+    try { edits = JSON.parse(edits); } catch { edits = []; }
+  }
   return { edits: Array.isArray(edits) ? edits : [], model: config.AI_MODEL };
 }
 
