@@ -139,45 +139,51 @@ export async function redlineContract(
   playbookText?: string,
   clauseLibrary?: ClauseLibraryEntry[],
 ): Promise<{ edits: RedlineEdit[]; model: string }> {
+  const prompt = buildRedlinePrompt(text, contractType, intake, playbookText, clauseLibrary);
+
+  // Retry up to 2 times if AI returns 0 edits (non-deterministic)
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const edits = await _callRedlineAI(prompt);
+    console.log(`[redline] attempt ${attempt}: ${edits.length} edits`);
+    if (edits.length > 0) {
+      return { edits, model: config.AI_MODEL };
+    }
+  }
+
+  // Return empty if both attempts fail
+  return { edits: [], model: config.AI_MODEL };
+}
+
+async function _callRedlineAI(prompt: string): Promise<RedlineEdit[]> {
   const response = await anthropic.messages.create({
     model: config.AI_MODEL,
-    max_tokens: 3000,
+    max_tokens: 4096,
     system: [{ type: "text", text: redlineSystemPrompt }],
     tools: [redlineTool],
     tool_choice: { type: "tool", name: "generate_redlines" },
-    messages: [{
-      role: "user",
-      content: buildRedlinePrompt(text, contractType, intake, playbookText, clauseLibrary),
-    }],
+    messages: [{ role: "user", content: prompt }],
   });
 
   const toolUse = response.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
-  if (!toolUse) throw new Error("AI did not return redline edits");
+  if (!toolUse) {
+    console.log("[redline] no tool_use block in response");
+    return [];
+  }
 
-  console.log("[redline-diag] toolUse.input type:", typeof toolUse.input);
-  console.log("[redline-diag] toolUse.input keys:", Object.keys(toolUse.input as Record<string, unknown>));
+  const input = toolUse.input as Record<string, unknown>;
+  let edits = input.edits as RedlineEdit[] | string | undefined;
 
-  let { edits } = toolUse.input as { edits: RedlineEdit[] | string };
-  console.log("[redline-diag] edits type:", typeof edits, "isArray:", Array.isArray(edits), "length:", Array.isArray(edits) ? edits.length : typeof edits === "string" ? edits.length : "N/A");
-
-  // AI sometimes returns edits as a JSON string instead of an array
+  // AI sometimes returns edits as a JSON string
   if (typeof edits === "string") {
-    console.log("[redline-diag] parsing string edits, first 200 chars:", edits.slice(0, 200));
     try { edits = JSON.parse(edits); } catch { edits = []; }
   }
 
-  // Handle case where edits is undefined/null
-  if (!edits) {
-    console.log("[redline-diag] edits is falsy, checking full input:", JSON.stringify(toolUse.input).slice(0, 500));
-    edits = [];
+  if (!edits || !Array.isArray(edits)) {
+    console.log("[redline] unexpected edits format:", typeof edits, JSON.stringify(input).slice(0, 300));
+    return [];
   }
 
-  const result = Array.isArray(edits) ? edits : [];
-  console.log("[redline-diag] final edit count:", result.length);
-  if (result.length > 0) {
-    console.log("[redline-diag] first edit original_text (100 chars):", result[0].original_text?.slice(0, 100));
-  }
-  return { edits: result, model: config.AI_MODEL };
+  return edits;
 }
 
 export async function summarizeContract(
