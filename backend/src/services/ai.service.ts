@@ -164,31 +164,18 @@ async function _callRedlineAI(prompt: string): Promise<RedlineEdit[]> {
     messages: [{ role: "user", content: prompt }],
   });
 
-  console.log("[redline] response stop_reason:", response.stop_reason, "content blocks:", response.content.length);
-
   const toolUse = response.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
-  if (!toolUse) {
-    console.log("[redline] no tool_use block. content types:", response.content.map(c => c.type));
-    // Check if there's a text block with error info
-    const textBlock = response.content.find((c): c is Anthropic.TextBlock => c.type === "text");
-    if (textBlock) console.log("[redline] text block:", textBlock.text.slice(0, 300));
-    return [];
-  }
+  if (!toolUse) return [];
 
   const input = toolUse.input as Record<string, unknown>;
   let edits = input.edits as RedlineEdit[] | string | undefined;
-  console.log("[redline] raw edits type:", typeof edits, "isArray:", Array.isArray(edits), "length:", Array.isArray(edits) ? edits.length : "N/A");
 
   // AI sometimes returns edits as a JSON string
   if (typeof edits === "string") {
-    console.log("[redline] parsing string edits, first 200:", edits.slice(0, 200));
     try { edits = JSON.parse(edits); } catch { edits = []; }
   }
 
-  if (!edits || !Array.isArray(edits)) {
-    console.log("[redline] unexpected edits format:", typeof edits, JSON.stringify(input).slice(0, 500));
-    return [];
-  }
+  if (!edits || !Array.isArray(edits)) return [];
 
   return edits;
 }

@@ -684,14 +684,9 @@ export async function exportToDocx(
   const author = "Contralyn AI";
 
   // Get placed redline edits sorted by position
-  if (redlineEdits && redlineEdits.length > 0) {
-    const sample = redlineEdits[0];
-    console.log("[export-docx] first edit:", JSON.stringify({ matched: sample.matched, start: sample.start, end: sample.end, edit_type: sample.edit_type, matchedType: typeof sample.matched, startType: typeof sample.start }));
-  }
   const placedEdits = (redlineEdits ?? [])
     .filter(e => e.matched && typeof e.start === "number" && typeof e.end === "number")
     .sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
-  console.log("[export-docx] placedEdits:", placedEdits.length, "from", redlineEdits?.length ?? 0, "total");
 
   if (extractedText && extractedText.trim().length > 100) {
     hasBody = true;

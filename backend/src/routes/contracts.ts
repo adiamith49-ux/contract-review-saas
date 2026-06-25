@@ -424,7 +424,6 @@ contractsRouter.get("/:id/export/docx", async (req, res, next) => {
 
     // Pass cached redline edits so the export includes proper tracked changes
     const redlineEdits = Array.isArray(redlineData?.edits) ? redlineData.edits as ProcessedEdit[] : undefined;
-    console.log("[export-docx] redlineData:", redlineData ? "found" : "null", "edits:", redlineEdits?.length ?? "none");
 
     const buffer = await exportToDocx(data.filename, data.contract_type, {
       riskLevel: a.risk_level,

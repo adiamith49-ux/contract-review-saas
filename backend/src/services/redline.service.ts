@@ -150,7 +150,6 @@ export function processEdits(source: string, edits: RedlineEdit[]): ProcessedEdi
     const raw = edit.original_text ?? "";
 
     if (!raw.trim() && edit.edit_type !== "insert") {
-      console.log(`[redline] MISS ${JSON.stringify(raw)} — empty original_text`);
       return { ...edit, matched: false as const, reason: "original_text is empty" };
     }
 
@@ -158,23 +157,18 @@ export function processEdits(source: string, edits: RedlineEdit[]): ProcessedEdi
     const normTgt = normalizeWithMap(raw).norm;
 
     if (!normTgt) {
-      console.log(`[redline] MISS (blank after normalisation)`);
       return { ...edit, matched: false as const, reason: "original_text is blank after normalisation" };
     }
 
     // Search in normalised space — case-sensitive first, then case-insensitive.
-    console.log("[diag] try:", JSON.stringify(normTgt.slice(0, 80)), "| found:", docNorm.includes(normTgt));
     let hit = docNorm.indexOf(normTgt);
     if (hit === -1) hit = docNorm.toLowerCase().indexOf(normTgt.toLowerCase());
 
     if (hit === -1) {
-      console.log(`[redline] MISS ${JSON.stringify(raw.slice(0, 80))}`);
       return { ...edit, matched: false as const, reason: "original_text not found in source" };
     }
 
     // Recover original offsets using the position map.
-    //   startOrig = map[hit]
-    //   endOrig   = map[hit + normTgt.length - 1] + 1
     const startOrig = docMap[hit];
     const endNormIdx = hit + normTgt.length - 1;
     const endOrig = endNormIdx < docMap.length ? docMap[endNormIdx] + 1 : source.length;
@@ -182,11 +176,9 @@ export function processEdits(source: string, edits: RedlineEdit[]): ProcessedEdi
     // Detect overlap with already-placed edits.
     const overlaps = usedRanges.some(([s, e]) => startOrig < e && endOrig > s);
     if (overlaps) {
-      console.log(`[redline] MISS (overlap) ${JSON.stringify(raw.slice(0, 60))}`);
       return { ...edit, matched: false as const, reason: "overlaps with a previously placed edit" };
     }
 
-    console.log(`[redline] OK   ${raw.replace(/\n/g, " ").slice(0, 60)}`);
     usedRanges.push([startOrig, endOrig]);
     return { ...edit, matched: true as const, start: startOrig, end: endOrig };
   });
