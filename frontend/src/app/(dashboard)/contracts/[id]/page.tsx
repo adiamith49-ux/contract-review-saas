@@ -226,7 +226,7 @@ export default function ContractDetailPage() {
                   Review
                 </button>
                 <button
-                  onClick={() => { if (!redlineResult) handleRedline(); else setView("redline"); }}
+                  onClick={() => { if (!redlineResult || redlineResult.matched_count === 0) handleRedline(); else setView("redline"); }}
                   className={`text-xs px-2.5 py-1 rounded transition-colors font-medium flex items-center gap-1 ${
                     view === "redline"
                       ? "bg-white shadow-sm text-gray-900"
