@@ -651,16 +651,20 @@ contractsRouter.post("/:id/redline", analyzeLimiter, async (req, res, next) => {
     const unmatched_count = processedEdits.filter(e => !e.matched).length;
     console.log("[redline-route] placed:", matched_count, "unplaced:", unmatched_count);
 
-    // Cache result (best-effort — skip silently if redlines table not created yet)
+    // Cache result — delete old then insert new (no unique constraint needed)
     try {
-      await db.from("redlines").upsert({
+      await db.from("redlines")
+        .delete()
+        .eq("contract_id", req.params.id)
+        .eq("user_id", req.userId);
+      await db.from("redlines").insert({
         contract_id: req.params.id,
         user_id: req.userId,
         edits: processedEdits,
         matched_count,
         unmatched_count,
         model,
-      }, { onConflict: "contract_id" });
+      });
     } catch {
       // table may not exist yet — non-fatal
     }
