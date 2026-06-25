@@ -629,11 +629,15 @@ contractsRouter.post("/:id/redline", analyzeLimiter, async (req, res, next) => {
       clauseLibrary.length > 0 ? clauseLibrary : undefined,
     );
 
-    console.log("[diag] source head:", JSON.stringify(contract.extracted_text.slice(0, 200)));
+    console.log("[redline-route] AI returned", edits.length, "edits");
+    if (edits.length > 0) {
+      console.log("[redline-route] first edit original_text (100):", edits[0]?.original_text?.slice(0, 100));
+    }
+    console.log("[redline-route] source text length:", contract.extracted_text.length);
     const processedEdits = processEdits(contract.extracted_text, edits);
     const matched_count = processedEdits.filter(e => e.matched).length;
     const unmatched_count = processedEdits.filter(e => !e.matched).length;
-    console.log("[diag] placed:", matched_count, "unplaced:", unmatched_count);
+    console.log("[redline-route] placed:", matched_count, "unplaced:", unmatched_count);
 
     // Cache result (best-effort — skip silently if redlines table not created yet)
     try {
