@@ -576,7 +576,20 @@ export function exportToPdf(
   });
 }
 
-// ─── DOCX Export (unchanged) ──────────────────────────────────────────────────
+// ─── DOCX Export ─────────────────────────────────────────────────────────────
+
+interface RedlineProcessedEdit {
+  matched: boolean;
+  start?: number;
+  end?: number;
+  clause_ref: string;
+  original_text: string;
+  revised_text: string;
+  edit_type: "replace" | "insert" | "delete";
+  risk: string;
+  rationale: string;
+  reason?: string;
+}
 
 export async function exportToDocx(
   filename:      string,
@@ -586,6 +599,7 @@ export async function exportToDocx(
   createdAt?:    string,
   extractedText?: string,
   appliedIds?:   Set<string>,
+  redlineEdits?: RedlineProcessedEdit[],
 ): Promise<Buffer> {
   const riskColorHex: Record<string, string> = {
     low: "166534", medium: "9A3412", high: "7F1D1D", critical: "4C1D95",
@@ -664,120 +678,140 @@ export async function exportToDocx(
     });
   }
 
-  // ─── Build contract body with inline annotations ───────────────────────────
+  // ─── Build contract body with inline redline tracked changes ────────────────
   const bodyChildren: DocxParagraph[] = [];
   let hasBody = false;
+  const author = "Contralyn AI";
+
+  // Get placed redline edits sorted by position
+  const placedEdits = (redlineEdits ?? [])
+    .filter(e => e.matched && typeof e.start === "number" && typeof e.end === "number")
+    .sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
 
   if (extractedText && extractedText.trim().length > 100) {
     hasBody = true;
-    const paragraphs  = parseContractParagraphs(cleanText(extractedText));
-    const allAnnotations = collectAnnotations(analysis, appliedIds);
-    const { map: annotationMap, unmatched } = buildAnnotationMap(paragraphs, allAnnotations);
 
-    // Build negotiation suggestion map using same matching logic
-    const negMap = new Map<number, any[]>();
-    for (const np of analysis.negotiationPoints as any[]) {
-      const idx = findMatchingParagraph(
-        paragraphs,
-        cleanText(np.preferredPosition ?? ""),
-        cleanText(np.point ?? ""),
-      );
-      if (idx !== null) {
-        const arr = negMap.get(idx) ?? [];
-        arr.push(np);
-        negMap.set(idx, arr);
+    if (placedEdits.length > 0) {
+      // ── Proper inline redline: walk the source text, splice in tracked changes ──
+      // This produces output like the example redline PDF: strikethrough for deletions,
+      // underline for insertions, inline in the flowing contract text.
+      type Seg = { type: "text"; text: string } | { type: "edit"; edit: RedlineProcessedEdit; raw: string };
+      const segs: Seg[] = [];
+      let cursor = 0;
+
+      for (const edit of placedEdits) {
+        const start = edit.start ?? 0;
+        const end = edit.end ?? 0;
+        if (start > cursor) segs.push({ type: "text", text: extractedText.slice(cursor, start) });
+        segs.push({ type: "edit", edit, raw: extractedText.slice(start, end) });
+        cursor = end;
       }
-    }
+      if (cursor < extractedText.length) segs.push({ type: "text", text: extractedText.slice(cursor) });
 
-    let revisionId = 0;
+      // Convert segments into DOCX paragraphs with tracked changes
+      let revId = 0;
+      let currentRuns: (TextRun | InsertedTextRun | DeletedTextRun)[] = [];
 
-    for (let i = 0; i < paragraphs.length; i++) {
-      const para        = paragraphs[i];
-      const annotations = annotationMap.get(i) ?? [];
-      const negPoints   = negMap.get(i) ?? [];
+      function flushRuns() {
+        if (currentRuns.length > 0) {
+          bodyChildren.push(new DocxParagraph({ children: [...currentRuns] }));
+          currentRuns = [];
+        }
+      }
 
-      if (negPoints.length > 0) {
-        // ── Redline paragraph: the original text IS the deletion, suggestion IS the insertion ──
-        // Do NOT show the original as a plain TextRun — it only exists as DeletedTextRun.
-        // Each negotiation point gets its own revision so Word can accept/reject independently.
-        const order: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
-        const topSeverity = annotations.reduce(
-          (w, a) => (order[a.severity] ?? 0) > (order[w] ?? 0) ? a.severity : w,
-          "low",
-        );
+      for (const seg of segs) {
+        if (seg.type === "text") {
+          const parts = seg.text.split(/\n\n+/);
+          for (let p = 0; p < parts.length; p++) {
+            if (p > 0) flushRuns();
+            const part = parts[p].replace(/\n/g, " ").trim();
+            if (part) {
+              const isHeading = detectHeading(part);
+              currentRuns.push(new TextRun({ text: part, bold: isHeading }));
+            }
+          }
+        } else {
+          const { edit, raw } = seg;
+          const id = revId++;
 
-        // Attach a Word comment if there are also risk annotations on this paragraph
-        const commentId = annotations.length > 0
-          ? registerComment(
-              annotations.map(a => a.heading).join(" / "),
-              annotations.map(a => a.finding).join("\n\n"),
-              annotations.map(a => a.recommendation).filter(Boolean).join("\n\n"),
-              topSeverity,
-            )
-          : null;
+          // Add a Word comment with the rationale for each edit
+          const commentId = registerComment(
+            edit.clause_ref,
+            edit.rationale,
+            edit.revised_text ? `Suggested: "${edit.revised_text}"` : "",
+            edit.risk?.toLowerCase() ?? "medium",
+          );
+          currentRuns.push(new CommentRangeStart(commentId) as any);
 
-        for (const np of negPoints) {
-          if (!np.preferredPosition) continue;
-          const id = revisionId++;
-          const children: (CommentRangeStart | CommentRangeEnd | CommentReference | DeletedTextRun | InsertedTextRun)[] = [];
-
-          if (commentId !== null) children.push(new CommentRangeStart(commentId));
-
-          // Original clause — red strikethrough in Word
-          children.push(new DeletedTextRun({
-            text:   para.text,
-            id,
-            author: "Contralyn AI",
-            date:   nowISO,
-          }));
-
-          // Suggested replacement — blue underline in Word
-          children.push(new InsertedTextRun({
-            text:   cleanText(np.preferredPosition),
-            id,
-            author: "Contralyn AI",
-            date:   nowISO,
-            color:  "0070C0",
-          }));
-
-          if (commentId !== null) {
-            children.push(new CommentRangeEnd(commentId));
-            children.push(new CommentReference(commentId));
+          if (edit.edit_type === "delete") {
+            currentRuns.push(new DeletedTextRun({ text: raw, id, author, date: nowISO }));
+          } else if (edit.edit_type === "insert") {
+            currentRuns.push(new TextRun(raw));
+            currentRuns.push(new InsertedTextRun({ text: ` ${edit.revised_text}`, id, author, date: nowISO, color: "0070C0" }));
+          } else {
+            // replace — strikethrough original, underline new
+            currentRuns.push(new DeletedTextRun({ text: raw, id, author, date: nowISO }));
+            currentRuns.push(new InsertedTextRun({ text: edit.revised_text, id, author, date: nowISO, color: "0070C0" }));
           }
 
+          currentRuns.push(new CommentRangeEnd(commentId) as any);
+          currentRuns.push(new CommentReference(commentId) as any);
+        }
+      }
+      flushRuns();
+
+      // Unplaced redline edits appendix
+      const unplacedEdits = (redlineEdits ?? []).filter(e => !e.matched);
+      if (unplacedEdits.length > 0) {
+        bodyChildren.push(new DocxParagraph({ text: "" }));
+        bodyChildren.push(new DocxParagraph({ text: "Unplaced Edits", heading: HeadingLevel.HEADING_2 }));
+        bodyChildren.push(new DocxParagraph({
+          children: [new TextRun({
+            text: "These edits could not be placed inline because their original text was not found verbatim.",
+            italics: true, color: "718096",
+          })],
+        }));
+        for (const e of unplacedEdits) {
+          const col = (e.risk ?? "").toLowerCase() === "high" ? "7F1D1D" : (e.risk ?? "").toLowerCase() === "medium" ? "9A3412" : "166534";
+          bodyChildren.push(new DocxParagraph({
+            children: [new TextRun({ text: `[${e.risk}] ${e.clause_ref}`, bold: true, color: col })],
+          }));
+          bodyChildren.push(new DocxParagraph(`Rationale: ${e.rationale}`));
+          if (e.revised_text) bodyChildren.push(new DocxParagraph(`Suggested: "${e.revised_text}"`));
+          bodyChildren.push(new DocxParagraph({ text: "" }));
+        }
+      }
+    } else {
+      // ── Fallback: no redline edits — use analysis annotations with Word comments ──
+      const paragraphs = parseContractParagraphs(cleanText(extractedText));
+      const allAnnotations = collectAnnotations(analysis, appliedIds);
+      const { map: annotationMap, unmatched } = buildAnnotationMap(paragraphs, allAnnotations);
+
+      for (let i = 0; i < paragraphs.length; i++) {
+        const para = paragraphs[i];
+        const annotations = annotationMap.get(i) ?? [];
+
+        if (annotations.length > 0) {
+          bodyChildren.push(annotatedParagraph(para.text, para.isHeading, annotations));
+        } else {
           bodyChildren.push(new DocxParagraph({
             heading: para.isHeading ? HeadingLevel.HEADING_3 : undefined,
-            shading: commentId !== null
-              ? { type: ShadingType.CLEAR, color: "auto", fill: severityBg[topSeverity] ?? "FEE2E2" }
-              : undefined,
-            children,
+            children: [new TextRun({ text: para.text, bold: para.isHeading })],
           }));
         }
-      } else if (annotations.length > 0) {
-        // Risk annotation only — highlight + Word comment, original text unchanged
-        bodyChildren.push(annotatedParagraph(para.text, para.isHeading, annotations));
-      } else {
-        // Clean paragraph
-        bodyChildren.push(new DocxParagraph({
-          heading:  para.isHeading ? HeadingLevel.HEADING_3 : undefined,
-          children: [new TextRun({ text: para.text, bold: para.isHeading })],
-        }));
       }
-    }
 
-    // Unmatched findings — append at end before negotiation summary
-    if (unmatched.length > 0) {
-      bodyChildren.push(new DocxParagraph({ text: "" }));
-      bodyChildren.push(new DocxParagraph({ text: "Additional Findings", heading: HeadingLevel.HEADING_2 }));
-      for (const item of unmatched) {
-        bodyChildren.push(new DocxParagraph({
-          children: [new TextRun({ text: item.heading, bold: true, color: riskColorHex[item.severity] ?? "000000" })],
-        }));
-        bodyChildren.push(new DocxParagraph(item.finding));
-        if (item.recommendation) {
-          bodyChildren.push(new DocxParagraph(`Recommendation: ${item.recommendation}`));
-        }
+      if (unmatched.length > 0) {
         bodyChildren.push(new DocxParagraph({ text: "" }));
+        bodyChildren.push(new DocxParagraph({ text: "Additional Findings", heading: HeadingLevel.HEADING_2 }));
+        for (const item of unmatched) {
+          bodyChildren.push(new DocxParagraph({
+            children: [new TextRun({ text: item.heading, bold: true, color: riskColorHex[item.severity] ?? "000000" })],
+          }));
+          bodyChildren.push(new DocxParagraph(item.finding));
+          if (item.recommendation) bodyChildren.push(new DocxParagraph(`Recommendation: ${item.recommendation}`));
+          bodyChildren.push(new DocxParagraph({ text: "" }));
+        }
       }
     }
   }
@@ -845,6 +879,12 @@ export async function exportToDocx(
     ]),
   ];
 
+  // ─── Determine header note ────────────────────────────────────────────────
+  const hasRedlines = placedEdits.length > 0;
+  const headerNote = hasRedlines
+    ? "Red strikethrough = deleted text · Blue underline = inserted text. Use Word's Review tab to accept or reject changes. Comments explain each edit's rationale."
+    : "Highlighted clauses carry AI findings as Word comments. Blue underlined text shows suggested revisions.";
+
   // ─── Build document ────────────────────────────────────────────────────────
   const doc = new Document({
     comments: commentDefs.length > 0 ? { children: commentDefs } : undefined,
@@ -873,10 +913,10 @@ export async function exportToDocx(
         // Annotated contract body or table fallback
         ...(hasBody
           ? [
-              new DocxParagraph({ text: "Contract Text with Annotations", heading: HeadingLevel.HEADING_1 }),
+              new DocxParagraph({ text: hasRedlines ? "Contract Redline" : "Contract Text with Annotations", heading: HeadingLevel.HEADING_1 }),
               new DocxParagraph({
                 children: [new TextRun({
-                  text: "Highlighted clauses carry AI findings as Word comments. Blue underlined text shows suggested revisions.",
+                  text: headerNote,
                   italics: true, size: 18, color: "718096",
                 })],
               }),

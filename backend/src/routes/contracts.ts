@@ -400,12 +400,21 @@ contractsRouter.post("/:id/summarize", async (req, res, next) => {
 // GET /api/contracts/:id/export/docx
 contractsRouter.get("/:id/export/docx", async (req, res, next) => {
   try {
-    const { data, error } = await db
-      .from("contracts")
-      .select("filename, contract_type, summary, created_at, extracted_text, analyses(*)")
-      .eq("id", req.params.id)
-      .eq("user_id", req.userId)
-      .single();
+    // Fetch contract + analysis + cached redline edits in parallel
+    const [{ data, error }, { data: redlineData }] = await Promise.all([
+      db.from("contracts")
+        .select("filename, contract_type, summary, created_at, extracted_text, analyses(*)")
+        .eq("id", req.params.id)
+        .eq("user_id", req.userId)
+        .single(),
+      db.from("redlines")
+        .select("edits")
+        .eq("contract_id", req.params.id)
+        .eq("user_id", req.userId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
 
     const a = Array.isArray(data?.analyses) ? data.analyses[0] : data?.analyses;
     if (error || !data || !a) { res.status(404).json({ error: "Analysis not found" }); return; }
@@ -413,12 +422,15 @@ contractsRouter.get("/:id/export/docx", async (req, res, next) => {
     const appliedParam = typeof req.query.applied === "string" ? req.query.applied : "";
     const appliedIds = appliedParam ? new Set(appliedParam.split(",").map(s => s.trim())) : undefined;
 
+    // Pass cached redline edits so the export includes proper tracked changes
+    const redlineEdits = Array.isArray(redlineData?.edits) ? redlineData.edits as ProcessedEdit[] : undefined;
+
     const buffer = await exportToDocx(data.filename, data.contract_type, {
       riskLevel: a.risk_level,
       riskSummary: a.risk_summary,
       clauseAnalysis: a.clause_analysis,
       negotiationPoints: a.negotiation_points,
-    }, data.summary ?? undefined, data.created_at, data.extracted_text ?? undefined, appliedIds);
+    }, data.summary ?? undefined, data.created_at, data.extracted_text ?? undefined, appliedIds, redlineEdits);
 
     await logActivity(req.userId, "contract.exported", req.params.id, { format: "docx" });
 
