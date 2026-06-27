@@ -157,7 +157,7 @@ export async function redlineContract(
 async function _callRedlineAI(prompt: string): Promise<RedlineEdit[]> {
   const response = await anthropic.messages.create({
     model: config.AI_MODEL,
-    max_tokens: 4096,
+    max_tokens: 8192,
     system: [{ type: "text", text: redlineSystemPrompt }],
     tools: [redlineTool],
     tool_choice: { type: "tool", name: "generate_redlines" },
