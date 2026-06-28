@@ -8,7 +8,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { createClerkClient } from "@clerk/backend";
 import { config } from "../config.js";
 import { analyzeLimiter, chatLimiter, uploadLimiter } from "../middleware/rateLimit.js";
-import { analyzeContract, redlineContract, summarizeContract } from "../services/ai.service.js";
+import { analyzeContract, extractContractMeta, redlineContract, summarizeContract } from "../services/ai.service.js";
 import { exportRedlineDocx, processEdits, type ProcessedEdit } from "../services/redline.service.js";
 import { logActivity } from "../services/activity.service.js";
 import { chatWithContract } from "../services/chat.service.js";
@@ -84,6 +84,21 @@ async function ensureUser(clerkUserId: string): Promise<void> {
     // Non-fatal — user sync failure should never block an upload
   }
 }
+
+// POST /api/contracts/extract-meta — extract intake fields from a file without saving
+contractsRouter.post("/extract-meta", requireAuth, upload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ error: "No file provided" });
+      return;
+    }
+    const text = await extractText(req.file.buffer, req.file.mimetype);
+    const meta = await extractContractMeta(text);
+    res.json(meta);
+  } catch (err) {
+    next(err);
+  }
+});
 
 // POST /api/contracts/upload
 contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req, res, next) => {

@@ -45,7 +45,7 @@ const analysisTool: Anthropic.Tool = {
             risk: { type: "string", enum: ["low", "medium", "high", "critical"] },
             recommendation: { type: "string" },
             contractText: { type: "string" },
-            suggestedLanguage: { type: "string" },
+            suggestedLanguage: { type: "string", description: "Complete replacement clause text ready to insert into the contract. Must be full drafted legal language (e.g. a complete sentence or paragraph), not negotiation advice or a summary." },
           },
         },
       },
@@ -65,6 +65,50 @@ const analysisTool: Anthropic.Tool = {
     },
   },
 };
+
+// ─── extractContractMeta ─────────────────────────────────────────────────────
+
+export interface ContractMeta {
+  counterparty_name?: string;
+  contract_type?: string;
+  start_date?: string;
+  end_date?: string;
+  governing_law?: string;
+  contract_value?: string;
+}
+
+const extractMetaTool: Anthropic.Tool = {
+  name: "extract_contract_meta",
+  description: "Extract key metadata from a contract",
+  input_schema: {
+    type: "object",
+    properties: {
+      counterparty_name: { type: "string", description: "Name of the counterparty / other party" },
+      contract_type: { type: "string", description: "Type of contract e.g. NDA, SaaS Agreement, Employment Agreement" },
+      start_date: { type: "string", description: "Contract start or effective date in YYYY-MM-DD format if found" },
+      end_date: { type: "string", description: "Contract end or expiry date in YYYY-MM-DD format if found" },
+      governing_law: { type: "string", description: "Governing law / jurisdiction clause e.g. 'New York, USA' or 'England and Wales'" },
+      contract_value: { type: "string", description: "Total contract value or fee amount if stated, including currency" },
+    },
+  },
+};
+
+export async function extractContractMeta(text: string): Promise<ContractMeta> {
+  const response = await anthropic.messages.create({
+    model: config.AI_MODEL,
+    max_tokens: 512,
+    system: "You are a contract metadata extractor. Extract only what is explicitly stated in the contract. Do not infer or guess.",
+    tools: [extractMetaTool],
+    tool_choice: { type: "tool", name: "extract_contract_meta" },
+    messages: [{ role: "user", content: text.slice(0, 20000) }],
+  });
+
+  const toolUse = response.content.find(b => b.type === "tool_use");
+  if (!toolUse || toolUse.type !== "tool_use") return {};
+  return (toolUse.input as ContractMeta) ?? {};
+}
+
+// ─── Analysis ────────────────────────────────────────────────────────────────
 
 interface IntakeContext {
   counterparty_name?: string | null;

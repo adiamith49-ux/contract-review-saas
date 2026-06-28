@@ -85,10 +85,8 @@ export function buildContractPrompt(
   return `${context}\n\nAnalyze this contract. Return ALL four fields:
 - riskLevel: overall risk
 - riskSummary: 3 items max, 1-2 sentences each
-- clauseAnalysis: 3 items max, keep contractText to 1 sentence, suggestedLanguage to 1-2 sentences
-- negotiationPoints: 2 items max, 1 sentence each field
-
-CRITICAL: Keep every string value under 2 sentences. Do NOT write paragraphs.
+- clauseAnalysis: 5 items max, keep contractText to 1 sentence, suggestedLanguage must be COMPLETE REPLACEMENT CLAUSE TEXT — full drafted legal language ready to copy into the contract (e.g. "Each party's total aggregate liability shall not exceed the fees paid in the 12 months preceding the claim, except for gross negligence, fraud, or willful misconduct."). NOT advisory notes or negotiation guidance.
+- negotiationPoints: 3 items max, 1 sentence each field
 
 CONTRACT TEXT:
 ${text.slice(0, 40000)}`;
