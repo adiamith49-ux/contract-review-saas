@@ -96,21 +96,32 @@ ${text.slice(0, 40000)}`;
 
 // ─── Redline prompts ──────────────────────────────────────────────────────────
 
-export const redlineSystemPrompt = `You are a senior corporate lawyer producing a contract redline markup.
+export const redlineSystemPrompt = `You are a senior corporate lawyer producing a comprehensive contract redline markup, similar to a Word tracked-changes document comparing two contract versions.
 
-Your task is to identify specific clause-level text edits that bring this contract in line with the company's review standards.
+Your task: review EVERY clause in the contract and produce edits for ALL problematic language — missing protections, one-sided terms, vague obligations, risky definitions, and deviations from market-standard positions.
 
 CRITICAL RULE — original_text must be VERBATIM:
-- original_text must be an EXACT copy-paste from the contract. Character for character. Never paraphrase, summarize, or reword.
-- Keep original_text targeted: the specific phrase or sentence to change, not the entire paragraph.
-- If you cannot find the exact text in the contract, do not include that edit.
+- original_text must be an EXACT character-for-character copy from the contract text provided. Copy-paste directly.
+- Include all punctuation, capitalisation, and spacing exactly as it appears.
+- Never paraphrase, abbreviate, or reword the original text.
+- If you cannot find the exact substring, do not include that edit.
+
+GRANULARITY — target the smallest meaningful unit:
+- Edit individual words or short phrases, NOT entire sentences or paragraphs.
+- For a sentence where only one word needs changing, original_text should be just that word plus 2-3 surrounding words for uniqueness.
+- GOOD original_text: "solely at Provider's discretion" (targeted phrase)
+- BAD original_text: "Provider may terminate this Agreement at any time solely at Provider's discretion upon 30 days written notice." (entire sentence when only "solely at Provider's discretion" needs changing)
+- Multiple problems in one clause = multiple separate edits, each targeting the specific phrase.
 
 edit_type guide:
-- "replace" — original_text is deleted, revised_text takes its place
+- "replace" — original_text is deleted, revised_text takes its place. Keep original_text as SHORT as possible.
 - "delete" — original_text is removed entirely (revised_text must be "")
 - "insert" — revised_text is inserted immediately after original_text (original_text is kept)
 
-Produce 3–20 edits. Focus on changes with real legal impact. Omit cosmetic edits.`;
+COVERAGE — be thorough:
+- Review every section of the contract. Do not skip boilerplate — boilerplate often contains the most dangerous terms.
+- Flag: unlimited liability, broad indemnities, unilateral termination rights, IP assignment overreach, non-compete scope, auto-renewal traps, governing law/venue issues, warranty disclaimers, limitation of liability caps, data protection gaps, assignment restrictions, force majeure scope, confidentiality carve-outs.
+- Produce 10–30 edits. More is better than fewer — a real redline touches every problematic clause.`;
 
 export function buildRedlinePrompt(
   text: string,
@@ -155,7 +166,7 @@ export function buildRedlinePrompt(
     ctx += lib;
   }
 
-  return `${ctx}\n\nCONTRACT TEXT — copy original_text VERBATIM from this text:\n${text.slice(0, 40000)}\n\nYou MUST generate between 3 and 10 redline edits. Do NOT return an empty edits array. Focus on the highest-impact legal issues. Keep each field concise (1-2 sentences max). Every original_text field must be an exact verbatim substring of the contract text above — copy-paste directly, do not paraphrase. Where your clause library provides standard language, use it in revised_text.`;
+  return `${ctx}\n\nCONTRACT TEXT — copy original_text VERBATIM from this text:\n${text.slice(0, 40000)}\n\nYou MUST generate between 10 and 30 redline edits covering every problematic clause. Do NOT return an empty edits array. Be comprehensive — review every section, not just the obvious risks. Each original_text MUST be an exact verbatim substring copied character-for-character from the contract text above. Target short phrases (5-20 words) not full sentences. Keep rationale to 1-2 sentences. Where your clause library provides standard language, use it in revised_text.`;
 }
 
 export function buildSummaryPrompt(text: string, contractType: ContractType): string {
