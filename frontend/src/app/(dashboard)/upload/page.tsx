@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { uploadContract, analyzeContract, listRules, listClients, type ReviewRule, type Client } from "@/lib/api";
+import { uploadContract, analyzeContract, listRules, listClients, extractMeta, type ReviewRule, type Client } from "@/lib/api";
 import { formatFileSize, CONTRACT_TYPE_LABELS } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
@@ -75,6 +75,10 @@ export default function UploadPage() {
   const [selectedRuleIds, setSelectedRuleIds] = useState<string[]>([]);
   const [playbookEnabled, setPlaybookEnabled] = useState(true);
 
+  // AI field extraction
+  const [extractingMeta, setExtractingMeta] = useState(false);
+  const [aiFilledFields, setAiFilledFields] = useState<Set<string>>(new Set());
+
   // Processing
   const [stage, setStage]     = useState<UploadStage>("idle");
   const [progress, setProgress] = useState(0);
@@ -121,6 +125,35 @@ export default function UploadPage() {
     }
     setFile(f);
     if (!title) setTitle(f.name.replace(/\.[^.]+$/, ""));
+
+    // Kick off background AI extraction
+    setExtractingMeta(true);
+    setAiFilledFields(new Set());
+    getToken().then(token => extractMeta(token, f)).then(meta => {
+      const filled = new Set<string>();
+      if (meta.counterparty_name) { setCounterparty(meta.counterparty_name); filled.add("counterparty"); }
+      if (meta.contract_type) {
+        const normalized = meta.contract_type.toLowerCase().replace(/\s+/g, "_");
+        const knownTypes: ContractType[] = ["nda", "saas", "employment", "service", "partnership", "vendor", "lease", "loan", "other"];
+        const matched = knownTypes.find(t => normalized.includes(t)) ?? "other";
+        setContractType(matched);
+        filled.add("contractType");
+      }
+      if (meta.start_date) { setStartDate(meta.start_date); filled.add("startDate"); }
+      if (meta.end_date) { setEndDate(meta.end_date); filled.add("endDate"); }
+      if (meta.governing_law) {
+        const gl = meta.governing_law.toLowerCase();
+        if (gl.includes("uk") || gl.includes("england") || gl.includes("wales") || gl.includes("scotland")) setGoverningLaw("uk");
+        else if (gl.includes("eu") || gl.includes("europe")) setGoverningLaw("eu");
+        else if (gl.includes("india")) setGoverningLaw("india");
+        else setGoverningLaw("us");
+        filled.add("governingLaw");
+      }
+      if (meta.contract_value) { setContractValue(meta.contract_value); filled.add("contractValue"); }
+      setAiFilledFields(filled);
+    }).catch(() => {
+      // silently ignore extraction failures
+    }).finally(() => setExtractingMeta(false));
   };
 
   const onDrop = useCallback((e: React.DragEvent) => {
@@ -332,6 +365,18 @@ export default function UploadPage() {
           {/* ─ STEP 2: Contract Details ─ */}
           {step === 2 && (
             <div className="space-y-5">
+              {extractingMeta && (
+                <div className="flex items-center gap-2 text-xs text-purple-700 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                  AI is detecting fields from your contract…
+                </div>
+              )}
+              {!extractingMeta && aiFilledFields.size > 0 && (
+                <div className="flex items-center gap-2 text-xs text-purple-700 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+                  <span className="h-2 w-2 rounded-full bg-purple-500 shrink-0" />
+                  AI detected {aiFilledFields.size} field{aiFilledFields.size > 1 ? "s" : ""} — review and edit as needed
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2 space-y-1.5">
                   <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
@@ -348,21 +393,31 @@ export default function UploadPage() {
                 </div>
 
                 <div className="sm:col-span-2 space-y-1.5">
-                  <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                    <Building2 className="h-3 w-3 inline mr-1" />
-                    Counterparty / Vendor
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                      <Building2 className="h-3 w-3 inline mr-1" />
+                      Counterparty / Vendor
+                    </Label>
+                    {aiFilledFields.has("counterparty") && (
+                      <span className="text-[10px] font-semibold text-purple-600 bg-purple-100 rounded px-1.5 py-0.5">AI detected</span>
+                    )}
+                  </div>
                   <Input
                     placeholder="e.g. Acme Corporation Inc."
                     value={counterparty}
-                    onChange={e => setCounterparty(e.target.value)}
-                    className="h-10"
+                    onChange={e => { setCounterparty(e.target.value); setAiFilledFields(s => { const n = new Set(s); n.delete("counterparty"); return n; }); }}
+                    className={cn("h-10", aiFilledFields.has("counterparty") && "border-purple-300 bg-purple-50/40")}
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Contract Type</Label>
-                  <Select value={contractType} onValueChange={v => setContractType(v as ContractType)}>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Contract Type</Label>
+                    {aiFilledFields.has("contractType") && (
+                      <span className="text-[10px] font-semibold text-purple-600 bg-purple-100 rounded px-1.5 py-0.5">AI detected</span>
+                    )}
+                  </div>
+                  <Select value={contractType} onValueChange={v => { setContractType(v as ContractType); setAiFilledFields(s => { const n = new Set(s); n.delete("contractType"); return n; }); }}>
                     <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {(Object.keys(CONTRACT_TYPE_LABELS) as ContractType[]).map(t => (
@@ -385,17 +440,27 @@ export default function UploadPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                    <Calendar className="h-3 w-3 inline mr-1" />Start Date
-                  </Label>
-                  <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="h-10" />
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                      <Calendar className="h-3 w-3 inline mr-1" />Start Date
+                    </Label>
+                    {aiFilledFields.has("startDate") && (
+                      <span className="text-[10px] font-semibold text-purple-600 bg-purple-100 rounded px-1.5 py-0.5">AI detected</span>
+                    )}
+                  </div>
+                  <Input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setAiFilledFields(s => { const n = new Set(s); n.delete("startDate"); return n; }); }} className={cn("h-10", aiFilledFields.has("startDate") && "border-purple-300 bg-purple-50/40")} />
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                    <Calendar className="h-3 w-3 inline mr-1" />End / Expiry Date
-                  </Label>
-                  <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="h-10" />
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                      <Calendar className="h-3 w-3 inline mr-1" />End / Expiry Date
+                    </Label>
+                    {aiFilledFields.has("endDate") && (
+                      <span className="text-[10px] font-semibold text-purple-600 bg-purple-100 rounded px-1.5 py-0.5">AI detected</span>
+                    )}
+                  </div>
+                  <Input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setAiFilledFields(s => { const n = new Set(s); n.delete("endDate"); return n; }); }} className={cn("h-10", aiFilledFields.has("endDate") && "border-purple-300 bg-purple-50/40")} />
                 </div>
 
                 <div className="space-y-1.5">
@@ -406,10 +471,15 @@ export default function UploadPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                    <Globe className="h-3 w-3 inline mr-1" />Governing Law
-                  </Label>
-                  <Select value={governingLaw} onValueChange={setGoverningLaw}>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                      <Globe className="h-3 w-3 inline mr-1" />Governing Law
+                    </Label>
+                    {aiFilledFields.has("governingLaw") && (
+                      <span className="text-[10px] font-semibold text-purple-600 bg-purple-100 rounded px-1.5 py-0.5">AI detected</span>
+                    )}
+                  </div>
+                  <Select value={governingLaw} onValueChange={v => { setGoverningLaw(v); setAiFilledFields(s => { const n = new Set(s); n.delete("governingLaw"); return n; }); }}>
                     <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {JURISDICTION_OPTIONS.map(o => (
@@ -432,14 +502,19 @@ export default function UploadPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                    <DollarSign className="h-3 w-3 inline mr-1" />Contract Value (USD)
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                      <DollarSign className="h-3 w-3 inline mr-1" />Contract Value (USD)
+                    </Label>
+                    {aiFilledFields.has("contractValue") && (
+                      <span className="text-[10px] font-semibold text-purple-600 bg-purple-100 rounded px-1.5 py-0.5">AI detected</span>
+                    )}
+                  </div>
                   <Input
                     type="number"
                     placeholder="e.g. 500000"
                     value={contractValue}
-                    onChange={e => setContractValue(e.target.value)}
+                    onChange={e => { setContractValue(e.target.value); setAiFilledFields(s => { const n = new Set(s); n.delete("contractValue"); return n; }); }}
                     className="h-10"
                     min="0"
                   />

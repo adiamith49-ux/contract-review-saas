@@ -237,6 +237,21 @@ export async function uploadContract(
   return apiFetch("/api/contracts/upload", token, { method: "POST", body: form });
 }
 
+export interface ContractMeta {
+  counterparty_name?: string;
+  contract_type?: string;
+  start_date?: string;
+  end_date?: string;
+  governing_law?: string;
+  contract_value?: string;
+}
+
+export async function extractMeta(token: string | null, file: File): Promise<ContractMeta> {
+  const form = new FormData();
+  form.append("file", file);
+  return apiFetch("/api/contracts/extract-meta", token, { method: "POST", body: form });
+}
+
 export async function updateContractMetadata(
   token: string | null,
   id: string,
