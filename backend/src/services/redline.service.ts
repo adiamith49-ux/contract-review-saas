@@ -164,6 +164,36 @@ export function processEdits(source: string, edits: RedlineEdit[]): ProcessedEdi
     let hit = docNorm.indexOf(normTgt);
     if (hit === -1) hit = docNorm.toLowerCase().indexOf(normTgt.toLowerCase());
 
+    // Fuzzy fallback 1: strip all punctuation and retry
+    if (hit === -1) {
+      const stripPunct = (s: string) => s.replace(/[^\w\s]/g, "").replace(/\s+/g, " ").trim();
+      const docStripped = stripPunct(docNorm.toLowerCase());
+      const tgtStripped = stripPunct(normTgt.toLowerCase());
+      if (tgtStripped.length >= 10) {
+        const strippedHit = docStripped.indexOf(tgtStripped);
+        if (strippedHit !== -1) {
+          // Map back: walk docNorm to find the position that corresponds to strippedHit
+          let si = 0, di = 0;
+          while (di < strippedHit && si < docNorm.length) {
+            const ch = docNorm[si].toLowerCase();
+            if (stripPunct(ch) !== "") di++;
+            si++;
+          }
+          hit = si;
+          // Adjust normTgt length to match in original — walk forward tgtStripped.length chars
+          // We'll use the original normTgt length for offset recovery below
+        }
+      }
+    }
+
+    // Fuzzy fallback 2: try first 80% of target (AI sometimes adds/drops trailing words)
+    if (hit === -1 && normTgt.length >= 20) {
+      const cutoff = Math.floor(normTgt.length * 0.8);
+      const partial = normTgt.slice(0, cutoff);
+      hit = docNorm.toLowerCase().indexOf(partial.toLowerCase());
+      // If found, use the full match length from the partial start
+    }
+
     if (hit === -1) {
       return { ...edit, matched: false as const, reason: "original_text not found in source" };
     }
