@@ -101,9 +101,25 @@ function ProfileTab({
   onOpenProfile: () => void;
   onSignOut: () => void;
 }) {
-  const authMethod = user?.externalAccounts?.length
-    ? `Google (${user.externalAccounts[0]?.emailAddress ?? "OAuth"})`
-    : "Email / Password";
+  const authMethod = (() => {
+    const providers = Array.from(
+      new Set((user?.externalAccounts ?? []).map((account) => account.provider))
+    );
+
+    if (providers.length === 0) {
+      return "Email / Password";
+    }
+
+    const providerLabelMap: Record<string, string> = {
+      google: "Google",
+      facebook: "Facebook",
+      oauth_google: "Google",
+      oauth_facebook: "Facebook",
+    };
+
+    const providerLabels = providers.map((provider) => providerLabelMap[provider] ?? provider);
+    return `Social Login (${providerLabels.join(", ")})`;
+  })();
   const memberSince = user?.createdAt ? formatJoinDate(user.createdAt) : "—";
 
   return (

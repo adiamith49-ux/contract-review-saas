@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Users, Mail, Plus, X, Building2 } from "lucide-react";
+import { Users, Mail, Plus, X, Building2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   listAdminUsers, listAdminClients, assignUserToClient, removeUserFromClient,
-  inviteUser, type AdminUserRow, type AdminClient,
+  inviteUser, addUser, type AdminUserRow, type AdminClient,
 } from "@/lib/admin-api";
 import { formatDate } from "@/lib/utils";
 
@@ -19,9 +19,18 @@ export default function AdminUsersPage() {
   const [clients, setClients] = useState<AdminClient[]>([]);
   const [loading, setLoading] = useState(true);
   const [assignTarget, setAssignTarget] = useState<AdminUserRow | null>(null);
+
+  // Invite dialog
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviting, setInviting] = useState(false);
+
+  // Add user dialog
+  const [addOpen, setAddOpen] = useState(false);
+  const [addEmail, setAddEmail] = useState("");
+  const [addFirstName, setAddFirstName] = useState("");
+  const [addLastName, setAddLastName] = useState("");
+  const [adding, setAdding] = useState(false);
 
   async function load() {
     const [u, c] = await Promise.all([listAdminUsers(), listAdminClients()]);
@@ -44,6 +53,28 @@ export default function AdminUsersPage() {
       toast.error(err.message);
     } finally {
       setInviting(false);
+    }
+  }
+
+  async function handleAddUser(e: React.FormEvent) {
+    e.preventDefault();
+    setAdding(true);
+    try {
+      await addUser({
+        email: addEmail,
+        first_name: addFirstName || undefined,
+        last_name: addLastName || undefined,
+      });
+      toast.success(`User ${addEmail} created. They can sign in via "Forgot Password" to set their password.`);
+      setAddEmail("");
+      setAddFirstName("");
+      setAddLastName("");
+      setAddOpen(false);
+      load();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setAdding(false);
     }
   }
 
@@ -92,9 +123,14 @@ export default function AdminUsersPage() {
             {loading ? "Loading…" : `${users.length} user${users.length !== 1 ? "s" : ""} in the system`}
           </p>
         </div>
-        <Button size="sm" onClick={() => setInviteOpen(true)}>
-          <Mail className="h-4 w-4 mr-1.5" /> Invite user
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)}>
+            <Mail className="h-4 w-4 mr-1.5" /> Invite user
+          </Button>
+          <Button size="sm" onClick={() => setAddOpen(true)}>
+            <UserPlus className="h-4 w-4 mr-1.5" /> Add user
+          </Button>
+        </div>
       </div>
 
       {/* Users table */}
@@ -122,10 +158,15 @@ export default function AdminUsersPage() {
               <Users className="h-5 w-5 text-gray-400" />
             </div>
             <p className="text-sm font-semibold text-gray-700">No users yet</p>
-            <p className="text-xs text-gray-400 mt-1">Invite users to get them onboarded.</p>
-            <Button size="sm" className="mt-4" onClick={() => setInviteOpen(true)}>
-              <Mail className="h-3.5 w-3.5 mr-1.5" /> Invite user
-            </Button>
+            <p className="text-xs text-gray-400 mt-1">Add or invite users to get them onboarded.</p>
+            <div className="flex items-center gap-2 mt-4">
+              <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)}>
+                <Mail className="h-3.5 w-3.5 mr-1.5" /> Invite user
+              </Button>
+              <Button size="sm" onClick={() => setAddOpen(true)}>
+                <UserPlus className="h-3.5 w-3.5 mr-1.5" /> Add user
+              </Button>
+            </div>
           </div>
         ) : (
           users.map(u => (
@@ -179,6 +220,57 @@ export default function AdminUsersPage() {
               </DialogClose>
               <Button size="sm" type="submit" disabled={inviting}>
                 {inviting ? "Sending…" : "Send invitation"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add user dialog */}
+      <Dialog open={addOpen} onOpenChange={open => { setAddOpen(open); if (!open) { setAddEmail(""); setAddFirstName(""); setAddLastName(""); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add user</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleAddUser} className="space-y-4 mt-1">
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1.5 block">Email address <span className="text-red-500">*</span></label>
+              <Input
+                type="email"
+                placeholder="user@lawfirm.com"
+                value={addEmail}
+                onChange={e => setAddEmail(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1.5 block">First name</label>
+                <Input
+                  placeholder="Jane"
+                  value={addFirstName}
+                  onChange={e => setAddFirstName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1.5 block">Last name</label>
+                <Input
+                  placeholder="Smith"
+                  value={addLastName}
+                  onChange={e => setAddLastName(e.target.value)}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-gray-400">
+              Creates the account immediately — no invitation email is sent. The user can sign in via <strong>Forgot Password</strong> to set their password.
+            </p>
+            <div className="flex justify-end gap-3">
+              <DialogClose asChild>
+                <Button variant="outline" size="sm" type="button">Cancel</Button>
+              </DialogClose>
+              <Button size="sm" type="submit" disabled={adding}>
+                {adding ? "Creating…" : "Create user"}
               </Button>
             </div>
           </form>

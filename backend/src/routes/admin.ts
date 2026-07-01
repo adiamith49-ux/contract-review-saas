@@ -305,6 +305,42 @@ adminRouter.post("/users/invite", requireAdmin, async (req, res, next) => {
   }
 });
 
+// POST /admin/users/add — create a Clerk user directly (no invitation email)
+adminRouter.post("/users/add", requireAdmin, async (req, res, next) => {
+  try {
+    const { email, first_name, last_name } = z.object({
+      email: z.string().email(),
+      first_name: z.string().max(100).optional(),
+      last_name: z.string().max(100).optional(),
+    }).parse(req.body);
+
+    const clerkUser = await clerk.users.createUser({
+      emailAddress: [email],
+      firstName: first_name,
+      lastName: last_name,
+      skipPasswordChecks: true,
+      skipPasswordRequirement: true,
+    });
+
+    await db.from("users").upsert(
+      { clerk_user_id: clerkUser.id, email },
+      { onConflict: "clerk_user_id" },
+    );
+
+    res.status(201).json({
+      ok: true,
+      user: { clerk_user_id: clerkUser.id, email, created_at: clerkUser.createdAt },
+    });
+  } catch (err: any) {
+    const code = err?.errors?.[0]?.code ?? "";
+    if (code === "form_identifier_exists" || code === "duplicate_record") {
+      res.status(409).json({ error: "A user with this email already exists" });
+      return;
+    }
+    next(err);
+  }
+});
+
 // ─── Clause Library ───────────────────────────────────────────────────────────
 
 function encodeNotes(tags: string[], jurisdiction: string | null | undefined): string {

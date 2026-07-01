@@ -108,6 +108,11 @@ export const inviteUser = (email: string) =>
     method: "POST", body: JSON.stringify({ email }),
   });
 
+export const addUser = (data: { email: string; first_name?: string; last_name?: string }) =>
+  adminFetch<{ ok: boolean; user: { clerk_user_id: string; email: string; created_at: number } }>("/admin/users/add", {
+    method: "POST", body: JSON.stringify(data),
+  });
+
 // Clauses
 export const listAdminClauses = () => adminFetch<{ clauses: AdminClause[] }>("/admin/clauses");
 
