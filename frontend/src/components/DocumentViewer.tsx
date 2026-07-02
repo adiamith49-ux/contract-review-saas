@@ -12,6 +12,7 @@ interface Annotation {
   body: string;
   recommendation: string;
   risk: RiskLevel;
+  suggestedLanguage?: string;
 }
 
 // ─── Text parsing ─────────────────────────────────────────────────────────────
@@ -91,6 +92,7 @@ function buildAnnotationMap(
     add(findMatchingParagraphIndex(`${item.clause} ${item.finding}`, paragraphs), {
       id: `c-${i}`, title: item.clause, body: item.finding,
       recommendation: item.recommendation, risk: item.risk,
+      suggestedLanguage: item.suggestedLanguage,
     })
   );
 
@@ -177,23 +179,53 @@ export function DocumentViewer({ text, analysis, activeId, appliedIds, panelOpen
             allApplied ? "pl-3 py-1 border-l-4 border-l-green-500 bg-green-50" :
                          "pl-3 py-1 border-l-4 border-l-red-500 bg-red-50";
 
+          // Find applied annotations that have suggestedLanguage for inline tracked change
+          const appliedWithReplacement = annotations.filter(
+            a => appliedIds?.has(a.id) && a.suggestedLanguage,
+          );
+          const showTrackedChange = allApplied && appliedWithReplacement.length > 0;
+
           return (
             <div
               key={idx}
               ref={el => { if (el) paragraphRefs.current.set(idx, el); }}
               className={cn("mb-5 rounded-sm transition-all duration-200", highlightCls)}
             >
-              {/* Paragraph / heading text */}
-              <p
-                className={cn(
-                  "leading-relaxed whitespace-pre-wrap break-words",
-                  heading
-                    ? "font-bold text-gray-900 text-sm mt-3 mb-0.5"
-                    : "text-[13px] text-gray-700",
-                )}
-              >
-                {para}
-              </p>
+              {/* Paragraph / heading text — show strikethrough when tracked change is applied */}
+              {showTrackedChange ? (
+                <div className="space-y-1">
+                  {appliedWithReplacement.map(ann => (
+                    <div key={ann.id}>
+                      <p className={cn(
+                        "leading-relaxed whitespace-pre-wrap break-words line-through text-red-500 opacity-60",
+                        heading ? "font-bold text-sm" : "text-[13px]",
+                      )}>
+                        {para}
+                      </p>
+                      <div className="mt-1.5 mb-0.5">
+                        <span className="text-[10px] font-semibold text-blue-600 uppercase tracking-wide">Proposed replacement</span>
+                      </div>
+                      <p className={cn(
+                        "leading-relaxed whitespace-pre-wrap break-words underline text-blue-700 bg-blue-50 px-1 rounded",
+                        heading ? "font-bold text-sm" : "text-[13px]",
+                      )}>
+                        {ann.suggestedLanguage}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p
+                  className={cn(
+                    "leading-relaxed whitespace-pre-wrap break-words",
+                    heading
+                      ? "font-bold text-gray-900 text-sm mt-3 mb-0.5"
+                      : "text-[13px] text-gray-700",
+                  )}
+                >
+                  {para}
+                </p>
+              )}
 
               {/* Inline annotation cards (review-mode style) */}
               {annotations.length > 0 && (
@@ -209,8 +241,14 @@ export function DocumentViewer({ text, analysis, activeId, appliedIds, panelOpen
                     return (
                       <div key={ann.id} className={cn("rounded-md px-3 py-2 text-[11px]", cardCls)}>
                         <p className="font-semibold mb-0.5">{ann.title}</p>
-                        <p className="opacity-80 leading-relaxed">{ann.body}</p>
-                        <p className="mt-1 font-medium opacity-90">→ {ann.recommendation}</p>
+                        {isAnnApplied && ann.suggestedLanguage ? (
+                          <p className="opacity-80 leading-relaxed">Change applied — replacement text shown inline above.</p>
+                        ) : (
+                          <>
+                            <p className="opacity-80 leading-relaxed">{ann.body}</p>
+                            <p className="mt-1 font-medium opacity-90">→ {ann.recommendation}</p>
+                          </>
+                        )}
                       </div>
                     );
                   })}
