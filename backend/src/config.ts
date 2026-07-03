@@ -20,6 +20,7 @@ const EnvSchema = z.object({
   ANTHROPIC_API_KEY: str("dev-placeholder"),
   AI_MODEL: str("claude-sonnet-4-6"),
   ADMIN_JWT_SECRET: str("change-me-admin-secret"),
+  CLERK_WEBHOOK_SECRET: str(""),
 });
 
 export const config = EnvSchema.parse(process.env);

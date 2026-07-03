@@ -5,6 +5,8 @@ import { z } from "zod";
 import type { ContractType } from "../types.js";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { createClerkClient } from "@clerk/backend";
+import { config } from "../config.js";
 import { analyzeLimiter, chatLimiter, uploadLimiter } from "../middleware/rateLimit.js";
 import { analyzeContract, redlineContract, summarizeContract } from "../services/ai.service.js";
 import { exportRedlineDocx, processEdits, type ProcessedEdit } from "../services/redline.service.js";
@@ -58,6 +60,31 @@ const metaSchema = z.object({
   parent_contract_id: z.string().uuid().optional(),
 });
 
+// Ensure user exists in the users table — called on upload so every active user is always tracked.
+// This is a safety net; the Clerk webhook (POST /api/webhooks/clerk) is the primary sync mechanism.
+async function ensureUser(clerkUserId: string): Promise<void> {
+  try {
+    const { data: existing } = await db
+      .from("users")
+      .select("id")
+      .eq("clerk_user_id", clerkUserId)
+      .single();
+    if (existing) return; // already synced
+
+    const clerkClient = createClerkClient({ secretKey: config.CLERK_SECRET_KEY });
+    const user = await clerkClient.users.getUser(clerkUserId);
+    const email = user.emailAddresses?.[0]?.emailAddress ?? "";
+    if (!email) return; // can't insert without email
+
+    await db.from("users").upsert(
+      { clerk_user_id: clerkUserId, email },
+      { onConflict: "clerk_user_id" },
+    );
+  } catch {
+    // Non-fatal — user sync failure should never block an upload
+  }
+}
+
 // POST /api/contracts/upload
 contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req, res, next) => {
   try {
@@ -67,6 +94,9 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
     }
 
     await validateFileType(req.file.buffer, req.file.mimetype);
+
+    // Ensure uploading user is registered in the users table
+    void ensureUser(req.userId);
 
     const contractType = contractTypeSchema.default("other").parse(req.body.contract_type);
     const clientId: string | undefined = req.body.client_id || undefined;

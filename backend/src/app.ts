@@ -16,11 +16,16 @@ import { contractsRouter } from "./routes/contracts.js";
 import { rulesRouter } from "./routes/rules.js";
 import { tasksRouter } from "./routes/tasks.js";
 import { timeRouter } from "./routes/time.js";
+import { webhooksRouter } from "./routes/webhooks.js";
 
 const app = express();
 
 app.use(helmet());
 app.use(cors({ origin: config.WEB_URL, credentials: true }));
+
+// Webhooks must be registered BEFORE express.json() — svix needs the raw body for signature verification
+app.use("/api/webhooks", webhooksRouter);
+
 app.use(express.json({ limit: "1mb" }));
 app.use(generalLimiter);
 
