@@ -116,10 +116,11 @@ edit_type guide:
 - "delete" — original_text is removed entirely (revised_text must be "")
 - "insert" — revised_text is inserted immediately after original_text (original_text is kept)
 
-COVERAGE — be thorough:
-- Review every section of the contract. Do not skip boilerplate — boilerplate often contains the most dangerous terms.
+COVERAGE — prioritise impact:
+- Review every section of the contract, but only produce edits for genuinely problematic language.
 - Flag: unlimited liability, broad indemnities, unilateral termination rights, IP assignment overreach, non-compete scope, auto-renewal traps, governing law/venue issues, warranty disclaimers, limitation of liability caps, data protection gaps, assignment restrictions, force majeure scope, confidentiality carve-outs.
-- Produce 10–30 edits. More is better than fewer — a real redline touches every problematic clause.`;
+- Produce the 10–15 HIGHEST-IMPACT edits, ordered by risk (High first). Do not pad with trivial stylistic edits.
+- BREVITY: rationale must be ONE short sentence. playbook_rule must be a few words. Speed matters — keep every field tight.`;
 
 export function buildRedlinePrompt(
   text: string,
@@ -164,7 +165,7 @@ export function buildRedlinePrompt(
     ctx += lib;
   }
 
-  return `${ctx}\n\nCONTRACT TEXT — copy original_text VERBATIM from this text:\n${text.slice(0, 40000)}\n\nYou MUST generate between 10 and 30 redline edits covering every problematic clause. Do NOT return an empty edits array. Be comprehensive — review every section, not just the obvious risks. Each original_text MUST be an exact verbatim substring copied character-for-character from the contract text above. Target short phrases (5-20 words) not full sentences. Keep rationale to 1-2 sentences. Where your clause library provides standard language, use it in revised_text.`;
+  return `${ctx}\n\nCONTRACT TEXT — copy original_text VERBATIM from this text:\n${text.slice(0, 40000)}\n\nYou MUST generate between 10 and 15 redline edits covering the highest-impact problematic clauses. Do NOT return an empty edits array. Each original_text MUST be an exact verbatim substring copied character-for-character from the contract text above. Target short phrases (5-20 words) not full sentences. Keep rationale to ONE short sentence. Where your clause library provides standard language, use it in revised_text.`;
 }
 
 export function buildSummaryPrompt(text: string, contractType: ContractType): string {
