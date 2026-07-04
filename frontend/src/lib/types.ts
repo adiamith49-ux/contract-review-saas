@@ -40,6 +40,7 @@ export interface ClauseAnalysisItem {
   recommendation: string;
   contractText?: string;
   suggestedLanguage?: string;
+  playbookRule?: string;
 }
 
 export interface NegotiationPoint {

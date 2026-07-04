@@ -347,22 +347,25 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
     const clauseLibrary = (clauseResult.data ?? []) as Array<{ title: string; clause_type: "approved" | "fallback"; content: string }>;
 
     let playbookText: string | undefined;
-    const selectFields = "playbook_text, rules";
+    const selectFields = "title, playbook_text, rules";
+    // Playbooks are admin-managed (user_id = "admin") but selectable by any user
+    const ownerFilter = `user_id.eq.${req.userId},is_admin_managed.eq.true`;
     let ruleRows: any[] = [];
 
     if (selectedRuleIds === undefined) {
-      const r = await db.from("review_rules").select(selectFields).eq("user_id", req.userId).eq("is_active", true);
+      const r = await db.from("review_rules").select(selectFields).or(ownerFilter).eq("is_active", true);
       ruleRows = r.data ?? [];
     } else if (selectedRuleIds.length > 0) {
-      const r = await db.from("review_rules").select(selectFields).eq("user_id", req.userId).in("id", selectedRuleIds);
+      const r = await db.from("review_rules").select(selectFields).or(ownerFilter).in("id", selectedRuleIds);
       ruleRows = r.data ?? [];
     }
 
     const playbookParts = ruleRows.map((row: any) => {
-      if (row.playbook_text?.trim()) return row.playbook_text as string;
+      const header = row.title ? `PLAYBOOK: ${row.title}\n` : "";
+      if (row.playbook_text?.trim()) return header + (row.playbook_text as string);
       const legacyRules = row.rules as Array<{ clause_type: string; requirement: string; severity: string }> | null;
       if (legacyRules?.length) {
-        return legacyRules.map(r => `[${(r.severity ?? "medium").toUpperCase()}] ${r.clause_type}: ${r.requirement}`).join("\n");
+        return header + legacyRules.map(r => `[${(r.severity ?? "medium").toUpperCase()}] ${r.clause_type}: ${r.requirement}`).join("\n");
       }
       return null;
     }).filter((t): t is string => Boolean(t));
@@ -657,15 +660,16 @@ contractsRouter.post("/:id/redline", analyzeLimiter, async (req, res, next) => {
 
     // Fetch active playbook rules + clause library in parallel
     const [{ data: ruleRows }, { data: clauseRows }] = await Promise.all([
-      db.from("review_rules").select("title, playbook_text, rules").eq("user_id", req.userId).eq("is_active", true),
+      db.from("review_rules").select("title, playbook_text, rules").or(`user_id.eq.${req.userId},is_admin_managed.eq.true`).eq("is_active", true),
       db.from("clause_library").select("title, clause_type, content").eq("user_id", req.userId),
     ]);
 
     const playbookParts = (ruleRows ?? []).map((row: any) => {
-      if (row.playbook_text?.trim()) return row.playbook_text as string;
+      const header = row.title ? `PLAYBOOK: ${row.title}\n` : "";
+      if (row.playbook_text?.trim()) return header + (row.playbook_text as string);
       const legacyRules = row.rules as Array<{ clause_type: string; requirement: string; severity: string }> | null;
       if (legacyRules?.length) {
-        return legacyRules.map(r => `[${(r.severity ?? "medium").toUpperCase()}] ${r.clause_type}: ${r.requirement}`).join("\n");
+        return header + legacyRules.map(r => `[${(r.severity ?? "medium").toUpperCase()}] ${r.clause_type}: ${r.requirement}`).join("\n");
       }
       return null;
     }).filter((t: unknown): t is string => Boolean(t));

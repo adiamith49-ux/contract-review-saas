@@ -85,7 +85,7 @@ export function buildContractPrompt(
   return `${context}\n\nAnalyze this contract. Return ALL four fields:
 - riskLevel: overall risk
 - riskSummary: 3 items max, 1-2 sentences each
-- clauseAnalysis: 5 items max, keep contractText to 1 sentence, suggestedLanguage must be COMPLETE REPLACEMENT CLAUSE TEXT — full drafted legal language ready to copy into the contract (e.g. "Each party's total aggregate liability shall not exceed the fees paid in the 12 months preceding the claim, except for gross negligence, fraud, or willful misconduct."). NOT advisory notes or negotiation guidance.
+- clauseAnalysis: 5 items max, keep contractText to 1 sentence, suggestedLanguage must be COMPLETE REPLACEMENT CLAUSE TEXT — full drafted legal language ready to copy into the contract (e.g. "Each party's total aggregate liability shall not exceed the fees paid in the 12 months preceding the claim, except for gross negligence, fraud, or willful misconduct."). NOT advisory notes or negotiation guidance. If a finding deviates from a company playbook/review rule provided above, set playbookRule to the playbook name and rule (e.g. "SaaS Playbook — Liability cap: 12 months fees").
 - negotiationPoints: 3 items max, 1 sentence each field
 
 CONTRACT TEXT:

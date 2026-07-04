@@ -46,6 +46,7 @@ const analysisTool: Anthropic.Tool = {
             recommendation: { type: "string" },
             contractText: { type: "string" },
             suggestedLanguage: { type: "string", description: "Complete replacement clause text ready to insert into the contract. Must be full drafted legal language (e.g. a complete sentence or paragraph), not negotiation advice or a summary." },
+            playbookRule: { type: "string", description: "If this finding deviates from a company playbook rule, name the playbook and rule that was triggered (e.g. 'SaaS Playbook — Liability cap: 12 months fees'). Omit if no playbook rule applies." },
           },
         },
       },

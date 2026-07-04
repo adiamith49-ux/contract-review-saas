@@ -260,7 +260,7 @@ function MissingClauseItem({ clause, isOpen, onToggle }: { clause: MissingClause
 // ─── Accordion item (Risk Areas, Clause Issues, Ambiguity Flags) ──────────────
 
 function AccordionItem({
-  id, title, risk, body, recommendation, contractText, suggestedLanguage, clauseRef,
+  id, title, risk, body, recommendation, contractText, suggestedLanguage, clauseRef, playbookRule,
   isOpen, isApplied, onToggle, onApply, onScrollToText,
   decision, onDecision, editedText, onEditedTextChange,
 }: {
@@ -272,6 +272,7 @@ function AccordionItem({
   contractText?: string;
   suggestedLanguage?: string;
   clauseRef?: string;
+  playbookRule?: string;
   isOpen: boolean;
   isApplied: boolean;
   onToggle: (id: string) => void;
@@ -303,6 +304,13 @@ function AccordionItem({
       {isOpen && (
         <div className="px-3 pb-3 pt-1 space-y-2 bg-white border-t border-gray-100">
           <p className="text-[11px] text-gray-600 leading-relaxed">{body}</p>
+
+          {playbookRule && (
+            <div className="rounded-md bg-violet-50 border border-violet-100 px-2.5 py-1.5">
+              <p className="text-[9px] font-bold text-violet-700 uppercase tracking-wide mb-0.5">Playbook Rule Triggered</p>
+              <p className="text-[10px] text-violet-800 leading-relaxed">{playbookRule}</p>
+            </div>
+          )}
 
           {contractText && (
             <div className="rounded-md bg-slate-100 px-2.5 py-2">
@@ -666,6 +674,7 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
                 title={item.clause} body={item.finding} recommendation={item.recommendation} risk={item.risk}
                 contractText={item.contractText}
                 suggestedLanguage={(item as any).suggestedLanguage}
+                playbookRule={(item as any).playbookRule}
                 isOpen={activeId === `c-${i}`} isApplied={appliedIds.has(`c-${i}`)}
                 onToggle={handleToggle} onApply={onApply} onScrollToText={onScrollToText}
                 decision={decisions[`c-${i}`]} onDecision={handleDecision}
