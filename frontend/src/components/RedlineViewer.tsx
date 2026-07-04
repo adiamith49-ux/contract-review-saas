@@ -93,7 +93,7 @@ function renderBlockContent(
         className={cn("rounded transition-all", isActive ? "ring-2 ring-blue-400 ring-offset-1" : "")}
       >
         {edit.edit_type === "delete" && (
-          <del className="text-red-600 bg-red-100 no-underline line-through px-0.5 rounded-sm decoration-red-600">
+          <del className="text-red-600 bg-red-100 line-through px-0.5 rounded-sm decoration-red-600">
             {raw}
           </del>
         )}
@@ -107,7 +107,7 @@ function renderBlockContent(
         )}
         {edit.edit_type === "replace" && (
           <>
-            <del className="text-red-600 bg-red-100 no-underline line-through px-0.5 rounded-sm decoration-red-600">
+            <del className="text-red-600 bg-red-100 line-through px-0.5 rounded-sm decoration-red-600">
               {raw}
             </del>
             <ins className="text-blue-700 bg-blue-100 underline not-italic px-0.5 rounded-sm ml-0.5">
@@ -170,7 +170,7 @@ export function RedlineViewer({
           <div className="flex items-center gap-4 mb-8 pb-4 border-b text-xs text-gray-500">
             <span className="font-medium text-gray-700">Legend:</span>
             <span className="flex items-center gap-1.5">
-              <del className="text-red-600 bg-red-100 px-1.5 py-0.5 rounded text-[11px] no-underline line-through decoration-red-600">deleted</del>
+              <del className="text-red-600 bg-red-100 px-1.5 py-0.5 rounded text-[11px] line-through decoration-red-600">deleted</del>
               <span>= removed text</span>
             </span>
             <span className="flex items-center gap-1.5">
