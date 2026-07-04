@@ -544,6 +544,8 @@ const CONTRACT_TYPES = Object.entries(CONTRACT_TYPE_LABELS) as [ContractType, st
 const BUSINESS_STATUS_OPTIONS = [
   { value: "draft",        label: "Draft"        },
   { value: "under_review", label: "Under Review" },
+  { value: "in_negotiation",   label: "In Negotiation"   },
+  { value: "pending_approval", label: "Pending Approval" },
   { value: "executed",     label: "Executed"     },
   { value: "expired",      label: "Expired"      },
   { value: "on_hold",      label: "On Hold"      },

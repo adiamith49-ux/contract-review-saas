@@ -45,6 +45,8 @@ const STATUS_OPTIONS = [
   { value: "separator",    label: "—"             },
   { value: "draft",        label: "Draft"         },
   { value: "under_review", label: "Under Review"  },
+  { value: "in_negotiation",   label: "In Negotiation"   },
+  { value: "pending_approval", label: "Pending Approval" },
   { value: "executed",     label: "Executed"      },
   { value: "on_hold",      label: "On Hold"       },
   { value: "terminated",   label: "Terminated"    },
@@ -152,7 +154,7 @@ export default function ContractsPage() {
           <Button asChild size="sm">
             <Link href="/upload">
               <Plus className="h-4 w-4 mr-1.5" />
-              Upload Contract
+              New Contract Request
             </Link>
           </Button>
         </div>

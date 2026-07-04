@@ -36,6 +36,8 @@ const JURISDICTION_OPTIONS = [
 const BUSINESS_STATUS_OPTIONS = [
   { value: "draft", label: "Draft" },
   { value: "under_review", label: "Under Review" },
+  { value: "in_negotiation", label: "In Negotiation" },
+  { value: "pending_approval", label: "Pending Approval" },
   { value: "executed", label: "Executed" },
   { value: "on_hold", label: "On Hold" },
   { value: "terminated", label: "Terminated" },
@@ -219,7 +221,7 @@ export default function UploadPage() {
       {/* Header */}
       <div className="shrink-0 px-8 pt-5 pb-4 border-b bg-white flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-lg font-bold text-gray-900 tracking-tight">Upload Contract</h1>
+          <h1 className="text-lg font-bold text-gray-900 tracking-tight">New Contract Request</h1>
           <p className="text-xs text-gray-400 mt-0.5">Create a full contract record with metadata, dates, and AI review.</p>
         </div>
         <Button asChild size="sm" variant="outline">

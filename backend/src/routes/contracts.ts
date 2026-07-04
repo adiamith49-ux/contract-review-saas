@@ -55,7 +55,7 @@ const metaSchema = z.object({
   renewal_date: z.string().optional(),
   owner_name: z.string().max(500).optional(),
   contract_value: z.coerce.number().positive().optional(),
-  contract_status: z.enum(["draft", "under_review", "executed", "expired", "on_hold", "terminated"]).optional(),
+  contract_status: z.enum(["draft", "under_review", "in_negotiation", "pending_approval", "executed", "expired", "on_hold", "terminated"]).optional(),
   governing_law: z.enum(["us", "uk", "eu", "india", "other"]).optional(),
   parent_contract_id: z.string().uuid().optional(),
 });
@@ -617,7 +617,7 @@ contractsRouter.patch("/:id", async (req, res, next) => {
       renewal_date: z.string().optional().nullable(),
       owner_name: z.string().max(500).optional().nullable(),
       contract_value: z.coerce.number().positive().optional().nullable(),
-      contract_status: z.enum(["draft", "under_review", "executed", "expired", "on_hold", "terminated"]).optional(),
+      contract_status: z.enum(["draft", "under_review", "in_negotiation", "pending_approval", "executed", "expired", "on_hold", "terminated"]).optional(),
     }).parse(req.body);
 
     if (Object.keys(body).length === 0) {

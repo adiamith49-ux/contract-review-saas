@@ -35,7 +35,7 @@ const NAV = [
     icon: FileSearch,
     dropdown: [
       { label: "All Contracts",   href: "/contracts", icon: FileSearch, desc: "Browse and search all your contracts" },
-      { label: "Upload Contract", href: "/upload",    icon: Upload,     desc: "Add a new PDF or DOCX for review"    },
+      { label: "New Contract Request", href: "/upload",    icon: Upload,     desc: "Submit a contract with deal context for review" },
     ],
   },
   {
@@ -267,7 +267,7 @@ function MobileMenu({ onClose }: { onClose: () => void }) {
   const links = [
     { label: "Dashboard",       href: "/dashboard",  icon: LayoutDashboard },
     { label: "All Contracts",   href: "/contracts",  icon: FileSearch      },
-    { label: "Upload Contract", href: "/upload",     icon: Upload          },
+    { label: "New Contract Request", href: "/upload",     icon: Upload          },
     { label: "Clause Library",  href: "/clauses",    icon: Library         },
     { label: "Review Rules",    href: "/rules",      icon: Gavel           },
     { label: "Analytics",       href: "/analytics",  icon: LineChart       },
@@ -365,7 +365,7 @@ export function TopNav() {
               className="hidden lg:flex items-center gap-1.5 rounded-md bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-white transition-colors mr-1"
             >
               <Plus className="h-3.5 w-3.5" />
-              Upload
+              New Request
             </Link>
 
             {/* Settings icon */}
