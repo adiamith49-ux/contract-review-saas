@@ -35,6 +35,7 @@ const JURISDICTION_OPTIONS = [
 
 const BUSINESS_STATUS_OPTIONS = [
   { value: "draft", label: "Draft" },
+  { value: "submitted", label: "Submitted" },
   { value: "under_review", label: "Under Review" },
   { value: "in_negotiation", label: "In Negotiation" },
   { value: "pending_approval", label: "Pending Approval" },
@@ -63,7 +64,7 @@ export default function UploadPage() {
   const [title, setTitle]             = useState("");
   const [counterparty, setCounterparty] = useState("");
   const [contractType, setContractType] = useState<ContractType>("other");
-  const [contractStatus, setContractStatus] = useState("draft");
+  const [contractStatus, setContractStatus] = useState("submitted");
   const [startDate, setStartDate]     = useState("");
   const [endDate, setEndDate]         = useState("");
   const [renewalDate, setRenewalDate] = useState("");

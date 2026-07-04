@@ -44,6 +44,7 @@ const STATUS_OPTIONS = [
   { value: "expired",      label: "Expired"       },
   { value: "separator",    label: "—"             },
   { value: "draft",        label: "Draft"         },
+  { value: "submitted",    label: "Submitted"     },
   { value: "under_review", label: "Under Review"  },
   { value: "in_negotiation",   label: "In Negotiation"   },
   { value: "pending_approval", label: "Pending Approval" },

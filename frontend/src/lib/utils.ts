@@ -71,6 +71,7 @@ export const STATUS_COLORS: Record<ContractStatus, string> = {
 
 export const CONTRACT_BUSINESS_STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
+  submitted: "Submitted",
   under_review: "Under Review",
   in_negotiation: "In Negotiation",
   pending_approval: "Pending Approval",

@@ -14,6 +14,7 @@ export type ContractStatus = "uploaded" | "processing" | "analyzed" | "failed";
 
 export type ContractBusinessStatus =
   | "draft"
+  | "submitted"
   | "under_review"
   | "in_negotiation"
   | "pending_approval"
