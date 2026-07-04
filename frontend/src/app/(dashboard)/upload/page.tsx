@@ -134,8 +134,14 @@ export default function UploadPage() {
       if (meta.counterparty_name) { setCounterparty(meta.counterparty_name); filled.add("counterparty"); }
       if (meta.contract_type) {
         const normalized = meta.contract_type.toLowerCase().replace(/\s+/g, "_");
-        const knownTypes: ContractType[] = ["nda", "saas", "employment", "service", "partnership", "vendor", "lease", "loan", "other"];
-        const matched = knownTypes.find(t => normalized.includes(t)) ?? "other";
+        let matched: ContractType = "other";
+        if (normalized.includes("nda") || normalized.includes("non_disclosure") || normalized.includes("non-disclosure") || normalized.includes("confidentiality")) matched = "nda";
+        else if (normalized.includes("msa") || normalized.includes("master_service")) matched = "msa";
+        else if (normalized.includes("saas") || normalized.includes("subscription") || normalized.includes("software")) matched = "saas";
+        else if (normalized.includes("sow") || normalized.includes("statement_of_work")) matched = "sow";
+        else if (normalized.includes("order")) matched = "order_form";
+        else if (normalized.includes("employ") || normalized.includes("offer_letter")) matched = "employment";
+        else if (normalized.includes("vendor") || normalized.includes("supply") || normalized.includes("procurement")) matched = "vendor_agreement";
         setContractType(matched);
         filled.add("contractType");
       }
