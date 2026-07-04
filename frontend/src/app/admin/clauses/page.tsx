@@ -14,13 +14,14 @@ import {
 } from "@/lib/admin-api";
 import { cn } from "@/lib/utils";
 
-const TYPE_LABELS = { approved: "Approved", fallback: "Fallback" };
+const TYPE_LABELS = { approved: "Approved", fallback: "Fallback", unacceptable: "Unacceptable" };
 const TYPE_COLORS = {
   approved: "bg-emerald-100 text-emerald-700",
   fallback: "bg-amber-100 text-amber-700",
+  unacceptable: "bg-red-100 text-red-700",
 };
 
-const emptyForm = { title: "", clause_type: "approved" as "approved" | "fallback", content: "", tags: [] as string[], jurisdiction: null as string | null };
+const emptyForm = { title: "", clause_type: "approved" as "approved" | "fallback" | "unacceptable", content: "", tags: [] as string[], jurisdiction: null as string | null };
 
 export default function AdminClausesPage() {
   const [clauses, setClauses]   = useState<AdminClause[]>([]);
@@ -39,7 +40,7 @@ export default function AdminClausesPage() {
   function openCreate() { setForm(emptyForm); setShowCreate(true); }
   function openEdit(c: AdminClause) {
     setEditTarget(c);
-    setForm({ title: c.title, clause_type: c.clause_type as "approved" | "fallback", content: c.content, tags: c.tags, jurisdiction: c.jurisdiction });
+    setForm({ title: c.title, clause_type: c.clause_type as "approved" | "fallback" | "unacceptable", content: c.content, tags: c.tags, jurisdiction: c.jurisdiction });
   }
 
   async function handleSave() {
@@ -86,10 +87,11 @@ export default function AdminClausesPage() {
         <select
           className="w-full h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           value={form.clause_type}
-          onChange={e => setForm(f => ({ ...f, clause_type: e.target.value as "approved" | "fallback" }))}
+          onChange={e => setForm(f => ({ ...f, clause_type: e.target.value as "approved" | "fallback" | "unacceptable" }))}
         >
           <option value="approved">Approved</option>
           <option value="fallback">Fallback</option>
+          <option value="unacceptable">Unacceptable / Walk-away</option>
         </select>
       </div>
       <div>

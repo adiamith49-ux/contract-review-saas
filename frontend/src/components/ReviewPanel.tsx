@@ -4,7 +4,7 @@ import {
   X, ChevronDown, ChevronUp, ShieldAlert, FileWarning,
   Handshake, HelpCircle, Check, FileDown, ListChecks,
   FileText, AlertCircle, Users, Calendar, Scale, BookOpen,
-  XCircle, Pencil,
+  XCircle, Pencil, Gavel,
 } from "lucide-react";
 import { RiskBadge } from "@/components/RiskBadge";
 import { Button } from "@/components/ui/button";
@@ -554,6 +554,17 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
         {/* ════════ OVERVIEW TAB ════════ */}
         {tab === "overview" && (
           <>
+            {/* Playbooks applied to this review */}
+            {analysis.playbooks_used && analysis.playbooks_used.length > 0 && (
+              <div className="px-3 py-2 bg-violet-50 border-b border-violet-100 flex items-start gap-2">
+                <Gavel className="h-3 w-3 text-violet-600 mt-0.5 shrink-0" />
+                <p className="text-[10px] text-violet-800 leading-relaxed">
+                  <span className="font-bold">Reviewed with playbook{analysis.playbooks_used.length > 1 ? "s" : ""}:</span>{" "}
+                  {analysis.playbooks_used.join(", ")}
+                </p>
+              </div>
+            )}
+
             {/* Metadata */}
             {metadata && <MetadataSection metadata={metadata} />}
 

@@ -59,7 +59,7 @@ export interface Clause {
   id: string;
   user_id: string;
   title: string;
-  clause_type: "approved" | "fallback";
+  clause_type: "approved" | "fallback" | "unacceptable";
   jurisdiction: string | null;
   content: string;
   tags: string[];
@@ -117,6 +117,7 @@ export interface AnalysisOut {
   negotiation_points: NegotiationPoint[];
   ambiguity_flags?: AmbiguityFlag[];
   model: string;
+  playbooks_used?: string[];
   created_at: string;
 }
 

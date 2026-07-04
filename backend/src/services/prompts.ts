@@ -15,7 +15,7 @@ interface IntakeContext {
 
 export interface ClauseLibraryEntry {
   title: string;
-  clause_type: "approved" | "fallback";
+  clause_type: "approved" | "fallback" | "unacceptable";
   content: string;
 }
 
@@ -55,6 +55,7 @@ export function buildContractPrompt(
   if (clauseLibrary && clauseLibrary.length > 0) {
     const approved = clauseLibrary.filter(c => c.clause_type === "approved");
     const fallback = clauseLibrary.filter(c => c.clause_type === "fallback");
+    const unacceptable = clauseLibrary.filter(c => c.clause_type === "unacceptable");
 
     let clauseSection = "\n\nCOMPANY CLAUSE LIBRARY — STANDARD LANGUAGE:\n";
     clauseSection += "The following are your organization's approved and fallback clause standards. ";
@@ -73,6 +74,15 @@ export function buildContractPrompt(
     if (fallback.length > 0) {
       clauseSection += "\nFALLBACK CLAUSES (acceptable alternative language):\n";
       for (const c of fallback) {
+        const entry = `\n[${c.title}]\n${c.content}\n`;
+        if ((context + clauseSection + entry).length > 70000) break;
+        clauseSection += entry;
+      }
+    }
+
+    if (unacceptable.length > 0) {
+      clauseSection += "\nUNACCEPTABLE / WALK-AWAY LANGUAGE (if the contract contains terms matching or resembling these, flag as CRITICAL risk and cite the rule in playbookRule):\n";
+      for (const c of unacceptable) {
         const entry = `\n[${c.title}]\n${c.content}\n`;
         if ((context + clauseSection + entry).length > 70000) break;
         clauseSection += entry;
@@ -157,6 +167,15 @@ export function buildRedlinePrompt(
     if (fallback.length > 0) {
       lib += "\nFALLBACK LANGUAGE (use if approved version is rejected):\n";
       for (const c of fallback) {
+        const entry = `\n[${c.title}]\n${c.content}\n`;
+        if (ctx.length + lib.length + entry.length > 70000) break;
+        lib += entry;
+      }
+    }
+    const unacceptable = clauseLibrary.filter(c => c.clause_type === "unacceptable");
+    if (unacceptable.length > 0) {
+      lib += "\nUNACCEPTABLE / WALK-AWAY LANGUAGE (contract terms matching these MUST be redlined as High risk — delete or replace them):\n";
+      for (const c of unacceptable) {
         const entry = `\n[${c.title}]\n${c.content}\n`;
         if (ctx.length + lib.length + entry.length > 70000) break;
         lib += entry;

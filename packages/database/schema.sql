@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS review_rules (
 -- ALTER TABLE review_rules ADD COLUMN IF NOT EXISTS playbook_text text;
 -- ALTER TABLE review_rules ADD COLUMN IF NOT EXISTS original_filename text;
 -- ALTER TABLE review_rules ADD COLUMN IF NOT EXISTS file_size bigint;
+-- ALTER TABLE analyses ADD COLUMN IF NOT EXISTS playbooks_used jsonb NOT NULL DEFAULT '[]';  -- applied 2026-07-04
 
 -- Redlines (AI-generated clause-level track changes per contract)
 -- Each POST /redline creates a new row; GET /redline returns the latest.

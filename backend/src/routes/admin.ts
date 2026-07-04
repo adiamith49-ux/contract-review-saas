@@ -369,7 +369,7 @@ function formatClause(row: any) {
 
 const clauseSchema = z.object({
   title: z.string().min(1).max(200),
-  clause_type: z.enum(["approved", "fallback"]),
+  clause_type: z.enum(["approved", "fallback", "unacceptable"]),
   content: z.string().min(1),
   tags: z.array(z.string()).optional().default([]),
   jurisdiction: z.string().nullable().optional(),

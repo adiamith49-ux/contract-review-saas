@@ -15,6 +15,7 @@ import { formatDate, cn } from "@/lib/utils";
 const TYPE_COLORS = {
   approved: "bg-emerald-50 text-emerald-700 border-emerald-200",
   fallback:  "bg-amber-50  text-amber-700  border-amber-200",
+  unacceptable: "bg-red-50 text-red-700 border-red-200",
 };
 
 export default function ClausesPage() {
@@ -97,6 +98,7 @@ export default function ClausesPage() {
             <SelectItem value="all">All Types</SelectItem>
             <SelectItem value="approved">Approved</SelectItem>
             <SelectItem value="fallback">Fallback</SelectItem>
+            <SelectItem value="unacceptable">Unacceptable</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -123,7 +125,7 @@ export default function ClausesPage() {
                 >
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full border", TYPE_COLORS[c.clause_type])}>
-                      {c.clause_type === "approved" ? "Approved" : "Fallback"}
+                      {c.clause_type === "approved" ? "Approved" : c.clause_type === "fallback" ? "Fallback" : "Unacceptable"}
                     </span>
                     <h3 className="text-sm font-semibold text-gray-900">{c.title}</h3>
                   </div>

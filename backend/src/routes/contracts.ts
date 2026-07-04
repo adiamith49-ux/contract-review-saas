@@ -341,10 +341,10 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
 
     const [intakeResult, clauseResult] = await Promise.all([
       db.from("legal_intake").select("*").eq("contract_id", contract.id).single(),
-      db.from("clause_library").select("title, clause_type, content").eq("user_id", req.userId),
+      db.from("clause_library").select("title, clause_type, content").or(`user_id.eq.${req.userId},is_admin_managed.eq.true`),
     ]);
     const intake = intakeResult.data ?? null;
-    const clauseLibrary = (clauseResult.data ?? []) as Array<{ title: string; clause_type: "approved" | "fallback"; content: string }>;
+    const clauseLibrary = (clauseResult.data ?? []) as Array<{ title: string; clause_type: "approved" | "fallback" | "unacceptable"; content: string }>;
 
     let playbookText: string | undefined;
     const selectFields = "title, playbook_text, rules";
@@ -395,6 +395,7 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
         negotiation_points: analysis.negotiationPoints,
         ambiguity_flags: analysis.ambiguityFlags ?? [],
         model: analysis.model,
+        playbooks_used: ruleRows.map((r: any) => r.title).filter(Boolean),
       }, { onConflict: "contract_id" })
       .select("id")
       .single();
@@ -661,7 +662,7 @@ contractsRouter.post("/:id/redline", analyzeLimiter, async (req, res, next) => {
     // Fetch active playbook rules + clause library in parallel
     const [{ data: ruleRows }, { data: clauseRows }] = await Promise.all([
       db.from("review_rules").select("title, playbook_text, rules").or(`user_id.eq.${req.userId},is_admin_managed.eq.true`).eq("is_active", true),
-      db.from("clause_library").select("title, clause_type, content").eq("user_id", req.userId),
+      db.from("clause_library").select("title, clause_type, content").or(`user_id.eq.${req.userId},is_admin_managed.eq.true`),
     ]);
 
     const playbookParts = (ruleRows ?? []).map((row: any) => {
@@ -677,7 +678,7 @@ contractsRouter.post("/:id/redline", analyzeLimiter, async (req, res, next) => {
     const playbookText = playbookParts.length > 0 ? playbookParts.join("\n\n---\n\n") : undefined;
     const clauseLibrary = (clauseRows ?? []).map((r: any) => ({
       title: r.title as string,
-      clause_type: r.clause_type as "approved" | "fallback",
+      clause_type: r.clause_type as "approved" | "fallback" | "unacceptable",
       content: r.content as string,
     }));
     const intake = Array.isArray(contract.legal_intake) ? contract.legal_intake[0] : (contract.legal_intake ?? null);
