@@ -131,7 +131,7 @@ export async function analyzeContract(
   // instead of waiting for the full response to be computed.
   const stream = anthropic.messages.stream({
     model: config.AI_MODEL,
-    max_tokens: 2000,
+    max_tokens: 8192,
     system: [{ type: "text", text: legalSystemPrompt }],
     tools: [analysisTool],
     tool_choice: { type: "tool", name: "analyze_contract" },
