@@ -21,6 +21,12 @@ const EnvSchema = z.object({
   AI_MODEL: str("claude-sonnet-4-6"),
   ADMIN_JWT_SECRET: str("change-me-admin-secret"),
   CLERK_WEBHOOK_SECRET: str(""),
+  // SMTP — used for admin password-reset emails; reset is disabled when unset
+  SMTP_HOST: str(""),
+  SMTP_PORT: z.coerce.number().default(587),
+  SMTP_USER: str(""),
+  SMTP_PASS: str(""),
+  SMTP_FROM: str(""),
 });
 
 export const config = EnvSchema.parse(process.env);

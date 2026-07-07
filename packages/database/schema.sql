@@ -173,6 +173,10 @@ CREATE INDEX IF NOT EXISTS idx_contracts_client          ON contracts(client_id)
 --   created_at timestamptz NOT NULL DEFAULT now()
 -- );
 
+-- 1b. Admin password reset (2026-07-07) — required for POST /admin/auth/forgot-password
+-- ALTER TABLE admins ADD COLUMN IF NOT EXISTS reset_code_hash text;
+-- ALTER TABLE admins ADD COLUMN IF NOT EXISTS reset_code_expires_at timestamptz;
+
 -- 2. User-to-client many-to-many
 -- CREATE TABLE IF NOT EXISTS client_memberships (
 --   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

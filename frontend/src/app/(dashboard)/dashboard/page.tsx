@@ -5,6 +5,7 @@ import { useAuth, useUser } from "@clerk/nextjs";
 import {
   FileText, Upload, CheckCircle2, Clock, ShieldAlert, Plus,
   ArrowRight, TrendingUp, LineChart, Library, Gavel, Building2,
+  CalendarCheck2, CalendarX2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -54,6 +55,15 @@ export default function DashboardPage() {
   ).length;
   const pending  = contracts.filter(c => c.status === "uploaded" || c.status === "processing").length;
 
+  // Mirrors the backend lifecycle filters (GET /api/contracts?lifecycle=…)
+  const today   = new Date().toISOString().slice(0, 10);
+  const active  = contracts.filter(
+    c => c.contract_status === "executed" && (!c.end_date || c.end_date.slice(0, 10) >= today)
+  ).length;
+  const expired = contracts.filter(
+    c => c.end_date !== null && c.end_date.slice(0, 10) < today
+  ).length;
+
   const recent = contracts.slice(0, 6);
 
   const riskCounts = contracts.reduce((acc, c) => {
@@ -92,12 +102,6 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Button asChild size="sm" variant="outline">
-            <Link href="/clients">
-              <Building2 className="h-4 w-4 mr-1.5" />
-              Clients
-            </Link>
-          </Button>
           <Button asChild size="sm">
             <Link href="/upload">
               <Plus className="h-4 w-4 mr-1.5" />
@@ -108,11 +112,11 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Stat cards ───────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         <StatCard
-          label="Total Contracts"
+          label="Total"
           value={loading ? undefined : total}
-          sub="All uploaded files"
+          sub="All uploaded contracts"
           icon={<FileText className="h-5 w-5" />}
           iconColor="bg-blue-100 text-blue-600"
           accent="border-l-blue-500"
@@ -126,15 +130,31 @@ export default function DashboardPage() {
           accent="border-l-emerald-500"
         />
         <StatCard
-          label="High / Critical Risk"
+          label="Active"
+          value={loading ? undefined : active}
+          sub="Executed & in force"
+          icon={<CalendarCheck2 className="h-5 w-5" />}
+          iconColor="bg-teal-100 text-teal-600"
+          accent="border-l-teal-500"
+        />
+        <StatCard
+          label="Expired"
+          value={loading ? undefined : expired}
+          sub="Past their end date"
+          icon={<CalendarX2 className="h-5 w-5" />}
+          iconColor="bg-amber-100 text-amber-600"
+          accent="border-l-amber-500"
+        />
+        <StatCard
+          label="High Risk"
           value={loading ? undefined : highRisk}
-          sub="Requires attention"
+          sub="High or critical risk — requires attention"
           icon={<ShieldAlert className="h-5 w-5" />}
           iconColor="bg-red-100 text-red-600"
           accent="border-l-red-500"
         />
         <StatCard
-          label="Pending Review"
+          label="Pending"
           value={loading ? undefined : pending}
           sub="Awaiting AI analysis"
           icon={<Clock className="h-5 w-5" />}
@@ -297,21 +317,18 @@ function StatCard({
   accent: string;
 }) {
   return (
-    <div className={cn(
-      "rounded-xl border bg-white shadow-sm p-5 border-l-4 flex flex-col gap-3.5",
-      accent,
-    )}>
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider leading-snug">{label}</p>
-        <div className={cn("h-8 w-8 rounded-lg flex items-center justify-center shrink-0", iconColor)}>
-          {icon}
-        </div>
+    <div
+      className={cn("rounded-lg border bg-white shadow-sm border-l-4 px-3.5 py-3 flex items-center gap-3", accent)}
+      title={sub}
+    >
+      <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center shrink-0", iconColor)}>
+        {icon}
       </div>
-      <div>
+      <div className="min-w-0">
         {value === undefined
-          ? <Skeleton className="h-9 w-14" />
-          : <p className="text-4xl font-bold text-gray-900 leading-none tabular-nums">{value}</p>}
-        {sub && <p className="text-[11px] text-gray-400 mt-1.5">{sub}</p>}
+          ? <Skeleton className="h-6 w-10" />
+          : <p className="text-xl font-bold text-gray-900 leading-none tabular-nums">{value}</p>}
+        <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mt-1 truncate">{label}</p>
       </div>
     </div>
   );

@@ -37,15 +37,18 @@ export interface AdminStats {
 
 export function getAdminToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("admin_token");
+  return localStorage.getItem("admin_token") ?? sessionStorage.getItem("admin_token");
 }
 
-export function setAdminToken(token: string) {
-  localStorage.setItem("admin_token", token);
+// remember=true persists across browser restarts; false lasts for the tab session only
+export function setAdminToken(token: string, remember = true) {
+  clearAdminToken();
+  (remember ? localStorage : sessionStorage).setItem("admin_token", token);
 }
 
 export function clearAdminToken() {
   localStorage.removeItem("admin_token");
+  sessionStorage.removeItem("admin_token");
 }
 
 async function adminFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -72,6 +75,16 @@ export const adminLogin = (email: string, password: string) =>
   });
 
 export const adminMe = () => adminFetch<{ email: string }>("/admin/auth/me");
+
+export const adminForgotPassword = (email: string) =>
+  adminFetch<{ ok: boolean }>("/admin/auth/forgot-password", {
+    method: "POST", body: JSON.stringify({ email }),
+  });
+
+export const adminResetPassword = (email: string, code: string, password: string) =>
+  adminFetch<{ token: string; admin: AdminUser }>("/admin/auth/reset-password", {
+    method: "POST", body: JSON.stringify({ email, code, password }),
+  });
 
 // Stats
 export const getAdminStats = () => adminFetch<AdminStats>("/admin/stats");

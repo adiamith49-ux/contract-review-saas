@@ -24,6 +24,14 @@ export const analyzeLimiter = rateLimit({
   message: { error: "Analysis limit reached. Maximum 30 analyses per hour." },
 });
 
+export const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many attempts. Please try again in 15 minutes." },
+});
+
 export const chatLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 20,

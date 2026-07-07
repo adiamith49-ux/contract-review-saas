@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -6,7 +7,9 @@ import { z } from "zod";
 import { db } from "../db.js";
 import { config } from "../config.js";
 import { requireAdmin } from "../middleware/adminAuth.js";
+import { authLimiter } from "../middleware/rateLimit.js";
 import { extractText } from "../services/document.service.js";
+import { isMailerConfigured, sendMail } from "../services/mailer.service.js";
 import { createClerkClient } from "@clerk/backend";
 
 const clerk = createClerkClient({ secretKey: config.CLERK_SECRET_KEY });
@@ -36,7 +39,7 @@ export const adminRouter = Router();
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
-adminRouter.post("/auth/login", async (req, res, next) => {
+adminRouter.post("/auth/login", authLimiter, async (req, res, next) => {
   try {
     const { email, password } = req.body as { email: string; password: string };
     if (!email || !password) {
@@ -70,6 +73,83 @@ adminRouter.post("/auth/login", async (req, res, next) => {
 
 adminRouter.get("/auth/me", requireAdmin, async (req, res) => {
   res.json({ email: req.adminEmail });
+});
+
+// Requires SMTP_* env vars and the reset_code_hash / reset_code_expires_at
+// columns on admins (see packages/database/schema.sql migration section).
+adminRouter.post("/auth/forgot-password", authLimiter, async (req, res, next) => {
+  try {
+    const { email } = z.object({ email: z.string().email() }).parse(req.body);
+
+    if (!isMailerConfigured()) {
+      res.status(503).json({ error: "Password reset email is not configured on the server. Contact your developer." });
+      return;
+    }
+
+    const { data: admin } = await db
+      .from("admins")
+      .select("id, email")
+      .eq("email", email.toLowerCase().trim())
+      .single();
+
+    if (admin) {
+      const code = String(crypto.randomInt(100000, 1000000));
+      const reset_code_hash = await bcrypt.hash(code, 10);
+      const reset_code_expires_at = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+
+      const { error } = await db
+        .from("admins")
+        .update({ reset_code_hash, reset_code_expires_at })
+        .eq("id", (admin as any).id);
+      if (error) throw error;
+
+      await sendMail(
+        (admin as any).email,
+        "Contralyne admin password reset",
+        `Your Contralyne admin password reset code is: ${code}\n\nIt expires in 15 minutes. If you did not request this, you can ignore this email.`,
+      );
+    }
+
+    // Always OK — never reveal whether an admin account exists for this email
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.post("/auth/reset-password", authLimiter, async (req, res, next) => {
+  try {
+    const { email, code, password } = z.object({
+      email: z.string().email(),
+      code: z.string().length(6),
+      password: z.string().min(8),
+    }).parse(req.body);
+
+    const { data: admin } = await db
+      .from("admins")
+      .select("id, email, name, reset_code_hash, reset_code_expires_at")
+      .eq("email", email.toLowerCase().trim())
+      .single();
+
+    const a = admin as any;
+    const expired = !a?.reset_code_expires_at || new Date(a.reset_code_expires_at) < new Date();
+    if (!a?.reset_code_hash || expired || !(await bcrypt.compare(code, a.reset_code_hash))) {
+      res.status(400).json({ error: "Invalid or expired reset code" });
+      return;
+    }
+
+    const password_hash = await bcrypt.hash(password, 12);
+    const { error } = await db
+      .from("admins")
+      .update({ password_hash, reset_code_hash: null, reset_code_expires_at: null })
+      .eq("id", a.id);
+    if (error) throw error;
+
+    const token = signAdminToken(a.email);
+    res.json({ token, admin: { email: a.email, name: a.name } });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
