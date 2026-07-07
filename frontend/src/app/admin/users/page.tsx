@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Users, Mail, Plus, X, Building2, UserPlus } from "lucide-react";
+import { Users, Mail, Plus, X, Building2, UserPlus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   listAdminUsers, listAdminClients, assignUserToClient, removeUserFromClient,
-  inviteUser, addUser, type AdminUserRow, type AdminClient,
+  inviteUser, addUser, deleteAdminUser, type AdminUserRow, type AdminClient,
 } from "@/lib/admin-api";
 import { formatDate } from "@/lib/utils";
 
@@ -19,6 +19,8 @@ export default function AdminUsersPage() {
   const [clients, setClients] = useState<AdminClient[]>([]);
   const [loading, setLoading] = useState(true);
   const [assignTarget, setAssignTarget] = useState<AdminUserRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AdminUserRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Invite dialog
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -110,6 +112,21 @@ export default function AdminUsersPage() {
     }
   }
 
+  async function handleDeleteUser() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteAdminUser(deleteTarget.clerk_user_id);
+      setUsers(prev => prev.filter(u => u.clerk_user_id !== deleteTarget.clerk_user_id));
+      toast.success(`User ${deleteTarget.email} deleted`);
+      setDeleteTarget(null);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const assignedForTarget = assignTarget?.client_ids ?? [];
   const unassigned = clients.filter(c => !assignedForTarget.includes(c.id));
   const assigned   = clients.filter(c =>  assignedForTarget.includes(c.id));
@@ -135,15 +152,15 @@ export default function AdminUsersPage() {
 
       {/* Users table */}
       <div className="rounded-xl border bg-white shadow-sm overflow-hidden">
-        <div className="grid grid-cols-[minmax(0,2fr)_120px_100px] border-b bg-gray-50/80 px-5 py-2.5">
-          {["User", "Joined", "Clients"].map((h, i) => (
+        <div className="grid grid-cols-[minmax(0,2fr)_120px_100px_40px] border-b bg-gray-50/80 px-5 py-2.5">
+          {["User", "Joined", "Clients", ""].map((h, i) => (
             <div key={i} className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">{h}</div>
           ))}
         </div>
 
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="grid grid-cols-[minmax(0,2fr)_120px_100px] items-center px-5 py-4 border-b last:border-b-0">
+            <div key={i} className="grid grid-cols-[minmax(0,2fr)_120px_100px_40px] items-center px-5 py-4 border-b last:border-b-0">
               <div className="space-y-1.5">
                 <Skeleton className="h-4 w-48" />
                 <Skeleton className="h-3 w-32" />
@@ -172,7 +189,7 @@ export default function AdminUsersPage() {
           users.map(u => (
             <div
               key={u.clerk_user_id}
-              className="grid grid-cols-[minmax(0,2fr)_120px_100px] items-center px-5 py-3.5 border-b last:border-b-0 hover:bg-gray-50 transition-colors cursor-pointer group"
+              className="grid grid-cols-[minmax(0,2fr)_120px_100px_40px] items-center px-5 py-3.5 border-b last:border-b-0 hover:bg-gray-50 transition-colors cursor-pointer group"
               onClick={() => setAssignTarget(u)}
             >
               <div className="min-w-0 pr-4">
@@ -188,6 +205,13 @@ export default function AdminUsersPage() {
                 <Building2 className="h-3.5 w-3.5 text-gray-400" />
                 <span className="text-sm font-semibold text-gray-700">{u.client_ids.length}</span>
               </div>
+              <button
+                onClick={e => { e.stopPropagation(); setDeleteTarget(u); }}
+                className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors justify-self-end"
+                title="Delete user"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
             </div>
           ))
         )}
@@ -274,6 +298,27 @@ export default function AdminUsersPage() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete user dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={open => !open && setDeleteTarget(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete user?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-500">
+            Deleting <strong>{deleteTarget?.email}</strong> permanently removes their account and all
+            their data — contracts, analyses, chat history, and client assignments. This cannot be undone.
+          </p>
+          <div className="flex justify-end gap-3 mt-4">
+            <DialogClose asChild>
+              <Button variant="outline" size="sm" disabled={deleting}>Cancel</Button>
+            </DialogClose>
+            <Button variant="destructive" size="sm" onClick={handleDeleteUser} disabled={deleting}>
+              {deleting ? "Deleting…" : "Delete user"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

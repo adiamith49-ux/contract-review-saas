@@ -9,6 +9,7 @@ import { config } from "../config.js";
 import { requireAdmin } from "../middleware/adminAuth.js";
 import { authLimiter } from "../middleware/rateLimit.js";
 import { extractText } from "../services/document.service.js";
+import { deleteFromS3 } from "../services/storage.service.js";
 import { isMailerConfigured, sendMail } from "../services/mailer.service.js";
 import { createClerkClient } from "@clerk/backend";
 
@@ -417,6 +418,49 @@ adminRouter.post("/users/add", requireAdmin, async (req, res, next) => {
       res.status(409).json({ error: "A user with this email already exists" });
       return;
     }
+    next(err);
+  }
+});
+
+// DELETE /admin/users/:userId — remove user from Clerk + hard-delete all their data
+adminRouter.delete("/users/:userId", requireAdmin, async (req, res, next) => {
+  try {
+    const userId = req.params.userId;
+
+    // Delete from Clerk — ignore "not found" so orphaned DB rows can still be cleaned up
+    try {
+      await clerk.users.deleteUser(userId);
+    } catch (err: any) {
+      if (err?.status !== 404) throw err;
+    }
+
+    // Delete S3 files for the user's contracts before removing DB rows
+    const { data: contracts } = await db
+      .from("contracts")
+      .select("s3_key")
+      .eq("user_id", userId);
+    if (contracts && contracts.length > 0) {
+      await Promise.allSettled(contracts.map((c: any) => deleteFromS3(c.s3_key)));
+    }
+
+    // Hard-delete all user data (mirrors the Clerk user.deleted webhook;
+    // analyses/legal_intake/redlines cascade from contracts via FK)
+    await Promise.all([
+      db.from("contracts").delete().eq("user_id", userId),
+      db.from("clause_library").delete().eq("user_id", userId),
+      db.from("review_rules").delete().eq("user_id", userId),
+      db.from("activity_logs").delete().eq("user_id", userId),
+      db.from("chat_messages").delete().eq("user_id", userId),
+      db.from("client_memberships").delete().eq("user_id", userId),
+      db.from("tickets").delete().eq("user_id", userId),
+      db.from("tasks").delete().eq("user_id", userId),
+      db.from("time_entries").delete().eq("user_id", userId),
+      db.from("calendar_events").delete().eq("user_id", userId),
+      db.from("users").delete().eq("clerk_user_id", userId),
+    ]);
+
+    res.status(204).send();
+  } catch (err) {
     next(err);
   }
 });
