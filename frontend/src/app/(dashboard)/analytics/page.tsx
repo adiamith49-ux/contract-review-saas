@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import {
   FileText,
@@ -56,31 +57,35 @@ export default function AnalyticsPage() {
         <p className="text-gray-500 mt-1 text-sm">Overview of your contract activity and risk distribution.</p>
       </div>
 
-      {/* Stat cards */}
+      {/* Stat cards — click through to the filtered repository */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           label="Total Contracts"
           value={data?.totals.total}
           icon={<FileText className="h-5 w-5 text-blue-500" />}
           loading={loading}
-        />
-        <StatCard
-          label="Analyzed"
-          value={data?.totals.analyzed}
-          icon={<CheckCircle className="h-5 w-5 text-emerald-500" />}
-          loading={loading}
+          href="/contracts"
         />
         <StatCard
           label="High / Critical Risk"
           value={data?.totals.high_risk}
           icon={<AlertTriangle className="h-5 w-5 text-orange-500" />}
           loading={loading}
+          href="/contracts?risk=high"
         />
         <StatCard
-          label="Pending Review"
-          value={data?.totals.pending}
-          icon={<Clock className="h-5 w-5 text-violet-500" />}
+          label="Pending Approval"
+          value={data?.totals.pending_approval ?? 0}
+          icon={<CheckCircle className="h-5 w-5 text-indigo-500" />}
           loading={loading}
+          href="/contracts?status=pending_approval"
+        />
+        <StatCard
+          label="Expiring ≤ 90 days"
+          value={data?.totals.expiring_soon ?? 0}
+          icon={<Clock className="h-5 w-5 text-amber-500" />}
+          loading={loading}
+          href="/contracts?expiring=90"
         />
       </div>
 
@@ -256,14 +261,16 @@ function StatCard({
   value,
   icon,
   loading,
+  href,
 }: {
   label: string;
   value: number | undefined;
   icon: React.ReactNode;
   loading: boolean;
+  href?: string;
 }) {
-  return (
-    <Card>
+  const card = (
+    <Card className={href ? "hover:shadow-md transition-shadow cursor-pointer" : undefined}>
       <CardContent className="p-5">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</span>
@@ -277,6 +284,7 @@ function StatCard({
       </CardContent>
     </Card>
   );
+  return href ? <Link href={href}>{card}</Link> : card;
 }
 
 function DistributionRow({

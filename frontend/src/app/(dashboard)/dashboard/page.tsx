@@ -5,7 +5,7 @@ import { useAuth, useUser } from "@clerk/nextjs";
 import {
   FileText, Upload, CheckCircle2, Clock, ShieldAlert, Plus,
   ArrowRight, TrendingUp, LineChart, Library, Gavel, Building2,
-  CalendarCheck2, CalendarX2,
+  CalendarCheck2, CalendarX2, CalendarClock, UserCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -63,6 +63,11 @@ export default function DashboardPage() {
   const expired = contracts.filter(
     c => c.end_date !== null && c.end_date.slice(0, 10) < today
   ).length;
+  const pendingApproval = contracts.filter(c => c.contract_status === "pending_approval").length;
+  const in90 = new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10);
+  const expiringSoon = contracts.filter(
+    c => c.end_date !== null && c.end_date.slice(0, 10) >= today && c.end_date.slice(0, 10) <= in90
+  ).length;
 
   const recent = contracts.slice(0, 6);
 
@@ -112,7 +117,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Stat cards ───────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard
           label="Total"
           value={loading ? undefined : total}
@@ -120,6 +125,7 @@ export default function DashboardPage() {
           icon={<FileText className="h-5 w-5" />}
           iconColor="bg-blue-100 text-blue-600"
           accent="border-l-blue-500"
+          href="/contracts"
         />
         <StatCard
           label="Analyzed"
@@ -136,6 +142,16 @@ export default function DashboardPage() {
           icon={<CalendarCheck2 className="h-5 w-5" />}
           iconColor="bg-teal-100 text-teal-600"
           accent="border-l-teal-500"
+          href="/contracts?lifecycle=active"
+        />
+        <StatCard
+          label="Expiring Soon"
+          value={loading ? undefined : expiringSoon}
+          sub="End date within 90 days"
+          icon={<CalendarClock className="h-5 w-5" />}
+          iconColor="bg-orange-100 text-orange-600"
+          accent="border-l-orange-500"
+          href="/contracts?expiring=90"
         />
         <StatCard
           label="Expired"
@@ -144,6 +160,7 @@ export default function DashboardPage() {
           icon={<CalendarX2 className="h-5 w-5" />}
           iconColor="bg-amber-100 text-amber-600"
           accent="border-l-amber-500"
+          href="/contracts?lifecycle=expired"
         />
         <StatCard
           label="High Risk"
@@ -152,14 +169,25 @@ export default function DashboardPage() {
           icon={<ShieldAlert className="h-5 w-5" />}
           iconColor="bg-red-100 text-red-600"
           accent="border-l-red-500"
+          href="/contracts?risk=high"
         />
         <StatCard
-          label="Pending"
+          label="Pending Approval"
+          value={loading ? undefined : pendingApproval}
+          sub="Awaiting sign-off in the approval chain"
+          icon={<UserCheck className="h-5 w-5" />}
+          iconColor="bg-indigo-100 text-indigo-600"
+          accent="border-l-indigo-500"
+          href="/contracts?status=pending_approval"
+        />
+        <StatCard
+          label="Pending Review"
           value={loading ? undefined : pending}
           sub="Awaiting AI analysis"
           icon={<Clock className="h-5 w-5" />}
           iconColor="bg-violet-100 text-violet-600"
           accent="border-l-violet-500"
+          href="/contracts?review=pending"
         />
       </div>
 
@@ -307,7 +335,7 @@ export default function DashboardPage() {
 // ─── Stat card ────────────────────────────────────────────────────────────────
 
 function StatCard({
-  label, value, sub, icon, iconColor, accent,
+  label, value, sub, icon, iconColor, accent, href,
 }: {
   label: string;
   value: number | undefined;
@@ -315,12 +343,10 @@ function StatCard({
   icon: React.ReactNode;
   iconColor: string;
   accent: string;
+  href?: string;
 }) {
-  return (
-    <div
-      className={cn("rounded-lg border bg-white shadow-sm border-l-4 px-3.5 py-3 flex items-center gap-3", accent)}
-      title={sub}
-    >
+  const inner = (
+    <>
       <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center shrink-0", iconColor)}>
         {icon}
       </div>
@@ -330,8 +356,17 @@ function StatCard({
           : <p className="text-xl font-bold text-gray-900 leading-none tabular-nums">{value}</p>}
         <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mt-1 truncate">{label}</p>
       </div>
-    </div>
+    </>
   );
+  const base = cn("rounded-lg border bg-white shadow-sm border-l-4 px-3.5 py-3 flex items-center gap-3", accent);
+  if (href) {
+    return (
+      <Link href={href} className={cn(base, "hover:shadow-md hover:-translate-y-px transition-all")} title={`${sub} — click to view`}>
+        {inner}
+      </Link>
+    );
+  }
+  return <div className={base} title={sub}>{inner}</div>;
 }
 
 // ─── Empty state ──────────────────────────────────────────────────────────────

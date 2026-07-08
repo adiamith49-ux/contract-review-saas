@@ -13,7 +13,7 @@ analyticsRouter.get("/", async (req, res, next) => {
     const [contracts, analyses, recentActivity] = await Promise.all([
       db
         .from("contracts")
-        .select("id, contract_type, status, created_at")
+        .select("id, contract_type, status, contract_status, end_date, created_at")
         .eq("user_id", userId),
 
       db
@@ -23,7 +23,7 @@ analyticsRouter.get("/", async (req, res, next) => {
 
       db
         .from("activity_logs")
-        .select("id, action, entity_type, created_at")
+        .select("id, action, contract_id, created_at")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(20),
@@ -36,6 +36,8 @@ analyticsRouter.get("/", async (req, res, next) => {
     const analysisData = analyses.data ?? [];
 
     // ── totals ────────────────────────────────────────────────────────────
+    const today = new Date().toISOString().slice(0, 10);
+    const in90  = new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10);
     const totalContracts = contractData.length;
     const totalAnalyzed  = contractData.filter((c) => c.status === "analyzed").length;
     const highRiskCount  = analysisData.filter(
@@ -43,6 +45,13 @@ analyticsRouter.get("/", async (req, res, next) => {
     ).length;
     const pendingCount   = contractData.filter(
       (c) => c.status === "uploaded" || c.status === "processing",
+    ).length;
+    const pendingApprovalCount = contractData.filter((c) => c.contract_status === "pending_approval").length;
+    const expiringSoonCount = contractData.filter(
+      (c) => c.end_date && c.end_date.slice(0, 10) >= today && c.end_date.slice(0, 10) <= in90,
+    ).length;
+    const expiredCount = contractData.filter(
+      (c) => c.end_date && c.end_date.slice(0, 10) < today,
     ).length;
 
     // ── by_status (array) ─────────────────────────────────────────────────
@@ -86,16 +95,19 @@ analyticsRouter.get("/", async (req, res, next) => {
     const recent_activity = (recentActivity.data ?? []).map((a) => ({
       id:          a.id ?? "",
       action:      a.action ?? "",
-      entity_type: a.entity_type ?? "",
+      entity_type: a.contract_id ? "contract" : "",
       created_at:  a.created_at ?? "",
     }));
 
     res.json({
       totals: {
-        total:     totalContracts,
-        analyzed:  totalAnalyzed,
-        high_risk: highRiskCount,
-        pending:   pendingCount,
+        total:            totalContracts,
+        analyzed:         totalAnalyzed,
+        high_risk:        highRiskCount,
+        pending:          pendingCount,
+        pending_approval: pendingApprovalCount,
+        expiring_soon:    expiringSoonCount,
+        expired:          expiredCount,
       },
       by_status,
       by_type,

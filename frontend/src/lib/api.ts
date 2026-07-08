@@ -91,6 +91,9 @@ export interface AnalyticsData {
     analyzed: number;
     high_risk: number;
     pending: number;
+    pending_approval?: number;
+    expiring_soon?: number;
+    expired?: number;
   };
   by_status: { status: ContractStatus; count: number }[];
   by_type: { contract_type: ContractType; count: number }[];

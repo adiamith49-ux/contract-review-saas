@@ -1,10 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import {
-  FileText, Plus, Trash2, Search, SlidersHorizontal, X, Building2,
+  FileText, Plus, Trash2, Search, SlidersHorizontal, X, Building2, Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,13 @@ const RISK_OPTIONS: { value: RiskLevel | "all"; label: string }[] = [
   { value: "high",     label: "High"        },
   { value: "medium",   label: "Medium"      },
   { value: "low",      label: "Low"         },
+];
+
+const EXPIRING_OPTIONS = [
+  { value: ALL,  label: "Any end date"       },
+  { value: "30", label: "Expiring ≤ 30 days" },
+  { value: "60", label: "Expiring ≤ 60 days" },
+  { value: "90", label: "Expiring ≤ 90 days" },
 ];
 
 const STATUS_OPTIONS = [
@@ -72,13 +79,17 @@ function matchesLifecycle(c: ContractListItem, filter: string): boolean {
 
 export default function ContractsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { getToken } = useAuth();
   const [contracts, setContracts]       = useState<ContractListItem[]>([]);
   const [loading, setLoading]           = useState(true);
   const [search, setSearch]             = useState("");
   const [typeFilter, setTypeFilter]     = useState(ALL);
-  const [statusFilter, setStatusFilter] = useState(ALL);
-  const [riskFilter, setRiskFilter]     = useState(ALL);
+  // Dashboard KPI cards deep-link here: ?status= / ?lifecycle= / ?risk= / ?expiring= / ?review=pending / ?type=
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || searchParams.get("lifecycle") || ALL);
+  const [riskFilter, setRiskFilter]     = useState(searchParams.get("risk") || ALL);
+  const [expiringFilter, setExpiringFilter] = useState(searchParams.get("expiring") || ALL);
+  const [reviewFilter, setReviewFilter] = useState(searchParams.get("review") || ALL); // "pending" = uploaded/processing
   const [deleteTarget, setDeleteTarget] = useState<ContractListItem | null>(null);
   const [deleting, setDeleting]         = useState(false);
 
@@ -96,6 +107,14 @@ export default function ContractsPage() {
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const todayStr = new Date().toISOString().slice(0, 10);
+  function withinExpiry(c: ContractListItem, days: number): boolean {
+    if (!c.end_date) return false;
+    const end = c.end_date.slice(0, 10);
+    const limit = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+    return end >= todayStr && end <= limit;
+  }
+
   const filtered = contracts.filter(c => {
     const q = search.toLowerCase();
     const displayName = (c.title || c.filename).toLowerCase();
@@ -107,13 +126,45 @@ export default function ContractsPage() {
     const matchType   = typeFilter   === ALL || c.contract_type === typeFilter;
     const matchRisk   = riskFilter   === ALL || c.analyses?.[0]?.risk_level === riskFilter;
     const matchStatus = matchesLifecycle(c, statusFilter);
-    return matchSearch && matchType && matchRisk && matchStatus;
+    const matchExpiring = expiringFilter === ALL || withinExpiry(c, Number(expiringFilter));
+    const matchReview = reviewFilter === ALL || (reviewFilter === "pending"
+      ? (c.status === "uploaded" || c.status === "processing")
+      : true);
+    return matchSearch && matchType && matchRisk && matchStatus && matchExpiring && matchReview;
   });
 
-  const hasFilters = search || typeFilter !== ALL || statusFilter !== ALL || riskFilter !== ALL;
+  const hasFilters = search || typeFilter !== ALL || statusFilter !== ALL || riskFilter !== ALL || expiringFilter !== ALL || reviewFilter !== ALL;
 
   function clearFilters() {
-    setSearch(""); setTypeFilter(ALL); setStatusFilter(ALL); setRiskFilter(ALL);
+    setSearch(""); setTypeFilter(ALL); setStatusFilter(ALL); setRiskFilter(ALL); setExpiringFilter(ALL); setReviewFilter(ALL);
+    router.replace("/contracts");
+  }
+
+  function exportCsv() {
+    const rows = filtered.map(c => ({
+      Title: c.title || c.filename,
+      Counterparty: c.counterparty ?? "",
+      Type: CONTRACT_TYPE_LABELS[c.contract_type],
+      Status: CONTRACT_BUSINESS_STATUS_LABELS[c.contract_status ?? "draft"] ?? c.contract_status ?? "",
+      Risk: c.analyses?.[0]?.risk_level ?? "not analyzed",
+      "Start Date": c.start_date ?? "",
+      "End Date": c.end_date ?? "",
+      "Renewal Date": c.renewal_date ?? "",
+      Owner: c.owner_name ?? "",
+      Value: c.contract_value ?? "",
+    }));
+    if (rows.length === 0) { toast.error("No contracts to export"); return; }
+    const headers = Object.keys(rows[0]);
+    const escape = (v: unknown) => `"${String(v).replace(/"/g, '""')}"`;
+    const csv = [headers.join(","), ...rows.map(r => headers.map(h => escape((r as Record<string, unknown>)[h])).join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `contracts-report-${todayStr}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${rows.length} contract${rows.length !== 1 ? "s" : ""}`);
   }
 
   async function handleDelete() {
@@ -210,12 +261,28 @@ export default function ContractsPage() {
           </SelectContent>
         </Select>
 
+        <Select value={expiringFilter} onValueChange={setExpiringFilter}>
+          <SelectTrigger className="w-[160px] h-9 text-sm">
+            <SelectValue placeholder="Expiring" />
+          </SelectTrigger>
+          <SelectContent>
+            {EXPIRING_OPTIONS.map(o => (
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
         {hasFilters && (
           <Button variant="ghost" size="sm" onClick={clearFilters} className="h-9 gap-1.5 text-gray-500">
             <X className="h-3.5 w-3.5" />
             Clear
           </Button>
         )}
+
+        <Button variant="outline" size="sm" onClick={exportCsv} className="h-9 gap-1.5 ml-auto" title="Export the filtered list as CSV">
+          <Download className="h-3.5 w-3.5" />
+          Export CSV
+        </Button>
       </div>
 
       {/* Table */}
