@@ -63,6 +63,10 @@ export interface Clause {
   jurisdiction: string | null;
   content: string;
   tags: string[];
+  contract_types: string[];
+  status: "draft" | "approved";
+  source: string | null;
+  version: number;
   created_at: string;
 }
 

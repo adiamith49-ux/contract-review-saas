@@ -15,7 +15,9 @@ export interface AdminUserRow {
 
 export interface AdminClause {
   id: string; title: string; clause_type: string;
-  content: string; tags: string[]; jurisdiction: string | null; created_at: string;
+  content: string; tags: string[]; jurisdiction: string | null;
+  contract_types: string[]; status: "draft" | "approved"; source: string | null; version: number;
+  created_at: string;
 }
 
 export interface AdminPlaybook {
@@ -132,7 +134,7 @@ export const addUser = (data: { email: string; first_name?: string; last_name?: 
 // Clauses
 export const listAdminClauses = () => adminFetch<{ clauses: AdminClause[] }>("/admin/clauses");
 
-export const createAdminClause = (data: Omit<AdminClause, "id" | "created_at">) =>
+export const createAdminClause = (data: Omit<AdminClause, "id" | "created_at" | "version">) =>
   adminFetch<{ clause: AdminClause }>("/admin/clauses", { method: "POST", body: JSON.stringify(data) });
 
 export const updateAdminClause = (id: string, data: Partial<AdminClause>) =>

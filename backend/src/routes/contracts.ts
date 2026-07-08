@@ -47,6 +47,8 @@ const intakeSchema = z.object({
 export const contractsRouter = Router();
 contractsRouter.use(requireAuth);
 
+const businessStatusEnum = z.enum(["draft", "submitted", "under_review", "waiting_for_business", "sent_to_counterparty", "in_negotiation", "pending_approval", "approved", "executed", "expired", "on_hold", "terminated"]);
+
 const metaSchema = z.object({
   title: z.string().max(500).optional(),
   counterparty: z.string().max(500).optional(),
@@ -55,7 +57,7 @@ const metaSchema = z.object({
   renewal_date: z.string().optional(),
   owner_name: z.string().max(500).optional(),
   contract_value: z.coerce.number().positive().optional(),
-  contract_status: z.enum(["draft", "submitted", "under_review", "waiting_for_business", "sent_to_counterparty", "in_negotiation", "pending_approval", "approved", "executed", "expired", "on_hold", "terminated"]).optional(),
+  contract_status: businessStatusEnum.optional(),
   governing_law: z.enum(["us", "uk", "eu", "india", "other"]).optional(),
   parent_contract_id: z.string().uuid().optional(),
 });
@@ -336,12 +338,15 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
 
     if (fetchError || !contract) { res.status(404).json({ error: "Contract not found" }); return; }
     if (!contract.extracted_text) { res.status(422).json({ error: "Contract text could not be extracted" }); return; }
+    if (contract.status === "processing") { res.status(409).json({ error: "Analysis already in progress for this contract" }); return; }
 
-    const { selectedRuleIds } = req.body as { selectedRuleIds?: string[] };
+    const { selectedRuleIds } = z.object({
+      selectedRuleIds: z.array(z.string().uuid()).optional(),
+    }).parse(req.body ?? {});
 
     const [intakeResult, clauseResult] = await Promise.all([
       db.from("legal_intake").select("*").eq("contract_id", contract.id).single(),
-      db.from("clause_library").select("title, clause_type, content").or(`user_id.eq.${req.userId},is_admin_managed.eq.true`),
+      db.from("clause_library").select("title, clause_type, content").eq("status", "approved").or(`user_id.eq.${req.userId},is_admin_managed.eq.true`),
     ]);
     const intake = intakeResult.data ?? null;
     const clauseLibrary = (clauseResult.data ?? []) as Array<{ title: string; clause_type: "approved" | "fallback" | "unacceptable"; content: string }>;
@@ -356,7 +361,7 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
       const r = await db.from("review_rules").select(selectFields).or(ownerFilter).eq("is_active", true);
       ruleRows = r.data ?? [];
     } else if (selectedRuleIds.length > 0) {
-      const r = await db.from("review_rules").select(selectFields).or(ownerFilter).in("id", selectedRuleIds);
+      const r = await db.from("review_rules").select(selectFields).or(ownerFilter).eq("is_active", true).in("id", selectedRuleIds);
       ruleRows = r.data ?? [];
     }
 
@@ -374,7 +379,8 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
       playbookText = playbookParts.join("\n\n---\n\n");
     }
 
-    await db.from("contracts").update({ status: "processing" }).eq("id", contract.id);
+    const { error: processingErr } = await db.from("contracts").update({ status: "processing" }).eq("id", contract.id);
+    if (processingErr) throw processingErr;
 
     const analysis = await analyzeContract(
       contract.extracted_text,
@@ -402,7 +408,8 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
 
     if (saveError) throw saveError;
 
-    await db.from("contracts").update({ status: "analyzed" }).eq("id", contract.id);
+    const { error: analyzedErr } = await db.from("contracts").update({ status: "analyzed" }).eq("id", contract.id);
+    if (analyzedErr) throw analyzedErr;
 
     await logActivity(req.userId, "contract.analyzed", contract.id, {
       risk_level: analysis.riskLevel,
@@ -621,7 +628,7 @@ contractsRouter.patch("/:id", async (req, res, next) => {
       renewal_date: z.string().optional().nullable(),
       owner_name: z.string().max(500).optional().nullable(),
       contract_value: z.coerce.number().positive().optional().nullable(),
-      contract_status: z.enum(["draft", "submitted", "under_review", "waiting_for_business", "sent_to_counterparty", "in_negotiation", "pending_approval", "approved", "executed", "expired", "on_hold", "terminated"]).optional(),
+      contract_status: businessStatusEnum.optional(),
     }).parse(req.body);
 
     if (Object.keys(body).length === 0) {
@@ -662,7 +669,7 @@ contractsRouter.post("/:id/redline", analyzeLimiter, async (req, res, next) => {
     // Fetch active playbook rules + clause library in parallel
     const [{ data: ruleRows }, { data: clauseRows }] = await Promise.all([
       db.from("review_rules").select("title, playbook_text, rules").or(`user_id.eq.${req.userId},is_admin_managed.eq.true`).eq("is_active", true),
-      db.from("clause_library").select("title, clause_type, content").or(`user_id.eq.${req.userId},is_admin_managed.eq.true`),
+      db.from("clause_library").select("title, clause_type, content").eq("status", "approved").or(`user_id.eq.${req.userId},is_admin_managed.eq.true`),
     ]);
 
     const playbookParts = (ruleRows ?? []).map((row: any) => {

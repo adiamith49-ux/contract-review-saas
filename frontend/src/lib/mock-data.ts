@@ -11,7 +11,7 @@ export const MOCK_CLAUSES: Clause[] = [
     jurisdiction: "England & Wales",
     content:
       'Each party undertakes that it shall not at any time during this Agreement, and for a period of five years after termination of this Agreement, disclose to any person any confidential information concerning the business, affairs, customers, clients or suppliers of the other party or of any member of the group of companies to which the other party belongs, except as permitted by clause 2.2.',
-    tags: ["NDA", "confidentiality", "mutual"],
+    tags: ["NDA", "confidentiality", "mutual"], contract_types: [], status: "approved", source: null, version: 1,
     created_at: "2026-05-10T09:00:00Z",
   },
   {
@@ -22,7 +22,7 @@ export const MOCK_CLAUSES: Clause[] = [
     jurisdiction: "England & Wales",
     content:
       "Each party's total aggregate liability in contract, tort (including negligence or breach of statutory duty), misrepresentation, restitution or otherwise, arising in connection with the performance or contemplated performance of this Agreement shall be limited to the greater of (a) the total fees paid or payable by the Customer in the 12-month period preceding the claim, or (b) £100,000.",
-    tags: ["liability", "cap", "indemnity"],
+    tags: ["liability", "cap", "indemnity"], contract_types: [], status: "approved", source: null, version: 1,
     created_at: "2026-05-12T11:30:00Z",
   },
   {
@@ -33,7 +33,7 @@ export const MOCK_CLAUSES: Clause[] = [
     jurisdiction: "New York",
     content:
       "This Agreement and any dispute or claim (including non-contractual disputes or claims) arising out of or in connection with it or its subject matter or formation shall be governed by and construed in accordance with the laws of the State of New York, without giving effect to any choice or conflict of law provision or rule.",
-    tags: ["governing law", "New York", "jurisdiction"],
+    tags: ["governing law", "New York", "jurisdiction"], contract_types: [], status: "approved", source: null, version: 1,
     created_at: "2026-05-15T14:00:00Z",
   },
   {
@@ -44,7 +44,7 @@ export const MOCK_CLAUSES: Clause[] = [
     jurisdiction: null,
     content:
       "Notwithstanding any other provision of this Agreement, neither party's liability to the other shall be limited in respect of: (a) death or personal injury caused by its negligence; (b) fraud or fraudulent misrepresentation; or (c) any other liability which cannot be limited or excluded by law.",
-    tags: ["liability", "unlimited", "carve-out"],
+    tags: ["liability", "unlimited", "carve-out"], contract_types: [], status: "approved", source: null, version: 1,
     created_at: "2026-05-18T16:45:00Z",
   },
   {
@@ -55,7 +55,7 @@ export const MOCK_CLAUSES: Clause[] = [
     jurisdiction: null,
     content:
       "Unless either party gives the other not less than thirty (30) days' written notice before the end of the then-current term, this Agreement shall automatically renew for successive one-year periods at the pricing in effect at the time of renewal.",
-    tags: ["renewal", "auto-renew", "termination"],
+    tags: ["renewal", "auto-renew", "termination"], contract_types: [], status: "approved", source: null, version: 1,
     created_at: "2026-05-20T10:15:00Z",
   },
   {
@@ -66,7 +66,7 @@ export const MOCK_CLAUSES: Clause[] = [
     jurisdiction: "United States (Federal)",
     content:
       "All work product, deliverables, and intellectual property created by Service Provider in connection with this Agreement are \"works made for hire\" within the meaning of the Copyright Act, 17 U.S.C. § 101, and shall be the sole and exclusive property of Client. To the extent any such materials do not constitute works made for hire, Service Provider hereby irrevocably assigns to Client all rights therein.",
-    tags: ["IP", "work-for-hire", "assignment"],
+    tags: ["IP", "work-for-hire", "assignment"], contract_types: [], status: "approved", source: null, version: 1,
     created_at: "2026-05-22T08:00:00Z",
   },
 ];

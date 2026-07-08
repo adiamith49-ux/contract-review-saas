@@ -80,17 +80,26 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
--- Clause library (user's saved approved/fallback clauses)
+-- Clause library (approved/fallback/walk-away language — institutional legal memory)
 CREATE TABLE IF NOT EXISTS clause_library (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id text NOT NULL,
   title text NOT NULL,
-  clause_type text NOT NULL,                      -- liability | payment | ip | termination | nda | other
+  clause_type text NOT NULL,                      -- approved (preferred) | fallback | unacceptable (walk-away)
   content text NOT NULL,
-  notes text,
+  notes text,                                     -- JSON: { tags: [], jurisdiction }
+  contract_types jsonb NOT NULL DEFAULT '[]',     -- which contract types this clause applies to (nda, msa, …)
+  status text NOT NULL DEFAULT 'approved',        -- draft | approved — only approved clauses reach AI review
+  source text,                                    -- provenance, e.g. "MSA Playbook v3" or "Acme deal 2025"
+  version int NOT NULL DEFAULT 1,                 -- bumped on every content edit
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+-- Executable migration for pre-existing clause_library tables (idempotent):
+ALTER TABLE clause_library ADD COLUMN IF NOT EXISTS contract_types jsonb NOT NULL DEFAULT '[]';
+ALTER TABLE clause_library ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'approved';
+ALTER TABLE clause_library ADD COLUMN IF NOT EXISTS source text;
+ALTER TABLE clause_library ADD COLUMN IF NOT EXISTS version int NOT NULL DEFAULT 1;
 
 -- Review rules / Playbooks — uploaded DOCX/PDF playbook documents injected into AI analysis
 CREATE TABLE IF NOT EXISTS review_rules (
@@ -150,11 +159,25 @@ CREATE TABLE IF NOT EXISTS contract_comments (
 );
 CREATE INDEX IF NOT EXISTS idx_contract_comments ON contract_comments(contract_id, created_at DESC);
 
--- Migration (tasks gain matter-collaboration fields):
--- ALTER TABLE tasks ADD COLUMN IF NOT EXISTS contract_id uuid REFERENCES contracts(id) ON DELETE SET NULL;
--- ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assignee text;
--- ALTER TABLE tasks ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
--- CREATE INDEX IF NOT EXISTS idx_tasks_contract ON tasks(contract_id);
+-- Tasks (personal + matter-linked to-dos; assignee is a display name, not a login)
+CREATE TABLE IF NOT EXISTS tasks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id text NOT NULL,
+  title text NOT NULL,
+  notes text NOT NULL DEFAULT '',
+  priority text NOT NULL DEFAULT 'medium',        -- low | medium | high
+  due_date date,
+  done boolean NOT NULL DEFAULT false,
+  contract_id uuid REFERENCES contracts(id) ON DELETE SET NULL,
+  assignee text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+-- Executable migration for pre-existing tasks tables (idempotent):
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS contract_id uuid REFERENCES contracts(id) ON DELETE SET NULL;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assignee text;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+CREATE INDEX IF NOT EXISTS idx_tasks_contract ON tasks(contract_id);
 
 -- Approval matrix rules (who must approve, and when they are triggered)
 CREATE TABLE IF NOT EXISTS approval_rules (

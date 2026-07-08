@@ -1,10 +1,11 @@
+
 "use client";
 import { useState } from "react";
 import {
   X, ChevronDown, ChevronUp, ShieldAlert, FileWarning,
   Handshake, HelpCircle, Check, FileDown, ListChecks,
   FileText, AlertCircle, Users, Calendar, Scale, BookOpen,
-  XCircle, Pencil, Gavel,
+  XCircle, Pencil,
 } from "lucide-react";
 import { RiskBadge } from "@/components/RiskBadge";
 import { Button } from "@/components/ui/button";
@@ -260,7 +261,7 @@ function MissingClauseItem({ clause, isOpen, onToggle }: { clause: MissingClause
 // ─── Accordion item (Risk Areas, Clause Issues, Ambiguity Flags) ──────────────
 
 function AccordionItem({
-  id, title, risk, body, recommendation, contractText, suggestedLanguage, clauseRef, playbookRule,
+  id, title, risk, body, recommendation, contractText, suggestedLanguage, clauseRef,
   isOpen, isApplied, onToggle, onApply, onScrollToText,
   decision, onDecision, editedText, onEditedTextChange,
 }: {
@@ -272,14 +273,13 @@ function AccordionItem({
   contractText?: string;
   suggestedLanguage?: string;
   clauseRef?: string;
-  playbookRule?: string;
   isOpen: boolean;
   isApplied: boolean;
   onToggle: (id: string) => void;
   onApply: (id: string) => void;
   onScrollToText?: (text: string) => void;
   decision?: ItemDecision;
-  onDecision?: (id: string, d: ItemDecision | undefined) => void;
+  onDecision?: (id: string, d: ItemDecision) => void;
   editedText?: string;
   onEditedTextChange?: (id: string, text: string) => void;
 }) {
@@ -304,13 +304,6 @@ function AccordionItem({
       {isOpen && (
         <div className="px-3 pb-3 pt-1 space-y-2 bg-white border-t border-gray-100">
           <p className="text-[11px] text-gray-600 leading-relaxed">{body}</p>
-
-          {playbookRule && (
-            <div className="rounded-md bg-violet-50 border border-violet-100 px-2.5 py-1.5">
-              <p className="text-[9px] font-bold text-violet-700 uppercase tracking-wide mb-0.5">Playbook Rule Triggered</p>
-              <p className="text-[10px] text-violet-800 leading-relaxed">{playbookRule}</p>
-            </div>
-          )}
 
           {contractText && (
             <div className="rounded-md bg-slate-100 px-2.5 py-2">
@@ -338,7 +331,7 @@ function AccordionItem({
                 <p className="text-[9px] font-bold text-emerald-700 uppercase tracking-wide">Suggested Language</p>
                 {!editing && onDecision && (
                   <button
-                    onClick={() => { setEditing(true); onDecision(id, "edited"); }}
+                    onClick={() => setEditing(true)}
                     className="text-[9px] text-blue-600 hover:text-blue-800 font-medium flex items-center gap-0.5"
                   >
                     <Pencil className="h-2.5 w-2.5" /> Edit
@@ -362,7 +355,7 @@ function AccordionItem({
                   <Button size="sm" className="h-6 text-[10px] flex-1" onClick={() => { setEditing(false); onDecision?.(id, "edited"); onApply(id); }}>
                     <Check className="h-2.5 w-2.5 mr-1" />Save & Apply
                   </Button>
-                  <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => { setEditing(false); onEditedTextChange?.(id, suggestedLanguage); onDecision?.(id, undefined); }}>
+                  <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => { setEditing(false); onEditedTextChange?.(id, suggestedLanguage); }}>
                     Cancel
                   </Button>
                 </div>
@@ -455,13 +448,8 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
   const [decisions, setDecisions] = useState<Record<string, ItemDecision>>({});
   const [editedTexts, setEditedTexts] = useState<Record<string, string>>({});
 
-  function handleDecision(id: string, d: ItemDecision | undefined) {
-    setDecisions(prev => {
-      const next = { ...prev };
-      if (d === undefined) delete next[id];
-      else next[id] = d;
-      return next;
-    });
+  function handleDecision(id: string, d: ItemDecision) {
+    setDecisions(prev => ({ ...prev, [id]: d }));
   }
   function handleEditedTextChange(id: string, text: string) {
     setEditedTexts(prev => ({ ...prev, [id]: text }));
@@ -495,7 +483,7 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
   ];
 
   return (
-    <div className="w-full lg:w-[340px] xl:w-[420px] 2xl:w-[480px] max-h-[50vh] lg:max-h-none shrink-0 flex flex-col bg-white border-t lg:border-t-0 lg:border-l shadow-[-2px_0_12px_rgba(0,0,0,0.08)]">
+    <div className="w-[380px] shrink-0 flex flex-col bg-white border-l shadow-[-2px_0_12px_rgba(0,0,0,0.08)]">
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="shrink-0 flex items-center gap-2.5 px-4 py-3 bg-[#1a2035] text-white">
         <ListChecks className="h-4 w-4 text-white/60 shrink-0" />
@@ -513,7 +501,7 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
             key={t.key}
             onClick={() => setTab(t.key)}
             className={cn(
-              "flex-1 text-[10px] xl:text-[11px] font-medium py-2 border-b-2 transition-colors whitespace-nowrap",
+              "flex-1 text-[10px] font-medium py-2 border-b-2 transition-colors",
               tab === t.key
                 ? "border-blue-600 text-blue-700 bg-white"
                 : "border-transparent text-gray-500 hover:text-gray-700"
@@ -554,17 +542,6 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
         {/* ════════ OVERVIEW TAB ════════ */}
         {tab === "overview" && (
           <>
-            {/* Playbooks applied to this review */}
-            {analysis.playbooks_used && analysis.playbooks_used.length > 0 && (
-              <div className="px-3 py-2 bg-violet-50 border-b border-violet-100 flex items-start gap-2">
-                <Gavel className="h-3 w-3 text-violet-600 mt-0.5 shrink-0" />
-                <p className="text-[10px] text-violet-800 leading-relaxed">
-                  <span className="font-bold">Reviewed with playbook{analysis.playbooks_used.length > 1 ? "s" : ""}:</span>{" "}
-                  {analysis.playbooks_used.join(", ")}
-                </p>
-              </div>
-            )}
-
             {/* Metadata */}
             {metadata && <MetadataSection metadata={metadata} />}
 
@@ -685,7 +662,6 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
                 title={item.clause} body={item.finding} recommendation={item.recommendation} risk={item.risk}
                 contractText={item.contractText}
                 suggestedLanguage={(item as any).suggestedLanguage}
-                playbookRule={(item as any).playbookRule}
                 isOpen={activeId === `c-${i}`} isApplied={appliedIds.has(`c-${i}`)}
                 onToggle={handleToggle} onApply={onApply} onScrollToText={onScrollToText}
                 decision={decisions[`c-${i}`]} onDecision={handleDecision}

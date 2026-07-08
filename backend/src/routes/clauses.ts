@@ -28,15 +28,18 @@ function formatClause(row: Record<string, unknown>) {
 // GET /api/clauses — global admin-managed library (read-only for users)
 clausesRouter.get("/", async (req, res, next) => {
   try {
-    const { clause_type } = req.query;
+    const { clause_type, contract_type, status, search } = req.query;
     let query = db
       .from("clause_library")
-      .select("id, title, clause_type, content, notes, created_at")
+      .select("id, title, clause_type, content, notes, contract_types, status, source, version, created_at, updated_at")
       .eq("is_admin_managed", true)
       .order("clause_type")
       .order("title");
 
     if (clause_type) query = query.eq("clause_type", String(clause_type));
+    if (status) query = query.eq("status", String(status));
+    if (contract_type) query = query.contains("contract_types", JSON.stringify([String(contract_type)]));
+    if (search) query = query.or(`title.ilike.%${String(search).replace(/[%,]/g, "")}%,content.ilike.%${String(search).replace(/[%,]/g, "")}%`);
 
     const { data, error } = await query;
     if (error) throw error;

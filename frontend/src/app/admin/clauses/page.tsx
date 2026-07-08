@@ -21,7 +21,9 @@ const TYPE_COLORS = {
   unacceptable: "bg-red-100 text-red-700",
 };
 
-const emptyForm = { title: "", clause_type: "approved" as "approved" | "fallback" | "unacceptable", content: "", tags: [] as string[], jurisdiction: null as string | null };
+const CONTRACT_TYPE_OPTIONS = ["nda", "msa", "saas", "sow", "order_form", "employment", "vendor_agreement", "other"];
+
+const emptyForm = { title: "", clause_type: "approved" as "approved" | "fallback" | "unacceptable", content: "", tags: [] as string[], jurisdiction: null as string | null, contract_types: [] as string[], status: "approved" as "draft" | "approved", source: "" };
 
 export default function AdminClausesPage() {
   const [clauses, setClauses]   = useState<AdminClause[]>([]);
@@ -40,19 +42,20 @@ export default function AdminClausesPage() {
   function openCreate() { setForm(emptyForm); setShowCreate(true); }
   function openEdit(c: AdminClause) {
     setEditTarget(c);
-    setForm({ title: c.title, clause_type: c.clause_type as "approved" | "fallback" | "unacceptable", content: c.content, tags: c.tags, jurisdiction: c.jurisdiction });
+    setForm({ title: c.title, clause_type: c.clause_type as "approved" | "fallback" | "unacceptable", content: c.content, tags: c.tags, jurisdiction: c.jurisdiction, contract_types: c.contract_types ?? [], status: c.status ?? "approved", source: c.source ?? "" });
   }
 
   async function handleSave() {
     setSaving(true);
     try {
+      const payload = { ...form, source: form.source.trim() || null };
       if (editTarget) {
-        const { clause } = await updateAdminClause(editTarget.id, form);
+        const { clause } = await updateAdminClause(editTarget.id, payload);
         setClauses(prev => prev.map(c => c.id === editTarget.id ? clause : c));
         setEditTarget(null);
         toast.success("Clause updated");
       } else {
-        const { clause } = await createAdminClause(form);
+        const { clause } = await createAdminClause(payload);
         setClauses(prev => [...prev, clause]);
         setShowCreate(false);
         toast.success("Clause created");
@@ -93,6 +96,42 @@ export default function AdminClausesPage() {
           <option value="fallback">Fallback</option>
           <option value="unacceptable">Unacceptable / Walk-away</option>
         </select>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="text-xs font-medium text-gray-600 mb-1.5 block">Status</label>
+          <select
+            className="w-full h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            value={form.status}
+            onChange={e => setForm(f => ({ ...f, status: e.target.value as "draft" | "approved" }))}
+          >
+            <option value="approved">Approved — used in AI reviews</option>
+            <option value="draft">Draft — hidden from AI reviews</option>
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-gray-600 mb-1.5 block">Source</label>
+          <Input placeholder="e.g. MSA Playbook v3" value={form.source} onChange={e => setForm(f => ({ ...f, source: e.target.value }))} />
+        </div>
+      </div>
+      <div>
+        <label className="text-xs font-medium text-gray-600 mb-1.5 block">Applies to contract types</label>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {CONTRACT_TYPE_OPTIONS.map(t => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setForm(f => ({ ...f, contract_types: f.contract_types.includes(t) ? f.contract_types.filter(x => x !== t) : [...f.contract_types, t] }))}
+              className={cn(
+                "rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase transition-colors",
+                form.contract_types.includes(t) ? "bg-primary/10 text-primary border-primary/30" : "bg-white text-gray-500 hover:bg-gray-50",
+              )}
+            >
+              {t.replace("_", " ")}
+            </button>
+          ))}
+          <span className="text-[10px] text-gray-400 ml-1">none selected = all types</span>
+        </div>
       </div>
       <div>
         <label className="text-xs font-medium text-gray-600 mb-1.5 block">Clause text *</label>
@@ -160,6 +199,10 @@ export default function AdminClausesPage() {
                     {TYPE_LABELS[c.clause_type as keyof typeof TYPE_LABELS]}
                   </span>
                   <p className="text-sm font-medium text-gray-900 truncate">{c.title}</p>
+                  {c.status === "draft" && (
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-600 shrink-0">Draft</span>
+                  )}
+                  <span className="text-[10px] text-gray-400 shrink-0">v{c.version ?? 1}</span>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <button

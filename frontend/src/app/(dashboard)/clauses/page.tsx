@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { Search, Library, Globe, Tag, MessageSquarePlus, Lock, ChevronDown, ChevronUp } from "lucide-react";
+import { Search, Library, Globe, Tag, MessageSquarePlus, Lock, ChevronDown, ChevronUp, Copy, Check, FileText, GitBranch } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,12 +18,21 @@ const TYPE_COLORS = {
   unacceptable: "bg-red-50 text-red-700 border-red-200",
 };
 
+const TYPE_LABELS = { approved: "Preferred", fallback: "Fallback", unacceptable: "Walk-away" };
+
+const CONTRACT_TYPE_LABELS: Record<string, string> = {
+  nda: "NDA", msa: "MSA", saas: "SaaS", sow: "SOW", order_form: "Order Form",
+  employment: "Employment", vendor_agreement: "Vendor", other: "Other",
+};
+
 export default function ClausesPage() {
   const { getToken } = useAuth();
   const [clauses, setClauses]   = useState<Clause[]>([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState("");
   const [filterType, setFilterType] = useState<"all" | Clause["clause_type"]>("all");
+  const [filterContractType, setFilterContractType] = useState<string>("all");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   // Ticket dialog
@@ -59,12 +68,24 @@ export default function ClausesPage() {
     }
   }
 
+  async function handleCopy(c: Clause) {
+    try {
+      await navigator.clipboard.writeText(c.content);
+      setCopiedId(c.id);
+      toast.success("Clause copied — paste it into the redline or a suggestion edit");
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      toast.error("Could not copy to clipboard");
+    }
+  }
+
   const filtered = clauses.filter(c => {
     const matchSearch = !search ||
       c.title.toLowerCase().includes(search.toLowerCase()) ||
       c.content.toLowerCase().includes(search.toLowerCase());
     const matchType = filterType === "all" || c.clause_type === filterType;
-    return matchSearch && matchType;
+    const matchContractType = filterContractType === "all" || (c.contract_types ?? []).includes(filterContractType);
+    return matchSearch && matchType && matchContractType;
   });
 
   return (
@@ -84,6 +105,14 @@ export default function ClausesPage() {
         </div>
       </div>
 
+      {/* Roadmap note — auto-extraction from historical agreements (planned) */}
+      <div className="flex items-start gap-2.5 rounded-lg border border-blue-100 bg-blue-50/60 px-3.5 py-2.5">
+        <GitBranch className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+        <p className="text-xs text-blue-800 leading-relaxed">
+          <span className="font-semibold">Coming soon — automatic clause extraction.</span> A future release will mine your executed contracts to auto-suggest preferred, fallback and walk-away language, so institutional knowledge is captured without manual entry. Today, clauses are curated by your admin.
+        </p>
+      </div>
+
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
@@ -95,10 +124,21 @@ export default function ClausesPage() {
             <SelectValue placeholder="Type" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="approved">Approved</SelectItem>
+            <SelectItem value="all">All Tags</SelectItem>
+            <SelectItem value="approved">Preferred</SelectItem>
             <SelectItem value="fallback">Fallback</SelectItem>
-            <SelectItem value="unacceptable">Unacceptable</SelectItem>
+            <SelectItem value="unacceptable">Walk-away</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filterContractType} onValueChange={setFilterContractType}>
+          <SelectTrigger className="w-full sm:w-44 h-9 text-sm">
+            <SelectValue placeholder="Contract type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Contract Types</SelectItem>
+            {Object.entries(CONTRACT_TYPE_LABELS).map(([v, l]) => (
+              <SelectItem key={v} value={v}>{l}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -125,7 +165,7 @@ export default function ClausesPage() {
                 >
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full border", TYPE_COLORS[c.clause_type])}>
-                      {c.clause_type === "approved" ? "Approved" : c.clause_type === "fallback" ? "Fallback" : "Unacceptable"}
+                      {TYPE_LABELS[c.clause_type]}
                     </span>
                     <h3 className="text-sm font-semibold text-gray-900">{c.title}</h3>
                   </div>
@@ -138,6 +178,14 @@ export default function ClausesPage() {
                         <Globe className="h-3 w-3" /> {c.jurisdiction}
                       </span>
                     )}
+                    {(c.contract_types ?? []).length > 0 && (
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <FileText className="h-3 w-3 text-gray-300" />
+                        {c.contract_types.map(ct => (
+                          <span key={ct} className="text-[11px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">{CONTRACT_TYPE_LABELS[ct] ?? ct}</span>
+                        ))}
+                      </div>
+                    )}
                     {c.tags.length > 0 && (
                       <div className="flex items-center gap-1 flex-wrap">
                         <Tag className="h-3 w-3 text-gray-300" />
@@ -146,10 +194,22 @@ export default function ClausesPage() {
                         ))}
                       </div>
                     )}
+                    {c.source && (
+                      <span className="flex items-center gap-1 text-[11px] text-gray-400">
+                        <GitBranch className="h-3 w-3" /> {c.source} · v{c.version ?? 1}
+                      </span>
+                    )}
                     <span className="text-[11px] text-gray-300 ml-auto">{formatDate(c.created_at)}</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={() => handleCopy(c)}
+                    className="flex items-center gap-1.5 text-xs font-medium text-gray-700 px-2.5 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+                    title="Copy clause text to paste into a redline or suggestion"
+                  >
+                    {copiedId === c.id ? <><Check className="h-3.5 w-3.5 text-emerald-600" />Copied</> : <><Copy className="h-3.5 w-3.5" />Copy</>}
+                  </button>
                   <button
                     onClick={() => { setTicketTarget(c); setTicketDesc(""); }}
                     className="flex items-center gap-1.5 text-xs font-medium text-primary px-2.5 py-1.5 rounded-lg border border-primary/25 hover:bg-primary/5 transition-colors"

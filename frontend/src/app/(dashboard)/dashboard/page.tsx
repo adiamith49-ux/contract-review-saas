@@ -105,7 +105,7 @@ export default function DashboardPage() {
           <Button asChild size="sm">
             <Link href="/upload">
               <Plus className="h-4 w-4 mr-1.5" />
-              Upload Contract
+              New Contract Request
             </Link>
           </Button>
         </div>
@@ -229,7 +229,7 @@ export default function DashboardPage() {
                 className="flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-sm font-semibold text-white bg-primary hover:opacity-90 transition-opacity"
               >
                 <Upload className="h-4 w-4 shrink-0" />
-                Upload New Contract
+                New Contract Request
               </Link>
               {[
                 { label: "Clients",               href: "/clients",   icon: Building2 },

@@ -558,13 +558,16 @@ const clauseSchema = z.object({
   content: z.string().min(1),
   tags: z.array(z.string()).optional().default([]),
   jurisdiction: z.string().nullable().optional(),
+  contract_types: z.array(z.string()).optional().default([]),
+  status: z.enum(["draft", "approved"]).optional().default("approved"),
+  source: z.string().max(500).nullable().optional(),
 });
 
 adminRouter.get("/clauses", requireAdmin, async (_req, res, next) => {
   try {
     const { data, error } = await db
       .from("clause_library")
-      .select("id, title, clause_type, content, notes, is_admin_managed, created_at")
+      .select("id, title, clause_type, content, notes, contract_types, status, source, version, is_admin_managed, created_at, updated_at")
       .eq("is_admin_managed", true)
       .order("clause_type")
       .order("title");
@@ -605,23 +608,30 @@ adminRouter.patch("/clauses/:id", requireAdmin, async (req, res, next) => {
     const { tags, jurisdiction, ...rest } = body;
 
     const notesUpdate: { notes?: string } = {};
-    if (tags !== undefined || jurisdiction !== undefined) {
+    let versionUpdate: { version?: number } = {};
+    if (tags !== undefined || jurisdiction !== undefined || body.content !== undefined) {
       const { data: existing } = await db
         .from("clause_library")
-        .select("notes")
+        .select("notes, content, version")
         .eq("id", req.params.id)
         .eq("is_admin_managed", true)
         .single();
-      const cur = decodeNotes((existing as any)?.notes);
-      notesUpdate.notes = encodeNotes(
-        tags !== undefined ? tags : cur.tags,
-        jurisdiction !== undefined ? jurisdiction : cur.jurisdiction,
-      );
+      if (tags !== undefined || jurisdiction !== undefined) {
+        const cur = decodeNotes((existing as any)?.notes);
+        notesUpdate.notes = encodeNotes(
+          tags !== undefined ? tags : cur.tags,
+          jurisdiction !== undefined ? jurisdiction : cur.jurisdiction,
+        );
+      }
+      // Editing clause text bumps the version — provenance stays visible to users
+      if (body.content !== undefined && existing && body.content !== (existing as any).content) {
+        versionUpdate = { version: (((existing as any).version as number) ?? 1) + 1 };
+      }
     }
 
     const { data, error } = await db
       .from("clause_library")
-      .update({ ...rest, ...notesUpdate, updated_at: new Date().toISOString() })
+      .update({ ...rest, ...notesUpdate, ...versionUpdate, updated_at: new Date().toISOString() })
       .eq("id", req.params.id)
       .eq("is_admin_managed", true)
       .select()
