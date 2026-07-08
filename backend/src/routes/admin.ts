@@ -395,13 +395,36 @@ adminRouter.post("/users/add", requireAdmin, async (req, res, next) => {
       last_name: z.string().max(100).optional(),
     }).parse(req.body);
 
-    const clerkUser = await clerk.users.createUser({
+    const baseParams = {
       emailAddress: [email],
       firstName: first_name,
       lastName: last_name,
       skipPasswordChecks: true,
       skipPasswordRequirement: true,
-    });
+    };
+
+    let clerkUser;
+    try {
+      clerkUser = await clerk.users.createUser(baseParams);
+    } catch (err: any) {
+      const e = err?.errors?.[0];
+      const needsUsername =
+        e?.code === "form_data_missing" && (e?.longMessage ?? "").includes("username");
+      if (!needsUsername) throw err;
+
+      // Clerk instance requires a username — derive one from the email,
+      // retrying with a random suffix if it's already taken
+      const base = (email.split("@")[0].replace(/[^a-zA-Z0-9_-]/g, "") || "user").slice(0, 24);
+      try {
+        clerkUser = await clerk.users.createUser({ ...baseParams, username: base });
+      } catch (err2: any) {
+        if (err2?.errors?.[0]?.code !== "form_identifier_exists") throw err2;
+        clerkUser = await clerk.users.createUser({
+          ...baseParams,
+          username: `${base}${Math.floor(1000 + Math.random() * 9000)}`,
+        });
+      }
+    }
 
     await db.from("users").upsert(
       { clerk_user_id: clerkUser.id, email },
@@ -416,6 +439,12 @@ adminRouter.post("/users/add", requireAdmin, async (req, res, next) => {
     const code = err?.errors?.[0]?.code ?? "";
     if (code === "form_identifier_exists" || code === "duplicate_record") {
       res.status(409).json({ error: "A user with this email already exists" });
+      return;
+    }
+    // Surface Clerk's detailed message instead of the generic status text
+    const clerkMsg = err?.errors?.[0]?.longMessage ?? err?.errors?.[0]?.message;
+    if (clerkMsg && typeof err?.status === "number" && err.status < 500) {
+      res.status(err.status).json({ error: clerkMsg });
       return;
     }
     next(err);
