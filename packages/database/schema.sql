@@ -218,6 +218,23 @@ CREATE TABLE IF NOT EXISTS contract_approvals (
 );
 CREATE INDEX IF NOT EXISTS idx_contract_approvals ON contract_approvals(contract_id, round DESC, step_order);
 
+-- Contract comparisons (version diff + AI change summary, stored under the base contract)
+CREATE TABLE IF NOT EXISTS contract_comparisons (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id text NOT NULL,
+  base_contract_id uuid NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+  compared_contract_id uuid NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+  diff jsonb NOT NULL DEFAULT '[]',               -- [{ type: added|deleted|modified|unchanged, base, compared }]
+  added_count int NOT NULL DEFAULT 0,
+  deleted_count int NOT NULL DEFAULT 0,
+  modified_count int NOT NULL DEFAULT 0,
+  summary text,                                   -- AI plain-English summary of what changed
+  key_changes jsonb NOT NULL DEFAULT '[]',        -- [{ type, clause, detail, impact }]
+  model text NOT NULL DEFAULT '',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_comparisons_base ON contract_comparisons(base_contract_id, created_at DESC);
+
 -- Activity logs (audit trail for all key actions)
 CREATE TABLE IF NOT EXISTS activity_logs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

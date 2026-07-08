@@ -18,6 +18,7 @@ import { RedlineViewer } from "@/components/RedlineViewer";
 import { IntakePanel } from "@/components/IntakePanel";
 import { ApprovalPanel } from "@/components/ApprovalPanel";
 import { MatterWorkspace } from "@/components/MatterWorkspace";
+import { VersionComparePanel } from "@/components/VersionComparePanel";
 import { AIChatFloat } from "@/components/AIChatFloat";
 import {
   getContract, analyzeContract, downloadExport,
@@ -343,6 +344,9 @@ export default function ContractDetailPage() {
 
       {/* ── Approval workflow ────────────────────────────────────────────── */}
       <ApprovalPanel contractId={id} contractStatus={contract.contract_status} getToken={getToken} onChanged={load} />
+
+      {/* ── Versions & comparison ────────────────────────────────────────── */}
+      <VersionComparePanel contractId={id} getToken={getToken} />
 
       {/* ── Matter workspace: comments, tasks, activity, team ────────────── */}
       <MatterWorkspace contractId={id} getToken={getToken} />

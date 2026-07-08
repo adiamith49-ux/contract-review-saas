@@ -862,3 +862,49 @@ export async function createContractTask(
 export async function getContractActivity(token: string | null, contractId: string): Promise<{ activity: ActivityEntry[]; total: number }> {
   return apiFetch(`/api/activity?contract_id=${contractId}&limit=100`, token);
 }
+
+// ─── Version comparison ───────────────────────────────────────────────────────
+
+export interface VersionItem {
+  id: string;
+  filename: string;
+  title: string | null;
+  version_number: number;
+  contract_status: string;
+  status: ContractStatus;
+  owner_name: string | null;
+  created_at: string;
+  parent_contract_id: string | null;
+}
+
+export interface DiffBlock {
+  type: "added" | "deleted" | "modified" | "unchanged";
+  base?: string;
+  compared?: string;
+}
+
+export interface Comparison {
+  id: string;
+  base_contract_id: string;
+  compared_contract_id: string;
+  diff: DiffBlock[];
+  added_count: number;
+  deleted_count: number;
+  modified_count: number;
+  summary: string | null;
+  key_changes: { type: "added" | "deleted" | "modified"; clause: string; detail: string; impact: "low" | "medium" | "high" }[];
+  model: string;
+  created_at: string;
+}
+
+export async function listVersions(token: string | null, contractId: string): Promise<{ versions: VersionItem[]; root_id: string }> {
+  return apiFetch(`/api/contracts/${contractId}/versions`, token);
+}
+
+export async function compareVersions(token: string | null, baseId: string, against: string): Promise<{ comparison: Comparison }> {
+  return apiFetch(`/api/contracts/${baseId}/compare`, token, { method: "POST", body: JSON.stringify({ against }) });
+}
+
+export async function listComparisons(token: string | null, contractId: string): Promise<{ comparisons: Comparison[] }> {
+  return apiFetch(`/api/contracts/${contractId}/comparisons`, token);
+}

@@ -71,6 +71,7 @@ export default function UploadPage() {
   const [governingLaw, setGoverningLaw] = useState("us");
   const [ownerName, setOwnerName]     = useState("");
   const [contractValue, setContractValue] = useState("");
+  const parentContractId = searchParams.get("parent") ?? "";
 
   // Step 3
   const [rules, setRules]                   = useState<ReviewRule[]>([]);
@@ -191,6 +192,7 @@ export default function UploadPage() {
         contractValue: contractValue ? Number(contractValue) : undefined,
         contractStatus,
         governingLaw: governingLaw || undefined,
+        parentContractId: parentContractId || undefined,
       });
       setProgress(80);
       setStage("analyzing");
@@ -222,8 +224,14 @@ export default function UploadPage() {
       {/* Header */}
       <div className="shrink-0 px-8 pt-5 pb-4 border-b bg-white flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-lg font-bold text-gray-900 tracking-tight">New Contract Request</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Create a full contract record with metadata, dates, and AI review.</p>
+          <h1 className="text-lg font-bold text-gray-900 tracking-tight">
+            {parentContractId ? "Upload New Version" : "New Contract Request"}
+          </h1>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {parentContractId
+              ? "This upload will be linked as a new version of an existing contract so you can compare drafts."
+              : "Create a full contract record with metadata, dates, and AI review."}
+          </p>
         </div>
         <Button asChild size="sm" variant="outline">
           <Link href="/clients">

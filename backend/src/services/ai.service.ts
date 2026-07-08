@@ -225,6 +225,59 @@ async function _callRedlineAI(prompt: string): Promise<RedlineEdit[]> {
   return edits;
 }
 
+export interface ChangeSummary {
+  summary: string;
+  keyChanges: { type: "added" | "deleted" | "modified"; clause: string; detail: string; impact: "low" | "medium" | "high" }[];
+  model: string;
+}
+
+const changesTool: Anthropic.Tool = {
+  name: "summarize_changes",
+  description: "Summarize the substantive differences between two contract drafts",
+  input_schema: {
+    type: "object",
+    required: ["summary", "keyChanges"],
+    properties: {
+      summary: { type: "string", description: "2-4 sentence plain-English summary of what changed between the prior version and the new version, from the reviewing party's perspective." },
+      keyChanges: {
+        type: "array",
+        description: "The most substantive changes (max 10). Ignore pure formatting/whitespace.",
+        items: {
+          type: "object",
+          required: ["type", "clause", "detail", "impact"],
+          properties: {
+            type:   { type: "string", enum: ["added", "deleted", "modified"] },
+            clause: { type: "string", description: "Clause/section name or topic affected" },
+            detail: { type: "string", description: "What specifically changed" },
+            impact: { type: "string", enum: ["low", "medium", "high"], description: "Risk impact of this change on the reviewing party" },
+          },
+        },
+      },
+    },
+  },
+};
+
+// AI summary of what changed between two drafts. `diffText` is a compact
+// pre-computed diff so the model focuses on classifying substance, not re-diffing.
+export async function summarizeChanges(diffText: string, contractType: ContractType): Promise<ChangeSummary> {
+  const response = await anthropic.messages.create({
+    model: config.AI_MODEL,
+    max_tokens: 2048,
+    system: [{ type: "text", text: legalSystemPrompt }],
+    tools: [changesTool],
+    tool_choice: { type: "tool", name: "summarize_changes" },
+    messages: [{
+      role: "user",
+      content: `Two drafts of a ${contractType.toUpperCase()} contract were compared. Below is a paragraph-level diff (ADDED = only in the new version, DELETED = only in the prior version, MODIFIED = reworded between versions). Summarize the substantive legal changes and their impact on the reviewing party. Ignore formatting-only changes.\n\n${diffText.slice(0, 40000)}`,
+    }],
+  });
+
+  const toolUse = response.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
+  if (!toolUse) throw new Error("AI did not return a change summary");
+  const input = toolUse.input as { summary: string; keyChanges: ChangeSummary["keyChanges"] };
+  return { summary: input.summary, keyChanges: input.keyChanges ?? [], model: config.AI_MODEL };
+}
+
 export async function summarizeContract(
   text: string,
   contractType: ContractType

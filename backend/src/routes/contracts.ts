@@ -8,7 +8,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { createClerkClient } from "@clerk/backend";
 import { config } from "../config.js";
 import { analyzeLimiter, chatLimiter, uploadLimiter } from "../middleware/rateLimit.js";
-import { analyzeContract, extractContractMeta, redlineContract, summarizeContract } from "../services/ai.service.js";
+import { analyzeContract, extractContractMeta, redlineContract, summarizeContract, summarizeChanges } from "../services/ai.service.js";
 import { exportRedlineDocx, processEdits, type ProcessedEdit } from "../services/redline.service.js";
 import { logActivity } from "../services/activity.service.js";
 import { chatWithContract } from "../services/chat.service.js";
@@ -807,6 +807,128 @@ contractsRouter.post("/:id/redline/export/docx", async (req, res, next) => {
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     res.setHeader("Content-Disposition", `attachment; filename="${baseName}-redlines.docx"`);
     res.send(buffer);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/contracts/:id/versions — all versions in this contract's family
+contractsRouter.get("/:id/versions", async (req, res, next) => {
+  try {
+    const { data: self, error: sErr } = await db
+      .from("contracts")
+      .select("id, parent_contract_id")
+      .eq("id", req.params.id)
+      .eq("user_id", req.userId)
+      .single();
+    if (sErr || !self) { res.status(404).json({ error: "Contract not found" }); return; }
+
+    // Family root: the parent if this is a child, else itself
+    const rootId = self.parent_contract_id ?? self.id;
+    const { data, error } = await db
+      .from("contracts")
+      .select("id, filename, title, version_number, contract_status, status, owner_name, created_at, parent_contract_id")
+      .eq("user_id", req.userId)
+      .or(`id.eq.${rootId},parent_contract_id.eq.${rootId}`)
+      .order("version_number", { ascending: true });
+    if (error) throw error;
+
+    res.json({ versions: data ?? [], root_id: rootId });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/contracts/:id/compare  { against: <otherContractId> }
+// Diffs :id (base/prior) against `against` (compared/new), stores + returns the comparison.
+contractsRouter.post("/:id/compare", async (req, res, next) => {
+  try {
+    const { against } = z.object({ against: z.string().uuid() }).parse(req.body ?? {});
+    if (against === req.params.id) { res.status(400).json({ error: "Choose two different versions to compare" }); return; }
+
+    const { data: rows, error } = await db
+      .from("contracts")
+      .select("id, filename, title, contract_type, version_number, extracted_text")
+      .eq("user_id", req.userId)
+      .in("id", [req.params.id, against]);
+    if (error) throw error;
+
+    const base = rows?.find(r => r.id === req.params.id);
+    const compared = rows?.find(r => r.id === against);
+    if (!base || !compared) { res.status(404).json({ error: "One or both versions not found" }); return; }
+    if (!base.extracted_text || !compared.extracted_text) {
+      res.status(422).json({ error: "Both versions need extracted text to compare" }); return;
+    }
+
+    const { diffContracts } = await import("../services/compare.service.js");
+    const diff = diffContracts(base.extracted_text, compared.extracted_text);
+
+    // Build a compact diff transcript for the AI (skip unchanged blocks)
+    const diffText = diff.blocks
+      .filter(b => b.type !== "unchanged")
+      .map(b => {
+        if (b.type === "added") return `ADDED: ${b.compared}`;
+        if (b.type === "deleted") return `DELETED: ${b.base}`;
+        return `MODIFIED:\n  was: ${b.base}\n  now: ${b.compared}`;
+      })
+      .join("\n\n");
+
+    let summary: string | null = null;
+    let keyChanges: unknown[] = [];
+    let model = "";
+    if (diffText.trim()) {
+      try {
+        const cs = await summarizeChanges(diffText, base.contract_type as ContractType);
+        summary = cs.summary;
+        keyChanges = cs.keyChanges;
+        model = cs.model;
+      } catch {
+        summary = "Automated change summary unavailable — showing the structural diff below.";
+      }
+    } else {
+      summary = "No substantive text differences detected between these two versions.";
+    }
+
+    const { data: saved, error: saveErr } = await db
+      .from("contract_comparisons")
+      .insert({
+        user_id: req.userId,
+        base_contract_id: base.id,
+        compared_contract_id: compared.id,
+        diff: diff.blocks,
+        added_count: diff.added,
+        deleted_count: diff.deleted,
+        modified_count: diff.modified,
+        summary,
+        key_changes: keyChanges,
+        model,
+      })
+      .select()
+      .single();
+    if (saveErr) throw saveErr;
+
+    await logActivity(req.userId, "contract.compared", base.id, {
+      compared_contract_id: compared.id,
+      added: diff.added, deleted: diff.deleted, modified: diff.modified,
+    });
+
+    res.json({ comparison: saved });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/contracts/:id/comparisons — stored comparisons for this contract
+contractsRouter.get("/:id/comparisons", async (req, res, next) => {
+  try {
+    const { data, error } = await db
+      .from("contract_comparisons")
+      .select("*")
+      .eq("user_id", req.userId)
+      .or(`base_contract_id.eq.${req.params.id},compared_contract_id.eq.${req.params.id}`)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    res.json({ comparisons: data ?? [] });
   } catch (err) {
     next(err);
   }
