@@ -263,12 +263,6 @@ export default function AdminLoginPage() {
           )}
         </div>
 
-        <p className="text-center text-xs text-slate-600 mt-6">
-          First time?{" "}
-          <a href="/admin/setup" className="text-slate-400 hover:text-slate-200 underline">
-            Set up admin account
-          </a>
-        </p>
       </div>
     </div>
   );
