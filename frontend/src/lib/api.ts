@@ -322,6 +322,7 @@ export async function downloadExport(
   format: "pdf" | "docx",
   filename: string,
   appliedIds?: Set<string>,
+  version?: number,
 ): Promise<void> {
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -332,11 +333,14 @@ export async function downloadExport(
   const res = await fetch(`${API_URL}/api/contracts/${id}/export/${format}${qs}`, { headers });
   if (!res.ok) throw new Error("Export failed");
 
+  const base = filename.replace(/\.[^.]+$/, "");
+  const vtag = version && version > 1 ? `-v${version}` : "";
+  const kind = format === "pdf" ? "risk-report" : "reviewed";
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${filename.replace(/\.[^.]+$/, "")}-review.${format}`;
+  a.download = `${base}${vtag}-${kind}.${format}`;
   document.body.appendChild(a);
   a.click();
   a.remove();
