@@ -32,6 +32,14 @@ export const authLimiter = rateLimit({
   message: { error: "Too many attempts. Please try again in 15 minutes." },
 });
 
+export const contactLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many messages sent. Please try again later or email us directly." },
+});
+
 export const chatLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 20,

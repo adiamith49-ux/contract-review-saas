@@ -19,11 +19,17 @@ function getTransporter(): Transporter {
   return transporter;
 }
 
-export async function sendMail(to: string, subject: string, text: string): Promise<void> {
+export async function sendMail(
+  to: string,
+  subject: string,
+  text: string,
+  opts?: { replyTo?: string },
+): Promise<void> {
   await getTransporter().sendMail({
     from: config.SMTP_FROM || config.SMTP_USER,
     to,
     subject,
     text,
+    replyTo: opts?.replyTo,
   });
 }

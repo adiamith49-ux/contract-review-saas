@@ -10,4 +10,5 @@ uploads/
 out/
 coverage/
 .vercel
-flow.md 
+flow.md
+supabase/.temp/ 

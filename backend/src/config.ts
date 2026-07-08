@@ -27,6 +27,8 @@ const EnvSchema = z.object({
   SMTP_USER: str(""),
   SMTP_PASS: str(""),
   SMTP_FROM: str(""),
+  // Where landing-page contact form submissions are delivered
+  CONTACT_EMAIL: str("contact@contralyne.com"),
 });
 
 export const config = EnvSchema.parse(process.env);

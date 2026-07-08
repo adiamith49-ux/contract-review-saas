@@ -11,7 +11,6 @@ import {
   Zap,
   Shield,
   FileText,
-  ChevronRight,
   Check,
   Menu,
   X,
@@ -19,9 +18,15 @@ import {
   Lock,
   Upload,
   ScanSearch,
+  Mail,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { ContralyneLogoMark } from "@/components/ContralyneLogoMark";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 // ─── Navbar ──────────────────────────────────────────────────────────────────
 
@@ -44,7 +49,7 @@ function LandingNav() {
             <a href="#features" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">Features</a>
             <a href="#how-it-works" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">How It Works</a>
             <a href="#security" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">Security</a>
-            <a href="#pricing" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">Pricing</a>
+            <a href="#contact" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">Contact</a>
           </nav>
 
           {/* Desktop CTAs */}
@@ -61,7 +66,7 @@ function LandingNav() {
                   <Link href="/sign-in">Sign In</Link>
                 </Button>
                 <Button asChild>
-                  <Link href="/sign-up">Get Started Free</Link>
+                  <a href="#contact">Request a Demo</a>
                 </Button>
               </>
             )}
@@ -83,7 +88,7 @@ function LandingNav() {
             <a href="#features" onClick={() => setMobileOpen(false)} className="block px-2 py-2 text-sm text-gray-700 rounded hover:bg-gray-50">Features</a>
             <a href="#how-it-works" onClick={() => setMobileOpen(false)} className="block px-2 py-2 text-sm text-gray-700 rounded hover:bg-gray-50">How It Works</a>
             <a href="#security" onClick={() => setMobileOpen(false)} className="block px-2 py-2 text-sm text-gray-700 rounded hover:bg-gray-50">Security</a>
-            <a href="#pricing" onClick={() => setMobileOpen(false)} className="block px-2 py-2 text-sm text-gray-700 rounded hover:bg-gray-50">Pricing</a>
+            <a href="#contact" onClick={() => setMobileOpen(false)} className="block px-2 py-2 text-sm text-gray-700 rounded hover:bg-gray-50">Contact</a>
             <div className="pt-2 border-t space-y-2">
               {isLoaded && isSignedIn ? (
                 <Button asChild className="w-full">
@@ -95,7 +100,7 @@ function LandingNav() {
                     <Link href="/sign-in">Sign In</Link>
                   </Button>
                   <Button asChild className="w-full">
-                    <Link href="/sign-up">Get Started Free</Link>
+                    <a href="#contact" onClick={() => setMobileOpen(false)}>Request a Demo</a>
                   </Button>
                 </>
               )}
@@ -146,9 +151,9 @@ function Hero() {
           ) : (
             <>
               <Button size="lg" asChild className="text-base px-8 h-12">
-                <Link href="/sign-up">
-                  Start Reviewing Free <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
+                <a href="#contact">
+                  Request a Demo <ArrowRight className="ml-2 h-4 w-4" />
+                </a>
               </Button>
               <Button size="lg" variant="outline" asChild className="text-base px-8 h-12">
                 <a href="#how-it-works">See How It Works</a>
@@ -159,7 +164,7 @@ function Hero() {
 
         {/* Trust note */}
         <p className="mt-6 text-xs text-gray-400">
-          No credit card required · Works with PDF &amp; DOCX · Built on AWS, Clerk, Supabase, and Vercel
+          Works with PDF &amp; DOCX · Built on AWS, Clerk, Supabase, and Vercel — SOC2-certified infrastructure
         </p>
 
         {/* Mock UI preview */}
@@ -462,7 +467,7 @@ function WhyContralyne() {
     },
     {
       them: "Ironclad & Kira start at $50,000–$200,000/year",
-      us: "Starting at $49/user/month — no enterprise contract required",
+      us: "Straightforward per-seat licensing at a fraction of the cost",
     },
   ];
 
@@ -511,7 +516,7 @@ function Security() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-14">
           <p className="text-sm font-semibold text-primary uppercase tracking-wider mb-3">Security</p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">Enterprise-grade security, without the enterprise contract</h2>
+          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">Enterprise-grade security, end to end</h2>
           <p className="mt-4 text-lg text-gray-500 max-w-2xl mx-auto">
             Built on the same infrastructure used by thousands of security-conscious SaaS companies.
           </p>
@@ -539,101 +544,140 @@ function Security() {
   );
 }
 
-// ─── Pricing ──────────────────────────────────────────────────────────────────
+// ─── Contact ──────────────────────────────────────────────────────────────────
 
-function Pricing({ isSignedIn }: { isSignedIn: boolean }) {
-  const plans = [
-    {
-      name: "Starter",
-      price: "$49",
-      per: "per user / month",
-      description: "For solo practitioners and small firms getting started with AI contract review.",
-      features: [
-        "Unlimited contract uploads",
-        "Clause-level risk analysis",
-        "Negotiation suggestions",
-        "Per-contract AI chat",
-        "PDF & DOCX export with redlines",
-        "US, UK, EU, India jurisdiction support",
-        "Email support",
-      ],
-      cta: isSignedIn ? "Go to Dashboard" : "Get Started Free",
-      href: isSignedIn ? "/dashboard" : "/sign-up",
-      highlighted: false,
-    },
-    {
-      name: "Professional",
-      price: "$99",
-      per: "per user / month",
-      description: "For legal teams that need custom playbooks and deeper analysis.",
-      features: [
-        "Everything in Starter",
-        "Review Rules & Playbook",
-        "Clause Library",
-        "Analytics dashboard",
-        "Activity audit log",
-        "Scanned PDF OCR",
-        "Priority support",
-      ],
-      cta: isSignedIn ? "Go to Dashboard" : "Start Free Trial",
-      href: isSignedIn ? "/dashboard" : "/sign-up",
-      highlighted: true,
-    },
-  ];
+function ContactSection() {
+  const [form, setForm] = useState({ name: "", email: "", firm: "", team_size: "", message: "" });
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+    setForm(f => ({ ...f, [key]: e.target.value }));
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSending(true);
+    try {
+      const res = await fetch(`${API_URL}/api/contact`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name,
+          email: form.email,
+          firm: form.firm,
+          team_size: form.team_size || undefined,
+          message: form.message,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Could not send your message. Please try again.");
+      setSent(true);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSending(false);
+    }
+  }
 
   return (
-    <section id="pricing" className="py-20 sm:py-24 bg-gray-50">
+    <section id="contact" className="py-20 sm:py-24 bg-gray-50">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-14">
-          <p className="text-sm font-semibold text-primary uppercase tracking-wider mb-3">Pricing</p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">Transparent pricing. No surprises.</h2>
-          <p className="mt-4 text-lg text-gray-500 max-w-xl mx-auto">
-            A fraction of Ironclad and Kira. Simpler than ContractKen.
-          </p>
-        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
+          {/* Pitch */}
+          <div>
+            <p className="text-sm font-semibold text-primary uppercase tracking-wider mb-3">Contact Sales</p>
+            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-5">
+              Bring Contralyne to your firm
+            </h2>
+            <p className="text-gray-500 leading-relaxed mb-8">
+              Contralyne is licensed to law firms and in-house legal teams. Tell us about your team and the contracts you review, and we&apos;ll get back to you with a tailored walkthrough and pricing.
+            </p>
+            <ul className="space-y-3.5">
+              {[
+                "A personalised demo on your own contract types",
+                "Pricing tailored to your team size and volume",
+                "Dedicated onboarding — accounts set up for your whole team",
+                "Answers on security, data handling, and jurisdiction coverage",
+              ].map((item) => (
+                <li key={item} className="flex items-start gap-2.5 text-sm text-gray-700">
+                  <Check className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-8 text-sm text-gray-500">
+              Prefer email? Write to{" "}
+              <a href="mailto:contact@contralyne.com" className="text-primary hover:underline font-medium">contact@contralyne.com</a>
+            </p>
+          </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
-          {plans.map((plan) => (
-            <div
-              key={plan.name}
-              className={`rounded-xl border p-8 ${plan.highlighted
-                ? "border-primary bg-primary text-white shadow-lg shadow-primary/20"
-                : "border-gray-200 bg-white"
-              }`}
-            >
-              <div className="mb-6">
-                <p className={`text-sm font-semibold uppercase tracking-wider mb-1 ${plan.highlighted ? "text-primary-foreground/70" : "text-gray-500"}`}>{plan.name}</p>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-4xl font-extrabold">{plan.price}</span>
-                  <span className={`text-sm ${plan.highlighted ? "text-primary-foreground/70" : "text-gray-500"}`}>{plan.per}</span>
+          {/* Form */}
+          <div className="rounded-xl border border-gray-200 bg-white p-6 sm:p-8 shadow-sm">
+            {sent ? (
+              <div className="text-center py-14">
+                <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-emerald-50 mb-5">
+                  <Mail className="h-6 w-6 text-emerald-500" />
                 </div>
-                <p className={`mt-3 text-sm ${plan.highlighted ? "text-primary-foreground/80" : "text-gray-500"}`}>{plan.description}</p>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Message sent</h3>
+                <p className="text-sm text-gray-500 max-w-xs mx-auto">
+                  Thanks for reaching out — we&apos;ll get back to you at <span className="font-medium text-gray-700">{form.email}</span> within one business day.
+                </p>
               </div>
-
-              <ul className="space-y-2.5 mb-8">
-                {plan.features.map((f) => (
-                  <li key={f} className="flex items-center gap-2.5 text-sm">
-                    <Check className={`h-4 w-4 shrink-0 ${plan.highlighted ? "text-primary-foreground/80" : "text-emerald-500"}`} />
-                    <span className={plan.highlighted ? "text-primary-foreground/90" : "text-gray-700"}>{f}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <Button
-                asChild
-                variant={plan.highlighted ? "secondary" : "default"}
-                className="w-full"
-              >
-                <Link href={plan.href}>{plan.cta}</Link>
-              </Button>
-            </div>
-          ))}
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="contact-name" className="text-xs font-medium text-gray-600 mb-1.5 block">Full name *</label>
+                    <Input id="contact-name" value={form.name} onChange={set("name")} placeholder="Jane Smith" required maxLength={200} />
+                  </div>
+                  <div>
+                    <label htmlFor="contact-email" className="text-xs font-medium text-gray-600 mb-1.5 block">Work email *</label>
+                    <Input id="contact-email" type="email" value={form.email} onChange={set("email")} placeholder="jane@yourfirm.com" required maxLength={320} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="contact-firm" className="text-xs font-medium text-gray-600 mb-1.5 block">Firm / Company *</label>
+                    <Input id="contact-firm" value={form.firm} onChange={set("firm")} placeholder="Smith & Partners LLP" required maxLength={200} />
+                  </div>
+                  <div>
+                    <label htmlFor="contact-team" className="text-xs font-medium text-gray-600 mb-1.5 block">Team size</label>
+                    <select
+                      id="contact-team"
+                      value={form.team_size}
+                      onChange={set("team_size")}
+                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring text-gray-900"
+                    >
+                      <option value="">Select…</option>
+                      <option value="1-5">1–5 people</option>
+                      <option value="6-20">6–20 people</option>
+                      <option value="21-100">21–100 people</option>
+                      <option value="100+">100+ people</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label htmlFor="contact-message" className="text-xs font-medium text-gray-600 mb-1.5 block">How can we help? *</label>
+                  <Textarea
+                    id="contact-message"
+                    value={form.message}
+                    onChange={set("message")}
+                    placeholder="Tell us about the contracts your team reviews, your jurisdictions, and what you'd like to see in a demo."
+                    required
+                    maxLength={5000}
+                    rows={4}
+                  />
+                </div>
+                <Button type="submit" className="w-full h-11 text-base" disabled={sending}>
+                  {sending ? "Sending…" : "Request a Demo"}
+                </Button>
+                <p className="text-[11px] text-gray-400 text-center">
+                  We only use your details to respond to this enquiry.
+                </p>
+              </form>
+            )}
+          </div>
         </div>
-
-        <p className="mt-10 text-center text-sm text-gray-500">
-          Need more users or custom requirements?{" "}
-          <a href="mailto:rajasaipranv0@gmail.com" className="text-primary hover:underline font-medium">Contact us</a>
-        </p>
       </div>
     </section>
   );
@@ -646,10 +690,10 @@ function CtaBanner({ isSignedIn }: { isSignedIn: boolean }) {
     <section className="py-20 sm:py-24 bg-primary">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <h2 className="text-3xl sm:text-4xl font-extrabold text-white mb-5">
-          Start reviewing contracts smarter today
+          See Contralyne on your own contracts
         </h2>
         <p className="text-lg text-primary-foreground/80 mb-10 max-w-xl mx-auto">
-          Join legal teams using Contralyne to catch risks faster, negotiate better positions, and close deals with confidence.
+          Legal teams use Contralyne to catch risks faster, negotiate better positions, and close deals with confidence. Request a demo and see it on your documents.
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           {isSignedIn ? (
@@ -659,7 +703,7 @@ function CtaBanner({ isSignedIn }: { isSignedIn: boolean }) {
           ) : (
             <>
               <Button size="lg" variant="secondary" asChild className="text-base px-8 h-12">
-                <Link href="/sign-up">Get Started Free <ArrowRight className="ml-2 h-4 w-4" /></Link>
+                <a href="#contact">Request a Demo <ArrowRight className="ml-2 h-4 w-4" /></a>
               </Button>
               <Button size="lg" variant="ghost" asChild className="text-base px-8 h-12 text-white hover:bg-white/10">
                 <Link href="/sign-in">Sign In</Link>
@@ -700,7 +744,7 @@ function Footer() {
               <li><a href="#features" className="hover:text-white transition-colors">Features</a></li>
               <li><a href="#how-it-works" className="hover:text-white transition-colors">How It Works</a></li>
               <li><a href="#security" className="hover:text-white transition-colors">Security</a></li>
-              <li><a href="#pricing" className="hover:text-white transition-colors">Pricing</a></li>
+              <li><a href="#contact" className="hover:text-white transition-colors">Contact</a></li>
             </ul>
           </div>
 
@@ -709,8 +753,8 @@ function Footer() {
             <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-4">Account</p>
             <ul className="space-y-2 text-sm">
               <li><Link href="/sign-in" className="hover:text-white transition-colors">Sign In</Link></li>
-              <li><Link href="/sign-up" className="hover:text-white transition-colors">Get Started</Link></li>
-              <li><a href="mailto:rajasaipranv0@gmail.com" className="hover:text-white transition-colors">Contact Support</a></li>
+              <li><a href="#contact" className="hover:text-white transition-colors">Request a Demo</a></li>
+              <li><a href="mailto:contact@contralyne.com" className="hover:text-white transition-colors">Contact Support</a></li>
             </ul>
           </div>
         </div>
@@ -741,7 +785,7 @@ export default function LandingPage() {
         <Playbook />
         <WhyContralyne />
         <Security />
-        <Pricing isSignedIn={signedIn} />
+        <ContactSection />
         <CtaBanner isSignedIn={signedIn} />
       </main>
       <Footer />
