@@ -431,8 +431,40 @@ adminRouter.post("/users/add", requireAdmin, async (req, res, next) => {
       { onConflict: "clerk_user_id" },
     );
 
+    // Best-effort welcome email with login steps — creation must succeed even if mail fails
+    let email_sent = false;
+    if (isMailerConfigured()) {
+      try {
+        const greeting = first_name ? `Hi ${first_name},` : "Hi,";
+        await sendMail(
+          email,
+          "Your Contralyne account is ready",
+          `${greeting}
+
+An account has been created for you on Contralyne, the AI contract review platform.
+
+To log in for the first time:
+
+1. Open ${config.WEB_URL}/sign-in
+2. Click "Forgot password?"
+3. Enter this email address: ${email}
+4. Check your inbox for a verification code and enter it
+5. Choose a new password
+6. Sign in with your email and new password
+
+That's it — you're in. If you have any trouble logging in, reply to this email or contact your support@contralyne.com.
+
+— The Contralyne Team`,
+        );
+        email_sent = true;
+      } catch (mailErr) {
+        console.error("Welcome email failed for", email, mailErr);
+      }
+    }
+
     res.status(201).json({
       ok: true,
+      email_sent,
       user: { clerk_user_id: clerkUser.id, email, created_at: clerkUser.createdAt },
     });
   } catch (err: any) {

@@ -125,7 +125,7 @@ export const inviteUser = (email: string) =>
   });
 
 export const addUser = (data: { email: string; first_name?: string; last_name?: string }) =>
-  adminFetch<{ ok: boolean; user: { clerk_user_id: string; email: string; created_at: number } }>("/admin/users/add", {
+  adminFetch<{ ok: boolean; email_sent: boolean; user: { clerk_user_id: string; email: string; created_at: number } }>("/admin/users/add", {
     method: "POST", body: JSON.stringify(data),
   });
 

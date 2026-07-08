@@ -62,12 +62,16 @@ export default function AdminUsersPage() {
     e.preventDefault();
     setAdding(true);
     try {
-      await addUser({
+      const result = await addUser({
         email: addEmail,
         first_name: addFirstName || undefined,
         last_name: addLastName || undefined,
       });
-      toast.success(`User ${addEmail} created. They can sign in via "Forgot Password" to set their password.`);
+      if (result.email_sent) {
+        toast.success(`User ${addEmail} created — welcome email with login steps sent.`);
+      } else {
+        toast.warning(`User ${addEmail} created, but the welcome email could not be sent. Tell them to sign in via "Forgot Password" to set their password.`);
+      }
       setAddEmail("");
       setAddFirstName("");
       setAddLastName("");
