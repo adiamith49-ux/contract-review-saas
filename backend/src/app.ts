@@ -14,6 +14,7 @@ import { analyticsRouter } from "./routes/analytics.js";
 import { calendarRouter } from "./routes/calendar.js";
 import { clausesRouter } from "./routes/clauses.js";
 import { contactRouter } from "./routes/contact.js";
+import { commentsRouter } from "./routes/comments.js";
 import { contractsRouter } from "./routes/contracts.js";
 import { rulesRouter } from "./routes/rules.js";
 import { tasksRouter } from "./routes/tasks.js";
@@ -36,6 +37,7 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 app.use("/admin", adminRouter);
 app.use("/api/clients", clientsRouter);
 app.use("/api/tickets", ticketsRouter);
+app.use("/api/contracts", commentsRouter); // comments/team paths — must not overlap contractsRouter
 app.use("/api/contracts", contractsRouter);
 app.use("/api/clauses", clausesRouter);
 app.use("/api/rules", rulesRouter);

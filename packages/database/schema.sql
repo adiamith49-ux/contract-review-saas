@@ -137,6 +137,25 @@ CREATE INDEX IF NOT EXISTS idx_redlines_contract ON redlines (contract_id, user_
 -- ALTER TABLE redlines DROP COLUMN IF EXISTS total_count;
 -- ALTER TABLE redlines DROP COLUMN IF EXISTS updated_at;
 
+-- Contract comments (matter collaboration — internal notes + @mentions)
+CREATE TABLE IF NOT EXISTS contract_comments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  contract_id uuid NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+  user_id text NOT NULL,
+  author_name text NOT NULL DEFAULT 'Team member',
+  body text NOT NULL,
+  visibility text NOT NULL DEFAULT 'internal',    -- internal | shared (counterparty-visible)
+  mentions jsonb NOT NULL DEFAULT '[]',           -- ["Finance Director", ...] parsed from @mentions
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_contract_comments ON contract_comments(contract_id, created_at DESC);
+
+-- Migration (tasks gain matter-collaboration fields):
+-- ALTER TABLE tasks ADD COLUMN IF NOT EXISTS contract_id uuid REFERENCES contracts(id) ON DELETE SET NULL;
+-- ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assignee text;
+-- ALTER TABLE tasks ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+-- CREATE INDEX IF NOT EXISTS idx_tasks_contract ON tasks(contract_id);
+
 -- Approval matrix rules (who must approve, and when they are triggered)
 CREATE TABLE IF NOT EXISTS approval_rules (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -16,6 +16,8 @@ export type ContractBusinessStatus =
   | "draft"
   | "submitted"
   | "under_review"
+  | "waiting_for_business"
+  | "sent_to_counterparty"
   | "in_negotiation"
   | "pending_approval"
   | "approved"

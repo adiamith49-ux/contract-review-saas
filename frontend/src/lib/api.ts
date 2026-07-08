@@ -541,6 +541,8 @@ export interface Task {
   priority: "low" | "medium" | "high";
   due_date: string | null;
   done: boolean;
+  contract_id: string | null;
+  assignee: string | null;
   created_at: string;
 }
 
@@ -558,7 +560,7 @@ export async function createTask(
 export async function updateTask(
   token: string | null,
   id: string,
-  data: Partial<Pick<Task, "title" | "notes" | "priority" | "due_date" | "done">>
+  data: Partial<Pick<Task, "title" | "notes" | "priority" | "due_date" | "done" | "assignee">>
 ): Promise<{ task: Task }> {
   return apiFetch(`/api/tasks/${id}`, token, { method: "PATCH", body: JSON.stringify(data) });
 }
@@ -788,4 +790,62 @@ export async function decideApproval(
     method: "POST",
     body: JSON.stringify({ decision, comment }),
   });
+}
+
+// ─── Matter collaboration ─────────────────────────────────────────────────────
+
+export interface ContractComment {
+  id: string;
+  contract_id: string;
+  author_name: string;
+  body: string;
+  visibility: "internal" | "shared";
+  mentions: string[];
+  created_at: string;
+}
+
+export interface TeamMember {
+  name: string;
+  email: string | null;
+  roles: string[];
+}
+
+export type ContractTask = Task;
+
+export async function listComments(token: string | null, contractId: string): Promise<{ comments: ContractComment[] }> {
+  return apiFetch(`/api/contracts/${contractId}/comments`, token);
+}
+
+export async function addComment(
+  token: string | null,
+  contractId: string,
+  data: { body: string; visibility: "internal" | "shared"; author_name?: string },
+): Promise<{ comment: ContractComment }> {
+  return apiFetch(`/api/contracts/${contractId}/comments`, token, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function deleteComment(token: string | null, contractId: string, commentId: string): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}/api/contracts/${contractId}/comments/${commentId}`, { method: "DELETE", headers });
+  if (!res.ok) throw new Error("Failed to delete comment");
+}
+
+export async function getContractTeam(token: string | null, contractId: string): Promise<{ team: TeamMember[] }> {
+  return apiFetch(`/api/contracts/${contractId}/team`, token);
+}
+
+export async function listContractTasks(token: string | null, contractId: string): Promise<{ tasks: ContractTask[] }> {
+  return apiFetch(`/api/tasks?contract_id=${contractId}`, token);
+}
+
+export async function createContractTask(
+  token: string | null,
+  data: { title: string; contract_id: string; assignee?: string | null; priority?: "low" | "medium" | "high"; due_date?: string | null; notes?: string },
+): Promise<{ task: ContractTask }> {
+  return apiFetch("/api/tasks", token, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function getContractActivity(token: string | null, contractId: string): Promise<{ activity: ActivityEntry[]; total: number }> {
+  return apiFetch(`/api/activity?contract_id=${contractId}&limit=100`, token);
 }

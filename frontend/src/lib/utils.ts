@@ -73,6 +73,8 @@ export const CONTRACT_BUSINESS_STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
   submitted: "Submitted",
   under_review: "Under Review",
+  waiting_for_business: "Waiting for Business",
+  sent_to_counterparty: "Sent to Counterparty",
   in_negotiation: "In Negotiation",
   pending_approval: "Pending Approval",
   approved: "Approved",

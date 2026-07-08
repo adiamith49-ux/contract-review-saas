@@ -9,17 +9,20 @@ activityRouter.use(requireAuth);
 // GET /api/activity — paginated activity log for the dashboard
 activityRouter.get("/", async (req, res, next) => {
   try {
-    const { limit: rawLimit, offset: rawOffset } = z.object({
+    const { limit: rawLimit, offset: rawOffset, contract_id } = z.object({
       limit: z.coerce.number().int().min(1).max(100).default(50),
       offset: z.coerce.number().int().min(0).default(0),
+      contract_id: z.string().uuid().optional(),
     }).parse(req.query);
 
-    const { data, error, count } = await db
+    let query = db
       .from("activity_logs")
       .select("id, action, contract_id, metadata, created_at", { count: "exact" })
       .eq("user_id", req.userId)
       .order("created_at", { ascending: false })
       .range(rawOffset, rawOffset + rawLimit - 1);
+    if (contract_id) query = query.eq("contract_id", contract_id);
+    const { data, error, count } = await query;
 
     if (error) throw error;
     res.json({ activity: data ?? [], total: count ?? 0 });

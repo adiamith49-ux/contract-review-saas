@@ -12,16 +12,20 @@ const taskSchema = z.object({
   priority: z.enum(["low", "medium", "high"]).default("medium"),
   due_date: z.string().nullable().optional(),
   done:     z.boolean().optional().default(false),
+  contract_id: z.string().uuid().nullable().optional(),
+  assignee: z.string().max(200).nullable().optional(),
 });
 
 // GET /api/tasks
 tasksRouter.get("/", async (req, res, next) => {
   try {
-    const { data, error } = await db
+    let query = db
       .from("tasks")
       .select("*")
       .eq("user_id", req.userId)
       .order("created_at", { ascending: false });
+    if (req.query.contract_id) query = query.eq("contract_id", String(req.query.contract_id));
+    const { data, error } = await query;
     if (error) throw error;
     res.json({ tasks: data ?? [] });
   } catch (err) { next(err); }

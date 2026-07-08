@@ -17,6 +17,7 @@ import { DocumentViewer } from "@/components/DocumentViewer";
 import { RedlineViewer } from "@/components/RedlineViewer";
 import { IntakePanel } from "@/components/IntakePanel";
 import { ApprovalPanel } from "@/components/ApprovalPanel";
+import { MatterWorkspace } from "@/components/MatterWorkspace";
 import { AIChatFloat } from "@/components/AIChatFloat";
 import {
   getContract, analyzeContract, downloadExport,
@@ -343,6 +344,9 @@ export default function ContractDetailPage() {
       {/* ── Approval workflow ────────────────────────────────────────────── */}
       <ApprovalPanel contractId={id} contractStatus={contract.contract_status} getToken={getToken} onChanged={load} />
 
+      {/* ── Matter workspace: comments, tasks, activity, team ────────────── */}
+      <MatterWorkspace contractId={id} getToken={getToken} />
+
       {/* ── Body ─────────────────────────────────────────────────────────── */}
       {!isAnalyzed ? (
         <div className="flex-1 flex items-center justify-center bg-gray-50">
@@ -549,6 +553,8 @@ const BUSINESS_STATUS_OPTIONS = [
   { value: "draft",        label: "Draft"        },
   { value: "submitted",    label: "Submitted"    },
   { value: "under_review", label: "Under Review" },
+  { value: "waiting_for_business", label: "Waiting for Business" },
+  { value: "sent_to_counterparty", label: "Sent to Counterparty" },
   { value: "in_negotiation",   label: "In Negotiation"   },
   { value: "pending_approval", label: "Pending Approval" },
   { value: "approved",     label: "Approved"     },
