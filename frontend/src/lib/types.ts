@@ -18,6 +18,7 @@ export type ContractBusinessStatus =
   | "under_review"
   | "in_negotiation"
   | "pending_approval"
+  | "approved"
   | "executed"
   | "expired"
   | "on_hold"

@@ -696,3 +696,96 @@ export async function summarizeContract(
 ): Promise<{ summary: string }> {
   return apiFetch(`/api/contracts/${contractId}/summarize`, token, { method: "POST" });
 }
+
+// ─── Approval routing ─────────────────────────────────────────────────────────
+
+export interface ApprovalRule {
+  id: string;
+  name: string;
+  approver_name: string;
+  approver_email: string | null;
+  step_order: number;
+  min_value: number | null;
+  risk_levels: string[];
+  departments: string[];
+  jurisdictions: string[];
+  contract_types: string[];
+  is_active: boolean;
+  created_at: string;
+}
+
+export type ApprovalRuleInput = Omit<ApprovalRule, "id" | "created_at">;
+
+export interface ApprovalStep {
+  id: string;
+  contract_id: string;
+  round: number;
+  step_order: number;
+  approver_name: string;
+  approver_email: string | null;
+  rule_name: string | null;
+  matched_reason: string | null;
+  status: "pending" | "approved" | "rejected" | "changes_requested" | "skipped";
+  comment: string | null;
+  decided_at: string | null;
+  created_at: string;
+}
+
+export interface ApprovalState {
+  current_round: number;
+  chain: ApprovalStep[];
+  pending_with: ApprovalStep | null;
+  history: ApprovalStep[];
+}
+
+export async function listApprovalRules(token: string | null): Promise<{ rules: ApprovalRule[] }> {
+  return apiFetch("/api/approvals/rules", token);
+}
+
+export async function createApprovalRule(
+  token: string | null,
+  data: Partial<ApprovalRuleInput>,
+): Promise<{ rule: ApprovalRule }> {
+  return apiFetch("/api/approvals/rules", token, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function updateApprovalRule(
+  token: string | null,
+  id: string,
+  data: Partial<ApprovalRuleInput>,
+): Promise<{ rule: ApprovalRule }> {
+  return apiFetch(`/api/approvals/rules/${id}`, token, { method: "PATCH", body: JSON.stringify(data) });
+}
+
+export async function deleteApprovalRule(token: string | null, id: string): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}/api/approvals/rules/${id}`, { method: "DELETE", headers });
+  if (!res.ok) throw new Error("Failed to delete rule");
+}
+
+export async function submitForApproval(
+  token: string | null,
+  contractId: string,
+): Promise<{ round: number; steps: ApprovalStep[] }> {
+  return apiFetch(`/api/approvals/contracts/${contractId}/submit`, token, { method: "POST" });
+}
+
+export async function getApprovals(
+  token: string | null,
+  contractId: string,
+): Promise<ApprovalState> {
+  return apiFetch(`/api/approvals/contracts/${contractId}`, token);
+}
+
+export async function decideApproval(
+  token: string | null,
+  stepId: string,
+  decision: "approved" | "rejected" | "changes_requested",
+  comment: string,
+): Promise<{ status: string; contract_status: string | null; chain_complete: boolean }> {
+  return apiFetch(`/api/approvals/steps/${stepId}/decide`, token, {
+    method: "POST",
+    body: JSON.stringify({ decision, comment }),
+  });
+}

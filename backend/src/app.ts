@@ -7,6 +7,7 @@ import { generalLimiter } from "./middleware/rateLimit.js";
 import { accountRouter } from "./routes/account.js";
 import { activityRouter } from "./routes/activity.js";
 import { adminRouter } from "./routes/admin.js";
+import { approvalsRouter } from "./routes/approvals.js";
 import { clientsRouter } from "./routes/clients.js";
 import { ticketsRouter } from "./routes/tickets.js";
 import { analyticsRouter } from "./routes/analytics.js";
@@ -45,6 +46,7 @@ app.use("/api/contact", contactRouter);
 app.use("/api/tasks", tasksRouter);
 app.use("/api/time", timeRouter);
 app.use("/api/calendar", calendarRouter);
+app.use("/api/approvals", approvalsRouter);
 
 app.use(errorHandler);
 

@@ -19,7 +19,7 @@ import {
   Lock,
   CreditCard,
   LifeBuoy,
-  LogOut,
+  LogOut, UserCheck,
 } from "lucide-react";
 import { ContralyneLogoMark } from "@/components/ContralyneLogoMark";
 import { useState } from "react";
@@ -44,6 +44,7 @@ const NAV = [
     dropdown: [
       { label: "Clause Library", href: "/clauses", icon: Library, desc: "Save and manage approved clauses" },
       { label: "Review Rules",   href: "/rules",   icon: Gavel,   desc: "Define your firm's playbook"      },
+      { label: "Approval Matrix", href: "/approvals", icon: UserCheck, desc: "Route contracts for sign-off by value, risk and team" },
     ],
   },
   { label: "Analytics", href: "/analytics", icon: LineChart },

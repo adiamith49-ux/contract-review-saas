@@ -10,7 +10,7 @@ import {
   LineChart,
   Library,
   Gavel,
-  Settings,
+  Settings, UserCheck,
 } from "lucide-react";
 import { ContralyneLogoMark } from "@/components/ContralyneLogoMark";
 
@@ -22,6 +22,7 @@ const APPS = [
   { label: "Analytics",     href: "/analytics",   icon: LineChart,     color: "bg-indigo-50 text-indigo-600"  },
   { label: "Clause Library",href: "/clauses",     icon: Library,       color: "bg-emerald-50 text-emerald-600"},
   { label: "Review Rules",  href: "/rules",       icon: Gavel,         color: "bg-red-50    text-red-600"     },
+  { label: "Approvals",     href: "/approvals",   icon: UserCheck,     color: "bg-amber-50  text-amber-600"   },
   { label: "Settings",      href: "/settings",    icon: Settings,      color: "bg-gray-100  text-gray-600"    },
 ];
 

@@ -137,6 +137,43 @@ CREATE INDEX IF NOT EXISTS idx_redlines_contract ON redlines (contract_id, user_
 -- ALTER TABLE redlines DROP COLUMN IF EXISTS total_count;
 -- ALTER TABLE redlines DROP COLUMN IF EXISTS updated_at;
 
+-- Approval matrix rules (who must approve, and when they are triggered)
+CREATE TABLE IF NOT EXISTS approval_rules (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id text NOT NULL,
+  name text NOT NULL,                             -- e.g. "Finance sign-off over $100k"
+  approver_name text NOT NULL,
+  approver_email text,
+  step_order int NOT NULL DEFAULT 1,              -- chain position (1 = first approver)
+  min_value numeric,                              -- trigger: contract/deal value >= min_value
+  risk_levels jsonb NOT NULL DEFAULT '[]',        -- trigger: analysis risk in list, e.g. ["high","critical"]
+  departments jsonb NOT NULL DEFAULT '[]',        -- trigger: intake department in list
+  jurisdictions jsonb NOT NULL DEFAULT '[]',      -- trigger: intake jurisdiction in list
+  contract_types jsonb NOT NULL DEFAULT '[]',     -- trigger: contract_type in list
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_approval_rules_user ON approval_rules(user_id, is_active, step_order);
+
+-- Contract approval steps (one row per approver per submission round)
+CREATE TABLE IF NOT EXISTS contract_approvals (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  contract_id uuid NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+  user_id text NOT NULL,
+  round int NOT NULL DEFAULT 1,                   -- resubmissions start a new round
+  step_order int NOT NULL,
+  approver_name text NOT NULL,
+  approver_email text,
+  rule_name text,                                 -- matrix rule that triggered this step
+  matched_reason text,                            -- e.g. "value ≥ $100,000; risk high"
+  status text NOT NULL DEFAULT 'pending',         -- pending | approved | rejected | changes_requested | skipped
+  comment text,
+  decided_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_contract_approvals ON contract_approvals(contract_id, round DESC, step_order);
+
 -- Activity logs (audit trail for all key actions)
 CREATE TABLE IF NOT EXISTS activity_logs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

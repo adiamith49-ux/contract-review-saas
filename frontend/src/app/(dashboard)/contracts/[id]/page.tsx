@@ -16,6 +16,7 @@ import { ReviewPanel } from "@/components/ReviewPanel";
 import { DocumentViewer } from "@/components/DocumentViewer";
 import { RedlineViewer } from "@/components/RedlineViewer";
 import { IntakePanel } from "@/components/IntakePanel";
+import { ApprovalPanel } from "@/components/ApprovalPanel";
 import { AIChatFloat } from "@/components/AIChatFloat";
 import {
   getContract, analyzeContract, downloadExport,
@@ -339,6 +340,9 @@ export default function ContractDetailPage() {
       {/* ── Legal intake ─────────────────────────────────────────────────── */}
       <IntakePanel contractId={id} getToken={getToken} />
 
+      {/* ── Approval workflow ────────────────────────────────────────────── */}
+      <ApprovalPanel contractId={id} contractStatus={contract.contract_status} getToken={getToken} onChanged={load} />
+
       {/* ── Body ─────────────────────────────────────────────────────────── */}
       {!isAnalyzed ? (
         <div className="flex-1 flex items-center justify-center bg-gray-50">
@@ -547,6 +551,7 @@ const BUSINESS_STATUS_OPTIONS = [
   { value: "under_review", label: "Under Review" },
   { value: "in_negotiation",   label: "In Negotiation"   },
   { value: "pending_approval", label: "Pending Approval" },
+  { value: "approved",     label: "Approved"     },
   { value: "executed",     label: "Executed"     },
   { value: "expired",      label: "Expired"      },
   { value: "on_hold",      label: "On Hold"      },
