@@ -21,17 +21,17 @@ export default function AdminPlaybooksPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editTarget, setEditTarget] = useState<AdminPlaybook | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AdminPlaybook | null>(null);
-  const [form, setForm] = useState({ name: "", description: "", is_active: true, file: null as File | null });
+  const [form, setForm] = useState({ name: "", description: "", is_active: true, jurisdiction: "" as string, file: null as File | null });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     listAdminPlaybooks().then(r => { setPlaybooks(r.rules); setLoading(false); });
   }, []);
 
-  function openCreate() { setForm({ name: "", description: "", is_active: true, file: null }); setShowCreate(true); }
+  function openCreate() { setForm({ name: "", description: "", is_active: true, jurisdiction: "", file: null }); setShowCreate(true); }
   function openEdit(p: AdminPlaybook) {
     setEditTarget(p);
-    setForm({ name: p.name, description: p.description ?? "", is_active: p.is_active, file: null });
+    setForm({ name: p.name, description: p.description ?? "", is_active: p.is_active, jurisdiction: p.jurisdiction ?? "", file: null });
   }
 
   async function handleSave() {
@@ -40,13 +40,14 @@ export default function AdminPlaybooksPage() {
       if (editTarget) {
         const { rule } = await updateAdminPlaybook(editTarget.id, {
           name: form.name, description: form.description || undefined, is_active: form.is_active,
+          jurisdiction: form.jurisdiction || null,
         });
         setPlaybooks(prev => prev.map(p => p.id === editTarget.id ? rule : p));
         setEditTarget(null);
         toast.success("Playbook updated");
       } else {
         if (!form.file) { toast.error("Please select a PDF or DOCX file"); return; }
-        const { rule } = await createAdminPlaybook({ name: form.name, description: form.description || undefined, is_active: form.is_active, file: form.file });
+        const { rule } = await createAdminPlaybook({ name: form.name, description: form.description || undefined, is_active: form.is_active, jurisdiction: form.jurisdiction || null, file: form.file });
         setPlaybooks(prev => [rule, ...prev]);
         setShowCreate(false);
         toast.success("Playbook uploaded");
@@ -88,6 +89,21 @@ export default function AdminPlaybooksPage() {
       <div>
         <label className="text-xs font-medium text-gray-600 mb-1.5 block">Description</label>
         <Input placeholder="Optional short description" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-gray-600 mb-1.5 block">Jurisdiction</label>
+        <select
+          className="w-full h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          value={form.jurisdiction}
+          onChange={e => setForm(f => ({ ...f, jurisdiction: e.target.value }))}
+        >
+          <option value="">All jurisdictions</option>
+          <option value="us">United States</option>
+          <option value="uk">United Kingdom</option>
+          <option value="eu">European Union</option>
+          <option value="india">India</option>
+        </select>
+        <p className="text-[11px] text-gray-400 mt-1">Only applied to contracts whose governing law matches (or to all if left blank).</p>
       </div>
       {!editTarget && (
         <div>
@@ -164,7 +180,12 @@ export default function AdminPlaybooksPage() {
           playbooks.map(p => (
             <div key={p.id} className="grid grid-cols-[minmax(0,2fr)_100px_80px_80px_100px] items-center px-5 py-3.5 border-b last:border-b-0 hover:bg-gray-50 transition-colors">
               <div className="min-w-0 pr-4">
-                <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
+                  <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700">
+                    {p.jurisdiction ? p.jurisdiction.toUpperCase() : "All"}
+                  </span>
+                </div>
                 {p.description && <p className="text-[11px] text-gray-400 truncate mt-0.5">{p.description}</p>}
                 {p.original_filename && <p className="text-[10px] text-gray-300 truncate">{p.original_filename}</p>}
               </div>

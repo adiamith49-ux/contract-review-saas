@@ -38,6 +38,7 @@ export function buildContractPrompt(
   let context = `CONTRACT TYPE: ${contractType.replace("_", " ").toUpperCase()}`;
 
   context += `\nJURISDICTION: ${jurisdiction.toUpperCase()} — ${jurisdictionContext[jurisdiction] ?? jurisdictionContext.other}`;
+  context += `\nWhere a risk or recommendation is driven by ${jurisdiction.toUpperCase()} law specifically, say so explicitly in the finding (name the statute/doctrine, e.g. UCC, GDPR, Companies Act 2006) so the reader understands the jurisdictional basis.`;
 
   if (intake) {
     if (intake.counterparty_name) context += `\nCOUNTERPARTY: ${intake.counterparty_name}`;

@@ -228,7 +228,7 @@ const nullMeta = {
   title: null, counterparty: null, contract_status: "draft",
   start_date: null, end_date: null, renewal_date: null,
   owner_name: null, contract_value: null,
-  version_number: 1, parent_contract_id: null,
+  version_number: 1, parent_contract_id: null, jurisdiction: null,
 };
 
 export const MOCK_CONTRACTS: ContractListItem[] = [

@@ -80,6 +80,7 @@ export interface ReviewRule {
   is_active: boolean;
   original_filename?: string | null;
   file_size?: number | null;
+  jurisdiction?: string | null;
   created_at: string;
 }
 
@@ -144,6 +145,7 @@ export interface ContractListItem {
   contract_value: number | null;
   version_number: number;
   parent_contract_id: string | null;
+  jurisdiction: string | null;
   created_at: string;
   analyses: { id: string; risk_level: RiskLevel }[];
 }

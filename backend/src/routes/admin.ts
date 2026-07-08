@@ -665,7 +665,7 @@ adminRouter.get("/playbooks", requireAdmin, async (_req, res, next) => {
   try {
     const { data, error } = await db
       .from("review_rules")
-      .select("id, title, description, is_active, original_filename, file_size, is_admin_managed, created_at")
+      .select("id, title, description, is_active, original_filename, file_size, jurisdiction, is_admin_managed, created_at")
       .eq("is_admin_managed", true)
       .order("created_at", { ascending: false });
 
@@ -689,6 +689,10 @@ adminRouter.post("/playbooks", requireAdmin, upload.single("file"), async (req, 
       return;
     }
 
+    const VALID_JURISDICTIONS = ["us", "uk", "eu", "india"];
+    const rawJurisdiction = (req.body.jurisdiction as string | undefined)?.trim().toLowerCase();
+    const jurisdiction = rawJurisdiction && VALID_JURISDICTIONS.includes(rawJurisdiction) ? rawJurisdiction : null;
+
     let playbookText = "";
     try {
       playbookText = await extractText(req.file.buffer, req.file.mimetype);
@@ -709,6 +713,7 @@ adminRouter.post("/playbooks", requireAdmin, upload.single("file"), async (req, 
         playbook_text: playbookText,
         original_filename: req.file.originalname,
         file_size: req.file.size,
+        jurisdiction,
         rules: [],
         is_admin_managed: true,
       })
@@ -728,6 +733,10 @@ adminRouter.patch("/playbooks/:id", requireAdmin, async (req, res, next) => {
     if (req.body.name        !== undefined) updates.title       = String(req.body.name).trim();
     if (req.body.description !== undefined) updates.description = String(req.body.description).trim() || null;
     if (req.body.is_active   !== undefined) updates.is_active   = Boolean(req.body.is_active);
+    if (req.body.jurisdiction !== undefined) {
+      const j = String(req.body.jurisdiction).trim().toLowerCase();
+      updates.jurisdiction = ["us", "uk", "eu", "india"].includes(j) ? j : null;
+    }
 
     const { data, error } = await db
       .from("review_rules")

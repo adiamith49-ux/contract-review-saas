@@ -22,7 +22,7 @@ export interface AdminClause {
 
 export interface AdminPlaybook {
   id: string; name: string; description: string | null;
-  is_active: boolean; original_filename: string | null; file_size: number | null; created_at: string;
+  is_active: boolean; original_filename: string | null; file_size: number | null; jurisdiction: string | null; created_at: string;
 }
 
 export interface AdminTicket {
@@ -146,11 +146,12 @@ export const deleteAdminClause = (id: string) =>
 // Playbooks
 export const listAdminPlaybooks = () => adminFetch<{ rules: AdminPlaybook[] }>("/admin/playbooks");
 
-export const createAdminPlaybook = (data: { name: string; description?: string; is_active?: boolean; file: File }) => {
+export const createAdminPlaybook = (data: { name: string; description?: string; is_active?: boolean; jurisdiction?: string | null; file: File }) => {
   const form = new FormData();
   form.append("file", data.file);
   form.append("name", data.name);
   if (data.description) form.append("description", data.description);
+  if (data.jurisdiction) form.append("jurisdiction", data.jurisdiction);
   form.append("is_active", String(data.is_active ?? true));
   return adminFetch<{ rule: AdminPlaybook }>("/admin/playbooks", { method: "POST", body: form });
 };

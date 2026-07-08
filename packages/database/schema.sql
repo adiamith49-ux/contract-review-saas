@@ -112,6 +112,7 @@ CREATE TABLE IF NOT EXISTS review_rules (
   playbook_text text,                             -- extracted full text from uploaded playbook document
   original_filename text,                         -- original uploaded filename (e.g. "MSA_Playbook_v3.docx")
   file_size bigint,                               -- file size in bytes
+  jurisdiction text,                              -- us | uk | eu | india | null (applies to all jurisdictions)
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -121,6 +122,7 @@ CREATE TABLE IF NOT EXISTS review_rules (
 -- ALTER TABLE review_rules ADD COLUMN IF NOT EXISTS original_filename text;
 -- ALTER TABLE review_rules ADD COLUMN IF NOT EXISTS file_size bigint;
 -- ALTER TABLE analyses ADD COLUMN IF NOT EXISTS playbooks_used jsonb NOT NULL DEFAULT '[]';  -- applied 2026-07-04
+-- ALTER TABLE review_rules ADD COLUMN IF NOT EXISTS jurisdiction text;  -- applied 2026-07-08 (jurisdiction-specific playbooks)
 
 -- Redlines (AI-generated clause-level track changes per contract)
 -- Each POST /redline creates a new row; GET /redline returns the latest.

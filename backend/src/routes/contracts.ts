@@ -200,11 +200,11 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
 // GET /api/contracts — with search + filter
 contractsRouter.get("/", async (req, res, next) => {
   try {
-    const { status, contract_type, risk_level, search, from, to, counterparty, owner_name, contract_status, lifecycle } = req.query;
+    const { status, contract_type, risk_level, search, from, to, counterparty, owner_name, contract_status, lifecycle, jurisdiction } = req.query;
 
     let query = db
       .from("contracts")
-      .select("id, filename, title, counterparty, contract_type, contract_status, status, file_size, start_date, end_date, renewal_date, owner_name, contract_value, version_number, parent_contract_id, created_at, analyses(id, risk_level)")
+      .select("id, filename, title, counterparty, contract_type, contract_status, status, file_size, start_date, end_date, renewal_date, owner_name, contract_value, version_number, parent_contract_id, created_at, analyses(id, risk_level), legal_intake(jurisdiction)")
       .eq("user_id", req.userId)
       .order("created_at", { ascending: false });
 
@@ -242,12 +242,25 @@ contractsRouter.get("/", async (req, res, next) => {
       });
     }
 
-    const contracts = (data ?? []).map((c: any) => ({
-      ...c,
-      analyses: c.analyses
-        ? (Array.isArray(c.analyses) ? c.analyses : [c.analyses])
-        : [],
-    }));
+    // jurisdiction filter: post-filter (joined legal_intake)
+    if (jurisdiction && data) {
+      data = data.filter((c: any) => {
+        const li = Array.isArray(c.legal_intake) ? c.legal_intake[0] : c.legal_intake;
+        return li?.jurisdiction === jurisdiction;
+      });
+    }
+
+    const contracts = (data ?? []).map((c: any) => {
+      const li = Array.isArray(c.legal_intake) ? c.legal_intake[0] : c.legal_intake;
+      return {
+        ...c,
+        jurisdiction: li?.jurisdiction ?? null,
+        legal_intake: undefined,
+        analyses: c.analyses
+          ? (Array.isArray(c.analyses) ? c.analyses : [c.analyses])
+          : [],
+      };
+    });
 
     res.json({ contracts });
   } catch (err) {
@@ -352,15 +365,20 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
     const clauseLibrary = (clauseResult.data ?? []) as Array<{ title: string; clause_type: "approved" | "fallback" | "unacceptable"; content: string }>;
 
     let playbookText: string | undefined;
-    const selectFields = "title, playbook_text, rules";
+    const selectFields = "title, playbook_text, rules, jurisdiction";
     // Playbooks are admin-managed (user_id = "admin") but selectable by any user
     const ownerFilter = `user_id.eq.${req.userId},is_admin_managed.eq.true`;
     let ruleRows: any[] = [];
 
     if (selectedRuleIds === undefined) {
+      // Auto-select: only playbooks matching the contract's jurisdiction (or jurisdiction-agnostic ones)
+      const contractJurisdiction = intake?.jurisdiction ?? null;
       const r = await db.from("review_rules").select(selectFields).or(ownerFilter).eq("is_active", true);
-      ruleRows = r.data ?? [];
+      ruleRows = (r.data ?? []).filter((row: any) =>
+        !row.jurisdiction || (contractJurisdiction && row.jurisdiction === contractJurisdiction)
+      );
     } else if (selectedRuleIds.length > 0) {
+      // Explicit selection is honoured as-is (user deliberately chose these playbooks)
       const r = await db.from("review_rules").select(selectFields).or(ownerFilter).eq("is_active", true).in("id", selectedRuleIds);
       ruleRows = r.data ?? [];
     }

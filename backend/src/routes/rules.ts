@@ -14,7 +14,7 @@ rulesRouter.get("/", async (req, res, next) => {
   try {
     const { data, error } = await db
       .from("review_rules")
-      .select("id, title, description, is_active, original_filename, file_size, created_at")
+      .select("id, title, description, is_active, original_filename, file_size, jurisdiction, created_at")
       .eq("is_admin_managed", true)
       .order("created_at", { ascending: false });
 

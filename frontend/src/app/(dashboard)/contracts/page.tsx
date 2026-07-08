@@ -37,6 +37,15 @@ const RISK_OPTIONS: { value: RiskLevel | "all"; label: string }[] = [
   { value: "low",      label: "Low"         },
 ];
 
+const JURISDICTION_OPTIONS = [
+  { value: ALL,     label: "All jurisdictions" },
+  { value: "us",    label: "United States"     },
+  { value: "uk",    label: "United Kingdom"    },
+  { value: "eu",    label: "European Union"    },
+  { value: "india", label: "India"             },
+  { value: "other", label: "Other"             },
+];
+
 const EXPIRING_OPTIONS = [
   { value: ALL,  label: "Any end date"       },
   { value: "30", label: "Expiring ≤ 30 days" },
@@ -90,6 +99,7 @@ export default function ContractsPage() {
   const [riskFilter, setRiskFilter]     = useState(searchParams.get("risk") || ALL);
   const [expiringFilter, setExpiringFilter] = useState(searchParams.get("expiring") || ALL);
   const [reviewFilter, setReviewFilter] = useState(searchParams.get("review") || ALL); // "pending" = uploaded/processing
+  const [jurisdictionFilter, setJurisdictionFilter] = useState(searchParams.get("jurisdiction") || ALL);
   const [deleteTarget, setDeleteTarget] = useState<ContractListItem | null>(null);
   const [deleting, setDeleting]         = useState(false);
 
@@ -130,13 +140,14 @@ export default function ContractsPage() {
     const matchReview = reviewFilter === ALL || (reviewFilter === "pending"
       ? (c.status === "uploaded" || c.status === "processing")
       : true);
-    return matchSearch && matchType && matchRisk && matchStatus && matchExpiring && matchReview;
+    const matchJurisdiction = jurisdictionFilter === ALL || c.jurisdiction === jurisdictionFilter;
+    return matchSearch && matchType && matchRisk && matchStatus && matchExpiring && matchReview && matchJurisdiction;
   });
 
-  const hasFilters = search || typeFilter !== ALL || statusFilter !== ALL || riskFilter !== ALL || expiringFilter !== ALL || reviewFilter !== ALL;
+  const hasFilters = search || typeFilter !== ALL || statusFilter !== ALL || riskFilter !== ALL || expiringFilter !== ALL || reviewFilter !== ALL || jurisdictionFilter !== ALL;
 
   function clearFilters() {
-    setSearch(""); setTypeFilter(ALL); setStatusFilter(ALL); setRiskFilter(ALL); setExpiringFilter(ALL); setReviewFilter(ALL);
+    setSearch(""); setTypeFilter(ALL); setStatusFilter(ALL); setRiskFilter(ALL); setExpiringFilter(ALL); setReviewFilter(ALL); setJurisdictionFilter(ALL);
     router.replace("/contracts");
   }
 
@@ -146,6 +157,7 @@ export default function ContractsPage() {
       Counterparty: c.counterparty ?? "",
       Type: CONTRACT_TYPE_LABELS[c.contract_type],
       Status: CONTRACT_BUSINESS_STATUS_LABELS[c.contract_status ?? "draft"] ?? c.contract_status ?? "",
+      Jurisdiction: c.jurisdiction ? c.jurisdiction.toUpperCase() : "",
       Risk: c.analyses?.[0]?.risk_level ?? "not analyzed",
       "Start Date": c.start_date ?? "",
       "End Date": c.end_date ?? "",
@@ -256,6 +268,17 @@ export default function ContractsPage() {
           </SelectTrigger>
           <SelectContent>
             {RISK_OPTIONS.map(o => (
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={jurisdictionFilter} onValueChange={setJurisdictionFilter}>
+          <SelectTrigger className="w-[160px] h-9 text-sm">
+            <SelectValue placeholder="Jurisdiction" />
+          </SelectTrigger>
+          <SelectContent>
+            {JURISDICTION_OPTIONS.map(o => (
               <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
             ))}
           </SelectContent>
