@@ -175,6 +175,56 @@ adminRouter.get("/stats", requireAdmin, async (_req, res, next) => {
   }
 });
 
+// ─── System / architecture overview ────────────────────────────────────────────
+// Demonstrable infrastructure health + data-model snapshot (no secrets exposed).
+adminRouter.get("/system", requireAdmin, async (_req, res, next) => {
+  try {
+    // Live connectivity probe: a real DB round-trip proves Supabase is reachable.
+    let dbConnected = true;
+    try {
+      const { error } = await db.from("users").select("id", { count: "exact", head: true });
+      if (error) dbConnected = false;
+    } catch { dbConnected = false; }
+
+    const TABLES = [
+      "users", "clients", "contracts", "legal_intake", "analyses", "chat_messages",
+      "clause_library", "review_rules", "contract_comments", "contract_approvals",
+      "approval_rules", "redlines", "tasks", "activity_logs",
+    ] as const;
+
+    const counts = await Promise.all(
+      TABLES.map(async (t) => {
+        try {
+          const { count } = await db.from(t).select("id", { count: "exact", head: true });
+          return { table: t, rows: count ?? 0, ok: true };
+        } catch {
+          return { table: t, rows: 0, ok: false };
+        }
+      }),
+    );
+
+    // Secrets are read from env via zod config — report only whether each is CONFIGURED,
+    // never the value. "dev-placeholder"/"" means unset.
+    const isSet = (v: string) => Boolean(v) && v !== "dev-placeholder" && v !== "change-me-admin-secret";
+
+    res.json({
+      status: dbConnected ? "healthy" : "degraded",
+      environment: config.NODE_ENV,
+      services: {
+        database:   { provider: "Supabase (PostgreSQL)", connected: dbConnected },
+        storage:    { provider: "AWS S3", bucket: config.S3_BUCKET_NAME, region: config.AWS_REGION, configured: isSet(config.AWS_ACCESS_KEY_ID) },
+        ai:         { provider: "Anthropic", model: config.AI_MODEL, configured: isSet(config.ANTHROPIC_API_KEY) },
+        auth:       { provider: "Clerk", configured: isSet(config.CLERK_SECRET_KEY) },
+        email:      { provider: "SMTP", configured: isMailerConfigured() },
+      },
+      secrets_managed_via: "Environment variables (zod-validated in config.ts); never hardcoded, injected at deploy time by Vercel",
+      tables: counts,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ─── Clients ──────────────────────────────────────────────────────────────────
 
 adminRouter.get("/clients", requireAdmin, async (_req, res, next) => {

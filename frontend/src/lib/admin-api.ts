@@ -168,3 +168,20 @@ export const listAdminTickets = (status?: string) =>
 
 export const updateAdminTicket = (id: string, data: { status?: string; admin_notes?: string }) =>
   adminFetch<{ ticket: AdminTicket }>(`/admin/tickets/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+
+// System / architecture overview
+export interface SystemInfo {
+  status: "healthy" | "degraded";
+  environment: string;
+  services: {
+    database: { provider: string; connected: boolean };
+    storage:  { provider: string; bucket: string; region: string; configured: boolean };
+    ai:       { provider: string; model: string; configured: boolean };
+    auth:     { provider: string; configured: boolean };
+    email:    { provider: string; configured: boolean };
+  };
+  secrets_managed_via: string;
+  tables: { table: string; rows: number; ok: boolean }[];
+}
+
+export const getSystemInfo = () => adminFetch<SystemInfo>("/admin/system");

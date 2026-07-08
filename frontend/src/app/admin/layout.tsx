@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
   LayoutDashboard, Building2, Users, Library, Gavel,
-  Ticket, LogOut, Menu, X, Shield,
+  Ticket, LogOut, Menu, X, Shield, Server,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { adminMe, clearAdminToken, getAdminToken } from "@/lib/admin-api";
@@ -24,6 +24,7 @@ const nav = [
   { href: "/admin/clauses",   label: "Clause Library",icon: Library         },
   { href: "/admin/playbooks", label: "Playbooks",     icon: Gavel           },
   { href: "/admin/tickets",   label: "Tickets",       icon: Ticket          },
+  { href: "/admin/system",    label: "System",        icon: Server          },
 ];
 
 function AdminSidebar({ onClose }: { onClose?: () => void }) {

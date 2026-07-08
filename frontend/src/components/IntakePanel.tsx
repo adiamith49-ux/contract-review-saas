@@ -38,6 +38,7 @@ const JURISDICTION_LABELS: Record<string, string> = {
   us: "United States",
   uk: "United Kingdom",
   eu: "European Union",
+  india: "India",
   other: "Other",
 };
 
