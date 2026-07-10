@@ -71,20 +71,45 @@ function splitParagraphs(documentXml: string): { pre: string; paras: string[]; p
   return { pre, paras: chunks, post };
 }
 
-// Find the paragraph whose visible text best contains the edit's original text
+const STOPWORDS = new Set([
+  "the","and","for","shall","this","that","with","any","all","are","not","upon","such","from",
+  "under","which","have","has","been","will","may","its","their","of","to","in","on","or","by",
+  "as","be","is","it","an","a","party","parties","agreement","section","hereby","herein","thereof",
+]);
+
+// Significant (>3 char, non-stopword) unique tokens of a string
+function tokenize(s: string): string[] {
+  return [...new Set(
+    normalizeWithMap(s).norm.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 3 && !STOPWORDS.has(w)),
+  )];
+}
+
+// Find the paragraph that best matches the edit's original text. Uses exact
+// containment first, then fuzzy token-overlap — the AI's "contractText" is often
+// a paraphrase/truncation (with ellipses), so exact matching alone misses it.
 function findParagraph(chunks: string[], original: string): ParaMatch | null {
-  const target = normalizeWithMap(original).norm.toLowerCase();
-  if (target.length < 8) return null; // too short to match reliably
+  const exact = normalizeWithMap(original).norm.toLowerCase();
+  const targetTokens = tokenize(original);
+  if (exact.length < 8 || targetTokens.length < 3) return null;
+
   let best: ParaMatch | null = null;
   for (let i = 0; i < chunks.length; i++) {
     const c = chunks[i];
     if (!c.startsWith("<w:p")) continue;
-    const norm = normalizeWithMap(paragraphText(c)).norm.toLowerCase();
-    if (!norm) continue;
+    const paraText = paragraphText(c);
+    const norm = normalizeWithMap(paraText).norm.toLowerCase();
+    if (norm.length < 12) continue;
+
     let score = 0;
-    if (norm.includes(target)) score = target.length / norm.length; // full containment
-    else if (target.includes(norm) && norm.length > 20) score = norm.length / target.length * 0.8;
-    if (score > (best?.score ?? 0.5)) best = { paraXml: c, index: i, score };
+    if (norm.includes(exact)) {
+      score = 1; // verbatim (redline edits) — strongest
+    } else {
+      // fuzzy: fraction of the target's significant words present in this paragraph
+      const pTokens = new Set(tokenize(paraText));
+      const hit = targetTokens.filter(t => pTokens.has(t)).length;
+      score = (hit / targetTokens.length) * 0.95; // cap below verbatim
+    }
+    if (score > (best?.score ?? 0.55)) best = { paraXml: c, index: i, score }; // need >55% overlap
   }
   return best;
 }

@@ -39,16 +39,15 @@ function buildDocxEdits(
     });
   }
   for (const c of clauseAnalysis ?? []) {
-    const original = c.contractText;
+    const original = c.contractText || c.clause;
     if (!original || original.length < 12) continue;
     // Skip if a redline edit already targets this text
     if ((redlineEdits ?? []).some(e => e.original_text && original.includes(e.original_text.slice(0, 30)))) continue;
-    const parts = [c.finding, c.recommendation, c.suggestedLanguage ? `Suggested: ${c.suggestedLanguage}` : ""].filter(Boolean);
-    if (c.suggestedLanguage) {
-      out.push({ originalText: original, revisedText: c.suggestedLanguage, editType: "replace", comment: parts.join(" — ") });
-    } else if (parts.length) {
-      out.push({ originalText: original, editType: "replace", comment: parts.join(" — ") });
-    }
+    // Review findings are paraphrased (not verbatim) → anchor as a COMMENT only,
+    // never a tracked deletion, so a fuzzy match can't remove the wrong text.
+    // The suggested language rides inside the comment (mirrors the review UI).
+    const parts = [c.finding, c.recommendation, c.suggestedLanguage ? `Suggested language: ${c.suggestedLanguage}` : ""].filter(Boolean);
+    if (parts.length) out.push({ originalText: original, editType: "replace", comment: parts.join(" — ") });
   }
   return out;
 }

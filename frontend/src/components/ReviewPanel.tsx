@@ -477,8 +477,8 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
 
   const tabs: { key: Tab; label: string; count?: number }[] = [
     { key: "overview", label: "Overview" },
-    { key: "clauses", label: "Clauses", count: extractedClauses.length },
-    { key: "risks", label: "Risks", count: analysis.risk_summary.length + analysis.clause_analysis.length },
+    { key: "clauses", label: "Clauses", count: extractedClauses.length + analysis.clause_analysis.length },
+    { key: "risks", label: "Risks", count: analysis.risk_summary.length },
     { key: "negotiate", label: "Negotiate", count: analysis.negotiation_points.length },
   ];
 
@@ -517,7 +517,7 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
 
       {/* ── Stats row ──────────────────────────────────────────────────── */}
       <div className="shrink-0 px-3 py-1.5 bg-gray-50 border-b flex flex-wrap gap-x-2.5 gap-y-0.5 text-[10px] text-gray-500">
-        <span>{extractedClauses.length} clauses found</span>
+        <span>{analysis.clause_analysis.length} clause issue{analysis.clause_analysis.length === 1 ? "" : "s"}</span>
         {criticalMissing > 0 && <><span>·</span><span className="text-red-600 font-medium">{criticalMissing} missing (critical)</span></>}
         {highRiskClauses > 0 && <><span>·</span><span className="text-orange-600 font-medium">{highRiskClauses} high risk</span></>}
         {typeof redlinePlaced === "number" && (
@@ -600,7 +600,7 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
         {/* ════════ CLAUSES TAB ════════ */}
         {tab === "clauses" && (
           <>
-            {extractedClauses.length > 0 ? (
+            {extractedClauses.length > 0 && (
               <>
                 <SectionLabel icon={<FileText className="h-3 w-3" />} title="Extracted Clauses" count={extractedClauses.length} />
                 {extractedClauses.map((clause, i) => (
@@ -613,9 +613,24 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
                   />
                 ))}
               </>
-            ) : (
-              <div className="px-4 py-8 text-center text-xs text-gray-400">
-                No extracted clauses available. Re-run analysis to extract clauses.
+            )}
+
+            {/* Clause-level issues (the AI's clause findings) */}
+            <SectionLabel icon={<FileWarning className="h-3 w-3" />} title="Clause Issues" count={analysis.clause_analysis.length} />
+            {analysis.clause_analysis.length > 0 ? analysis.clause_analysis.map((item, i) => (
+              <AccordionItem
+                key={`c-${i}`} id={`c-${i}`}
+                title={item.clause} body={item.finding} recommendation={item.recommendation} risk={item.risk}
+                contractText={item.contractText}
+                suggestedLanguage={(item as any).suggestedLanguage}
+                isOpen={activeId === `c-${i}`} isApplied={appliedIds.has(`c-${i}`)}
+                onToggle={handleToggle} onApply={onApply} onScrollToText={onScrollToText}
+                decision={decisions[`c-${i}`]} onDecision={handleDecision}
+                editedText={editedTexts[`c-${i}`]} onEditedTextChange={handleEditedTextChange}
+              />
+            )) : (
+              <div className="px-4 py-3 text-[11px] text-gray-400 italic border-b">
+                No clause-level issues flagged.
               </div>
             )}
 
@@ -653,24 +668,6 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
                   />
                 ))}
               </>
-            )}
-
-            <SectionLabel icon={<FileWarning className="h-3 w-3" />} title="Clause Issues" count={analysis.clause_analysis.length} />
-            {analysis.clause_analysis.length > 0 ? analysis.clause_analysis.map((item, i) => (
-              <AccordionItem
-                key={`c-${i}`} id={`c-${i}`}
-                title={item.clause} body={item.finding} recommendation={item.recommendation} risk={item.risk}
-                contractText={item.contractText}
-                suggestedLanguage={(item as any).suggestedLanguage}
-                isOpen={activeId === `c-${i}`} isApplied={appliedIds.has(`c-${i}`)}
-                onToggle={handleToggle} onApply={onApply} onScrollToText={onScrollToText}
-                decision={decisions[`c-${i}`]} onDecision={handleDecision}
-                editedText={editedTexts[`c-${i}`]} onEditedTextChange={handleEditedTextChange}
-              />
-            )) : (
-              <div className="px-4 py-3 text-[11px] text-gray-400 italic border-b">
-                No clause-level issues flagged.
-              </div>
             )}
 
             {ambiguityFlags.length > 0 && (
