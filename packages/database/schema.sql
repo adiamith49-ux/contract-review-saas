@@ -200,6 +200,21 @@ CREATE TABLE IF NOT EXISTS approval_rules (
 );
 CREATE INDEX IF NOT EXISTS idx_approval_rules_user ON approval_rules(user_id, is_active, step_order);
 
+-- Client memberships (which Clerk users can access which admin-managed clients)
+-- REQUIRED for the client-scoping feature — /api/clients and contract access
+-- filter by this table. Was previously only a commented migration and missing
+-- from the live DB, which made every user see "0 clients".
+CREATE TABLE IF NOT EXISTS client_memberships (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id text NOT NULL,                           -- Clerk user id
+  client_id uuid NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  assigned_by text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(user_id, client_id)
+);
+CREATE INDEX IF NOT EXISTS idx_memberships_user   ON client_memberships(user_id);
+CREATE INDEX IF NOT EXISTS idx_memberships_client ON client_memberships(client_id);
+
 -- Contract approval steps (one row per approver per submission round)
 CREATE TABLE IF NOT EXISTS contract_approvals (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
