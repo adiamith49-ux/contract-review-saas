@@ -159,7 +159,11 @@ export default function UploadPage() {
         else setGoverningLaw("us");
         filled.add("governingLaw");
       }
-      if (meta.contract_value) { setContractValue(meta.contract_value); filled.add("contractValue"); }
+      if (meta.contract_value) {
+        // AI may return "$5,000,000", "5 million USD", etc. — keep only digits/decimal.
+        const digits = String(meta.contract_value).replace(/[^0-9.]/g, "");
+        if (digits && !Number.isNaN(Number(digits))) { setContractValue(digits); filled.add("contractValue"); }
+      }
       setAiFilledFields(filled);
     }).catch(() => {
       // silently ignore extraction failures
@@ -189,7 +193,7 @@ export default function UploadPage() {
         endDate: endDate || undefined,
         renewalDate: renewalDate || undefined,
         ownerName: ownerName.trim() || undefined,
-        contractValue: contractValue ? Number(contractValue) : undefined,
+        contractValue: contractValue && !Number.isNaN(Number(contractValue)) ? Number(contractValue) : undefined,
         contractStatus,
         governingLaw: governingLaw || undefined,
         parentContractId: parentContractId || undefined,
@@ -594,7 +598,7 @@ export default function UploadPage() {
                       <p className="font-medium text-gray-900 truncate">{ownerName}</p>
                     </div>
                   )}
-                  {contractValue && (
+                  {contractValue && !Number.isNaN(Number(contractValue)) && (
                     <div>
                       <p className="text-[11px] text-gray-400">Value</p>
                       <p className="font-medium text-gray-900">${Number(contractValue).toLocaleString()}</p>

@@ -93,7 +93,11 @@ const metaSchema = z.object({
   end_date: z.string().optional(),
   renewal_date: z.string().optional(),
   owner_name: z.string().max(500).optional(),
-  contract_value: z.coerce.number().positive().optional(),
+  // Tolerate blank / non-numeric / NaN from the client → treat as "no value"
+  contract_value: z.preprocess(
+    v => { const n = typeof v === "string" ? Number(v.replace(/[^0-9.]/g, "")) : Number(v); return Number.isFinite(n) && n > 0 ? n : undefined; },
+    z.number().positive().optional(),
+  ),
   contract_status: businessStatusEnum.optional(),
   governing_law: z.enum(["us", "uk", "eu", "india", "other"]).optional(),
   parent_contract_id: z.string().uuid().optional(),
