@@ -453,26 +453,29 @@ adminRouter.post("/users/add", requireAdmin, async (req, res, next) => {
       skipPasswordRequirement: true,
     };
 
+    // A valid Clerk username: >=4 chars, [a-z0-9_-]. Derived from the local-part.
+    const deriveUsername = () => {
+      let base = (email.split("@")[0].replace(/[^a-zA-Z0-9_-]/g, "") || "user").slice(0, 20).toLowerCase();
+      if (base.length < 4) base = `user_${base}`;
+      return `${base}${Math.floor(1000 + Math.random() * 9000)}`; // suffix keeps it unique
+    };
+
+    // This Clerk instance requires a username, so pass one upfront (avoids a
+    // guaranteed-to-fail first call). If a rare instance forbids usernames,
+    // fall back to no username. Retry once on a username collision.
     let clerkUser;
     try {
-      clerkUser = await clerk.users.createUser(baseParams);
+      clerkUser = await clerk.users.createUser({ ...baseParams, username: deriveUsername() });
     } catch (err: any) {
-      const e = err?.errors?.[0];
-      const needsUsername =
-        e?.code === "form_data_missing" && (e?.longMessage ?? "").includes("username");
-      if (!needsUsername) throw err;
-
-      // Clerk instance requires a username — derive one from the email,
-      // retrying with a random suffix if it's already taken
-      const base = (email.split("@")[0].replace(/[^a-zA-Z0-9_-]/g, "") || "user").slice(0, 24);
-      try {
-        clerkUser = await clerk.users.createUser({ ...baseParams, username: base });
-      } catch (err2: any) {
-        if (err2?.errors?.[0]?.code !== "form_identifier_exists") throw err2;
-        clerkUser = await clerk.users.createUser({
-          ...baseParams,
-          username: `${base}${Math.floor(1000 + Math.random() * 9000)}`,
-        });
+      const code = err?.errors?.[0]?.code;
+      if (code === "form_identifier_exists") {
+        // username collision (or email exists) — one retry with a fresh username
+        clerkUser = await clerk.users.createUser({ ...baseParams, username: deriveUsername() });
+      } else if (code === "form_param_unknown" || (err?.errors?.[0]?.longMessage ?? "").includes("username is not")) {
+        // instance doesn't accept usernames — create without
+        clerkUser = await clerk.users.createUser(baseParams);
+      } else {
+        throw err;
       }
     }
 
