@@ -65,6 +65,9 @@ npm run dev:web    # starts frontend
 | `AWS_SECRET_ACCESS_KEY` | IAM user |
 | `S3_BUCKET_NAME` | contralyn-contracts |
 | `ANTHROPIC_API_KEY` | console.anthropic.com |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | Gmail SMTP (amithadi@contralyne.com + app password) — powers admin password-reset, user welcome emails, contact form. **Must also be set in Vercel backend env.** |
+| `CONTACT_EMAIL` | Where contact-form enquiries are delivered (default contact@contralyne.com) |
+| `ADMIN_JWT_SECRET` | Secret for admin-panel JWTs (separate from Clerk) |
 
 ### frontend/.env
 | Variable | Source |
@@ -157,11 +160,24 @@ All routes require `Authorization: Bearer <clerk_jwt>` except `/health`.
 ### Other
 | Method | Path | Description |
 |---|---|---|
+| `GET` | `/api/clients` | Clients — **scoped to the user's `client_memberships`**. Creation is admin-only (POST /admin/clients). Empty list ⇒ UI says "contact your admin/manager" |
+| `GET` | `/api/clients/:id` | Client detail — 404 unless the user is a member |
 | `GET/POST/PATCH/DELETE` | `/api/clauses` | Clause library management |
 | `GET/POST/PATCH/DELETE` | `/api/rules` | Review rules / playbook management |
 | `GET` | `/api/analytics` | Dashboard stats — totals, by status/type/risk, uploads per month |
 | `GET` | `/api/activity` | Paginated audit log (`?page=1&limit=20`) |
 | `DELETE` | `/api/account` | GDPR hard-delete — all user data + S3 files |
+| `POST` | `/api/contact` | **Public** landing-page contact form → emails CONTACT_EMAIL (reply-to = enquirer). Rate-limited 5/hr/IP |
+
+### Admin panel (`/admin/*`, own JWT auth — not Clerk)
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/admin/auth/login` · `/auth/forgot-password` · `/auth/reset-password` | Admin auth (bcrypt + JWT, SMTP reset codes) |
+| `POST` | `/admin/create-first-admin` | One-time bootstrap — self-disables once any admin exists (hidden page `/admin/setup`) |
+| `GET` | `/admin/stats` · `/admin/clients` · `/admin/users` | Admin dashboards |
+| `POST` | `/admin/users/add` | Create Clerk user directly + **sends welcome email with login steps** (username auto-derived if Clerk requires one) |
+| `DELETE` | `/admin/users/:userId` | Delete user from Clerk + hard-delete all their data + S3 files |
+| `POST/DELETE` | `/admin/users/:userId/clients` | Assign / remove client memberships |
 
 ### Health
 | Method | Path | Response |
@@ -211,8 +227,9 @@ frontend/src/
 | `/contracts` | Contracts | Filterable table of all contracts |
 | `/contracts/[id]` | ContractDetail | Risk/clause/negotiation tabs + chat panel |
 | `/contracts/[id]/export` | Export | Download PDF or DOCX report |
-| `/sign-in` | Sign In | Clerk-hosted sign-in |
-| `/sign-up` | Sign Up | Clerk-hosted sign-up |
+| `/sign-in` | Sign In | Custom email+password sign-in (Clerk under the hood). **No OAuth, no self sign-up** — accounts are created by the admin; first login via Forgot Password |
+| `/clients` | Clients | Only clients assigned to the user; empty state says contact admin/manager |
+| `/admin/*` | Admin panel | Separate JWT auth — users, clients, memberships, clauses, rules |
 
 ---
 
@@ -278,6 +295,26 @@ frontend/src/
   *What:* Deep dive on ContractKen, Lexzur, Spellbook, Ironclad, Kira, LegalOn, goHeather — pricing, features, battlecards, positioning
   *Files:* `docs/competitor-research.md`
 
+- **2026-07-10** — Admin user management fixed + user deletion added
+  *What:* Fixed "Unprocessable Entity" on admin Add User (Clerk instance requires a username — now auto-derived from email with collision fallback; real Clerk error messages surfaced). Added DELETE /admin/users/:userId — removes user from Clerk + hard-deletes all their data and S3 files, with confirm dialog in the admin UI. Removed "Set up admin account" link from admin login (bootstrap page /admin/setup kept hidden, self-disables once an admin exists). Created flow.md — 7-step user handout for demos.
+  *Files:* `backend/src/routes/admin.ts`, `frontend/src/lib/admin-api.ts`, `frontend/src/app/admin/users/page.tsx`, `frontend/src/app/admin/login/page.tsx`, `flow.md`
+
+- **2026-07-10** — Welcome email on user creation + SMTP configured
+  *What:* POST /admin/users/add now sends the new user a welcome email (via Gmail SMTP, amithadi@contralyne.com app password) with 6-step first-login instructions (Forgot Password flow). Best-effort — user creation succeeds even if mail fails; admin toast reports whether the email was sent. sendMail() gained replyTo support. Verified end-to-end. SMTP env vars still need to be added to Vercel backend project.
+  *Files:* `backend/src/routes/admin.ts`, `backend/src/services/mailer.service.ts`, `backend/src/config.ts`, `backend/.env`, `frontend/src/app/admin/users/page.tsx`, `frontend/src/lib/admin-api.ts`
+
+- **2026-07-10** — Landing page reworked for enterprise + contact form
+  *What:* Removed Pricing section ($49/$99 plans) and all "Get Started Free" self-signup CTAs — Contralyne is sold to firms, not solo users. Added Contact Sales section (name, work email, firm, team size, message) → new public POST /api/contact (rate-limited 5/hr/IP) emails contact@contralyne.com with reply-to set to the enquirer. All CTAs now "Request a Demo" → #contact; footer email changed from personal Gmail to contact@contralyne.com. NOTE: contact@contralyne.com alias must exist in Google Workspace.
+  *Files:* `frontend/src/app/page.tsx`, `backend/src/routes/contact.ts`, `backend/src/app.ts`, `backend/src/middleware/rateLimit.ts`, `backend/src/config.ts`
+
+- **2026-07-10** — Auth locked down to admin-provisioned accounts
+  *What:* Removed Google + Facebook OAuth buttons and the sign-up link from /sign-in; deleted the /sign-up page entirely (route now redirects to sign-in via middleware). Sign-in note says "Ask your administrator to create one for you." Removed the admin "Invite user" button/dialog + POST /admin/users/invite route ("Add user" + welcome email is the only onboarding path). NOTE: Clerk's HaveIBeenPwned compromised-password check was briefly disabled then re-enabled at Kartik's request — it stays ON; users whose password is rejected as "found in a data breach" must pick a less common password.
+  *Files:* `frontend/src/app/(auth)/sign-in/[[...sign-in]]/page.tsx`, `frontend/src/app/(auth)/sign-up/` (deleted), `frontend/src/middleware.ts`, `frontend/src/app/admin/users/page.tsx`, `frontend/src/lib/admin-api.ts`, `backend/src/routes/admin.ts`
+
+- **2026-07-10** — Clients scoped to memberships; creation is admin-only
+  *What:* GET /api/clients now returns only clients the user is assigned to via client_memberships (was: all active clients). GET /api/clients/:id 404s for non-members. POST /api/clients removed entirely — clients are created only by the admin (POST /admin/clients); the "New Client" button/dialog removed from the user-side Clients page. Client detail page edit controls removed too (rename pencil, Mark Inactive, Reactivate — they called a PATCH route that never existed on the backend); the page is now read-only apart from Upload Contract. Empty state says "No clients assigned to you — contact your admin or manager."
+  *Files:* `backend/src/routes/clients.ts`, `frontend/src/app/(dashboard)/clients/page.tsx`, `frontend/src/app/(dashboard)/clients/[id]/page.tsx`, `frontend/src/lib/api.ts`
+
 ---
 
 ## 11) TODO List
@@ -320,9 +357,24 @@ frontend/src/
 | `[x]` | Custom domain connected (contralyne.com) | 2026-06-10 |
 | `[x]` | Full UI complete (all 5 pages + auth) | 2026-06-10 |
 
+### Recently Done (2026-07-10)
+| Status | Task | Date |
+|---|---|---|
+| `[x]` | Admin: delete user (Clerk + all data + S3) | 2026-07-10 |
+| `[x]` | Fix "Unprocessable Entity" on admin Add User (Clerk username requirement) | 2026-07-10 |
+| `[x]` | Welcome email with login steps on user creation (SMTP via Gmail) | 2026-07-10 |
+| `[x]` | Landing page: remove pricing, enterprise repositioning, contact form → contact@contralyne.com | 2026-07-10 |
+| `[x]` | Remove OAuth (Google/Facebook) + self sign-up; admin-provisioned accounts only | 2026-07-10 |
+| `[x]` | Clients page scoped to assigned memberships; creation admin-only; empty state → contact admin | 2026-07-10 |
+| `[x]` | Remove admin "Invite user" flow (UI + API route) | 2026-07-10 |
+| `[x]` | flow.md user demo handout | 2026-07-10 |
+
 ### Pending
 | Status | Task | Added |
 |---|---|---|
+| `[ ]` | Commit + push all 2026-07-10 changes (deploys to production via Vercel) | 2026-07-10 |
+| `[ ]` | Add SMTP_* env vars to Vercel backend project + verify WEB_URL=https://contralyne.com | 2026-07-10 |
+| `[ ]` | Verify contact@contralyne.com alias exists in Google Workspace (else contact-form mail bounces) | 2026-07-10 |
 | `[ ]` | End-to-end testing of all features | 2026-06-01 |
 | `[ ]` | Transfer Supabase billing to Amith | 2026-06-10 |
 | `[ ]` | Transfer S3 billing to Amith | 2026-06-10 |

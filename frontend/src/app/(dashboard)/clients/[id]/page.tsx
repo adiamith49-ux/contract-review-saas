@@ -5,18 +5,13 @@ import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import {
   Building2, ChevronLeft, Plus, FileText, AlertTriangle,
-  Pencil, Check, X, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { RiskBadge } from "@/components/RiskBadge";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose,
-} from "@/components/ui/dialog";
-import { getClient, updateClient, type Client, type ContractListItem } from "@/lib/api";
+import { getClient, type Client, type ContractListItem } from "@/lib/api";
 import { formatDateShort, formatFileSize, getLifecycleBadge, CONTRACT_TYPE_LABELS } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
@@ -29,22 +24,12 @@ export default function ClientDetailPage() {
   const [contracts, setContracts] = useState<ContractListItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Inline name editing
-  const [editingName, setEditingName] = useState(false);
-  const [nameValue, setNameValue] = useState("");
-  const [savingName, setSavingName] = useState(false);
-
-  // Deactivate confirmation
-  const [deactivateOpen, setDeactivateOpen] = useState(false);
-  const [deactivating, setDeactivating] = useState(false);
-
   async function load() {
     try {
       const token = await getToken();
       const { client: c, contracts: ct } = await getClient(token, id);
       setClient(c);
       setContracts(ct);
-      setNameValue(c.name);
     } catch {
       toast.error("Client not found");
       router.push("/clients");
@@ -54,50 +39,6 @@ export default function ClientDetailPage() {
   }
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function saveName() {
-    if (!nameValue.trim() || !client) return;
-    setSavingName(true);
-    try {
-      const token = await getToken();
-      const { client: updated } = await updateClient(token, id, { name: nameValue.trim() });
-      setClient(updated);
-      setEditingName(false);
-      toast.success("Client name updated");
-    } catch {
-      toast.error("Failed to update name");
-    } finally {
-      setSavingName(false);
-    }
-  }
-
-  async function handleDeactivate() {
-    if (!client) return;
-    setDeactivating(true);
-    try {
-      const token = await getToken();
-      const { client: updated } = await updateClient(token, id, { status: "inactive" });
-      setClient(updated);
-      setDeactivateOpen(false);
-      toast.success("Client marked as inactive");
-    } catch {
-      toast.error("Failed to update client");
-    } finally {
-      setDeactivating(false);
-    }
-  }
-
-  async function handleReactivate() {
-    if (!client) return;
-    try {
-      const token = await getToken();
-      const { client: updated } = await updateClient(token, id, { status: "active" });
-      setClient(updated);
-      toast.success("Client reactivated");
-    } catch {
-      toast.error("Failed to update client");
-    }
-  }
 
   if (loading) {
     return (
@@ -124,14 +65,9 @@ export default function ClientDetailPage() {
 
       {/* Inactive banner */}
       {inactive && (
-        <div className="flex items-center justify-between gap-4 rounded-xl border border-red-200 bg-red-50 px-5 py-3.5">
-          <div className="flex items-center gap-2.5 text-sm font-semibold text-red-700">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            Engagement ended / renewal needed — this client is inactive
-          </div>
-          <Button size="sm" variant="outline" className="border-red-300 text-red-700 hover:bg-red-100 shrink-0" onClick={handleReactivate}>
-            Reactivate
-          </Button>
+        <div className="flex items-center gap-2.5 rounded-xl border border-red-200 bg-red-50 px-5 py-3.5 text-sm font-semibold text-red-700">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          Engagement ended / renewal needed — this client is inactive
         </div>
       )}
 
@@ -145,30 +81,7 @@ export default function ClientDetailPage() {
             <Building2 className={cn("h-6 w-6", inactive ? "text-red-400" : "text-primary")} />
           </div>
           <div>
-            {editingName ? (
-              <div className="flex items-center gap-2">
-                <Input
-                  value={nameValue}
-                  onChange={e => setNameValue(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter") saveName(); if (e.key === "Escape") { setEditingName(false); setNameValue(client.name); } }}
-                  className="h-8 text-lg font-bold w-64"
-                  autoFocus
-                />
-                <button onClick={saveName} disabled={savingName} className="text-emerald-600 hover:text-emerald-700 p-1">
-                  {savingName ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                </button>
-                <button onClick={() => { setEditingName(false); setNameValue(client.name); }} className="text-gray-400 hover:text-gray-600 p-1">
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold text-gray-900">{client.name}</h1>
-                <button onClick={() => setEditingName(true)} className="text-gray-300 hover:text-gray-600 p-1 transition-colors">
-                  <Pencil className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            )}
+            <h1 className="text-xl font-bold text-gray-900">{client.name}</h1>
             <div className="flex items-center gap-2 mt-0.5">
               {client.industry && <span className="text-sm text-gray-400">{client.industry}</span>}
               {!inactive && (
@@ -180,19 +93,12 @@ export default function ClientDetailPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          <Button asChild size="sm">
-            <Link href={`/upload?client_id=${client.id}`}>
-              <Plus className="h-4 w-4 mr-1.5" />
-              Upload Contract
-            </Link>
-          </Button>
-          {!inactive && (
-            <Button variant="outline" size="sm" className="text-red-600 border-red-200 hover:bg-red-50" onClick={() => setDeactivateOpen(true)}>
-              Mark Inactive
-            </Button>
-          )}
-        </div>
+        <Button asChild size="sm" className="shrink-0">
+          <Link href={`/upload?client_id=${client.id}`}>
+            <Plus className="h-4 w-4 mr-1.5" />
+            Upload Contract
+          </Link>
+        </Button>
       </div>
 
       {/* Notes */}
@@ -244,25 +150,6 @@ export default function ClientDetailPage() {
         </div>
       </div>
 
-      {/* Deactivate confirmation */}
-      <Dialog open={deactivateOpen} onOpenChange={setDeactivateOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Mark client as inactive?</DialogTitle>
-            <DialogDescription>
-              <strong>{client.name}</strong> will be flagged with a banner indicating the engagement has ended or needs renewal. Contracts will remain intact.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex justify-end gap-3 mt-2">
-            <DialogClose asChild>
-              <Button variant="outline" size="sm" disabled={deactivating}>Cancel</Button>
-            </DialogClose>
-            <Button variant="destructive" size="sm" onClick={handleDeactivate} disabled={deactivating}>
-              {deactivating ? "Saving…" : "Mark Inactive"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

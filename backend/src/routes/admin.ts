@@ -416,26 +416,6 @@ adminRouter.delete("/users/:userId/clients/:clientId", requireAdmin, async (req,
   }
 });
 
-adminRouter.post("/users/invite", requireAdmin, async (req, res, next) => {
-  try {
-    const { email } = z.object({ email: z.string().email() }).parse(req.body);
-
-    await clerk.invitations.createInvitation({
-      emailAddress: email,
-      redirectUrl: `${config.WEB_URL}/sign-up`,
-      ignoreExisting: true,
-    });
-
-    res.json({ ok: true, email });
-  } catch (err: any) {
-    if (err?.errors?.[0]?.code === "duplicate_record") {
-      res.status(409).json({ error: "User with this email already exists" });
-      return;
-    }
-    next(err);
-  }
-});
-
 // POST /admin/users/add — create a Clerk user directly (no invitation email)
 adminRouter.post("/users/add", requireAdmin, async (req, res, next) => {
   try {

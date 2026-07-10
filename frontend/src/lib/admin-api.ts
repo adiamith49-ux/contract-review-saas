@@ -121,11 +121,6 @@ export const removeUserFromClient = (userId: string, clientId: string) =>
 export const deleteAdminUser = (userId: string) =>
   adminFetch<void>(`/admin/users/${userId}`, { method: "DELETE" });
 
-export const inviteUser = (email: string) =>
-  adminFetch<{ ok: boolean; email: string }>("/admin/users/invite", {
-    method: "POST", body: JSON.stringify({ email }),
-  });
-
 export const addUser = (data: { email: string; first_name?: string; last_name?: string }) =>
   adminFetch<{ ok: boolean; email_sent: boolean; user: { clerk_user_id: string; email: string; created_at: number } }>("/admin/users/add", {
     method: "POST", body: JSON.stringify(data),

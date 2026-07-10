@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invoice INV-2026-003</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f0f0f0;
+      color: #1a1a1a;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      background: #ffffff;
+      padding: 60px 64px 0;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+    }
+
+    @media print {
+      body {
+        background: #ffffff;
+      }
+
+      .page {
+        margin: 0;
+        box-shadow: none;
+        width: auto;
+        min-height: 100vh;
+      }
+    }
+
+    /* ── Header ─────────────────────────────── */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .from h1 {
+      font-size: 22px;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+
+    .from p {
+      font-size: 13.5px;
+      color: #444;
+      line-height: 1.65;
+    }
+
+    .invoice-meta {
+      text-align: right;
+    }
+
+    .invoice-meta .title {
+      font-size: 34px;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .invoice-meta p {
+      font-size: 13.5px;
+      color: #444;
+      line-height: 1.6;
+    }
+
+    .header-rule {
+      border: none;
+      border-top: 3px solid #111;
+      margin: 32px 0 0;
+    }
+
+    /* ── Billed To ──────────────────────────── */
+    .billed-to {
+      padding: 34px 0 30px;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .label {
+      font-size: 11px;
+      font-weight: bold;
+      letter-spacing: 2px;
+      color: #999;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .billed-to .name {
+      font-size: 16px;
+      font-weight: bold;
+      margin-bottom: 6px;
+    }
+
+    .billed-to p {
+      font-size: 13.5px;
+      color: #444;
+      line-height: 1.65;
+    }
+
+    /* ── Line items ─────────────────────────── */
+    .items {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 26px;
+    }
+
+    .items th {
+      font-size: 11px;
+      font-weight: bold;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      text-align: left;
+      padding: 0 0 12px;
+      border-bottom: 2px solid #111;
+    }
+
+    .items th.amount,
+    .items td.amount {
+      text-align: right;
+    }
+
+    .items td {
+      padding: 18px 0 6px;
+      font-size: 14px;
+      vertical-align: top;
+    }
+
+    .items td.num {
+      width: 26px;
+      color: #1a1a1a;
+    }
+
+    .items td .desc-sub {
+      display: block;
+      font-size: 12px;
+      color: #888;
+      margin-top: 5px;
+    }
+
+    .items td.amount {
+      font-weight: bold;
+      white-space: nowrap;
+    }
+
+    .items-rule {
+      border: none;
+      border-top: 1px solid #ddd;
+      margin: 26px 0 0;
+    }
+
+    /* ── Totals ─────────────────────────────── */
+    .totals-wrap {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 34px;
+    }
+
+    .totals {
+      width: 350px;
+    }
+
+    .totals .row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      color: #333;
+      padding: 12px 0;
+      border-bottom: 1px solid #e5e5e5;
+    }
+
+    .totals .row .value {
+      white-space: nowrap;
+    }
+
+    .totals .row.balance {
+      border-top: 2px solid #111;
+      border-bottom: 2px solid #111;
+      font-size: 16px;
+      font-weight: bold;
+      color: #111;
+      padding: 14px 0;
+    }
+
+    .totals .in-words {
+      text-align: right;
+      font-size: 13px;
+      font-style: italic;
+      color: #555;
+      margin-top: 12px;
+    }
+
+    .totals-rule {
+      border: none;
+      border-top: 1px solid #ddd;
+      margin: 34px 0 0;
+    }
+
+    /* ── Payment / Note ─────────────────────── */
+    .footer-cols {
+      display: flex;
+      gap: 60px;
+      padding: 32px 0 40px;
+    }
+
+    .footer-cols .col {
+      flex: 1;
+    }
+
+    .footer-cols p {
+      font-size: 13.5px;
+      color: #333;
+      line-height: 1.75;
+    }
+
+    /* ── Footer bar ─────────────────────────── */
+    .spacer {
+      flex: 1;
+    }
+
+    .footer-bar {
+      background: #111;
+      color: #ccc;
+      font-size: 12.5px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 28px;
+      margin: 0 -64px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+
+    <!-- Header -->
+    <div class="header">
+      <div class="from">
+        <h1>Kartik Jarali</h1>
+        <p>Freelance Software Developer<br>
+          Bangalore, Karnataka, India<br>
+          kartikjarali@gmail.com</p>
+      </div>
+      <div class="invoice-meta">
+        <div class="title">INVOICE</div>
+        <p>INV-2026-003<br>
+          Date: 10 July 2026</p>
+      </div>
+    </div>
+    <hr class="header-rule">
+
+    <!-- Billed To -->
+    <div class="billed-to">
+      <div class="label">Billed To</div>
+      <div class="name">Amith Adi</div>
+      <p>Corporate Lawyer<br>
+        Karnataka, India</p>
+    </div>
+
+    <!-- Line items -->
+    <table class="items">
+      <thead>
+        <tr>
+          <th># Description</th>
+          <th class="amount">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1&nbsp;&nbsp;Freelance Software Development
+            <span class="desc-sub" style="padding-left:18px;">Custom AI-powered contract review web application — full
+              project</span>
+          </td>
+          <td class="amount">₹20,000</td>
+        </tr>
+      </tbody>
+    </table>
+    <hr class="items-rule">
+
+    <!-- Totals -->
+    <div class="totals-wrap">
+      <div class="totals">
+        <div class="row">
+          <span>Subtotal</span>
+          <span class="value">₹20,000</span>
+        </div>
+        <div class="row">
+          <span>Amount Received</span>
+          <span class="value">&minus; ₹14,000</span>
+        </div>
+        <div class="row balance">
+          <span>Balance Due</span>
+          <span class="value">₹6,000</span>
+        </div>
+        <div class="in-words">Rupees Six Thousand Only</div>
+      </div>
+    </div>
+    <hr class="totals-rule">
+
+    <!-- Payment + Note -->
+    <div class="footer-cols">
+      <div class="col">
+        <div class="label">Payment</div>
+        <p>Pay via UPI to <strong>kartikjarali-2@oksbi</strong><br>
+          Use <strong>INV-2026-003</strong> as payment reference.</p>
+      </div>
+      <div class="col">
+        <div class="label">Note</div>
+        <p>API and hosting costs are borne separately by the client as per the signed agreement dated 1 June 2026.</p>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <!-- Footer bar -->
+    <div class="footer-bar">
+      <span>Thank you for your business.</span>
+      <span>INV-2026-003 &middot; Kartik Jarali</span>
+    </div>
+
+  </div>
+</body>
+
+</html>
