@@ -43,6 +43,14 @@ export async function deleteFromS3(key: string): Promise<void> {
   await s3.send(new DeleteObjectCommand({ Bucket: config.S3_BUCKET_NAME, Key: key }));
 }
 
+// Download the original uploaded file as a Buffer (used to edit the original
+// document in place so exports retain the source formatting).
+export async function downloadFromS3(key: string): Promise<Buffer> {
+  const out = await s3.send(new GetObjectCommand({ Bucket: config.S3_BUCKET_NAME, Key: key }));
+  const bytes = await out.Body!.transformToByteArray();
+  return Buffer.from(bytes);
+}
+
 export function buildS3Key(userId: string, fileId: string, filename: string): string {
   const ext = filename.split(".").pop() ?? "bin";
   return `contracts/${userId}/${fileId}.${ext}`;

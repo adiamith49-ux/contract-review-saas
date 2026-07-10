@@ -14,7 +14,44 @@ import { logActivity } from "../services/activity.service.js";
 import { chatWithContract } from "../services/chat.service.js";
 import { extractText, validateFileType } from "../services/document.service.js";
 import { exportToDocx, exportToPdf } from "../services/export.service.js";
-import { buildS3Key, deleteFromS3, getPresignedUrl, uploadToS3 } from "../services/storage.service.js";
+import { buildS3Key, deleteFromS3, downloadFromS3, getPresignedUrl, uploadToS3 } from "../services/storage.service.js";
+import { editOriginalDocx, type DocxEdit } from "../services/docxEdit.service.js";
+
+// True when the original upload is a Word .docx (only these can be edited in place)
+function isDocxSource(filename: string, mimeType?: string | null): boolean {
+  return (mimeType ?? "").includes("wordprocessingml") || /\.docx$/i.test(filename);
+}
+
+// Map redline edits + clause findings onto paragraph-level DOCX edits.
+// Redline edits become tracked changes; remaining clause findings become comments.
+function buildDocxEdits(
+  redlineEdits: ProcessedEdit[] | undefined,
+  clauseAnalysis: Array<{ clause?: string; finding?: string; recommendation?: string; contractText?: string; suggestedLanguage?: string }> | undefined,
+): DocxEdit[] {
+  const out: DocxEdit[] = [];
+  for (const e of redlineEdits ?? []) {
+    if (!e.original_text) continue;
+    out.push({
+      originalText: e.original_text,
+      revisedText: e.revised_text,
+      editType: e.edit_type ?? "replace",
+      comment: e.rationale || e.playbook_rule || undefined,
+    });
+  }
+  for (const c of clauseAnalysis ?? []) {
+    const original = c.contractText;
+    if (!original || original.length < 12) continue;
+    // Skip if a redline edit already targets this text
+    if ((redlineEdits ?? []).some(e => e.original_text && original.includes(e.original_text.slice(0, 30)))) continue;
+    const parts = [c.finding, c.recommendation, c.suggestedLanguage ? `Suggested: ${c.suggestedLanguage}` : ""].filter(Boolean);
+    if (c.suggestedLanguage) {
+      out.push({ originalText: original, revisedText: c.suggestedLanguage, editType: "replace", comment: parts.join(" — ") });
+    } else if (parts.length) {
+      out.push({ originalText: original, editType: "replace", comment: parts.join(" — ") });
+    }
+  }
+  return out;
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -477,7 +514,7 @@ contractsRouter.get("/:id/export/docx", async (req, res, next) => {
     // Fetch contract + analysis + cached redline edits in parallel
     const [{ data, error }, { data: redlineData }] = await Promise.all([
       db.from("contracts")
-        .select("filename, contract_type, summary, created_at, extracted_text, analyses(*)")
+        .select("filename, contract_type, summary, created_at, extracted_text, s3_key, mime_type, analyses(*)")
         .eq("id", req.params.id)
         .eq("user_id", req.userId)
         .single(),
@@ -499,12 +536,30 @@ contractsRouter.get("/:id/export/docx", async (req, res, next) => {
     // Pass cached redline edits so the export includes proper tracked changes
     const redlineEdits = Array.isArray(redlineData?.edits) ? redlineData.edits as ProcessedEdit[] : undefined;
 
-    const buffer = await exportToDocx(data.filename, data.contract_type, {
-      riskLevel: a.risk_level,
-      riskSummary: a.risk_summary,
-      clauseAnalysis: a.clause_analysis,
-      negotiationPoints: a.negotiation_points,
-    }, data.summary ?? undefined, data.created_at, data.extracted_text ?? undefined, appliedIds, redlineEdits);
+    let buffer: Buffer | undefined;
+
+    // Preferred path: edit the ORIGINAL .docx in place so all source formatting
+    // (tables, styles, numbering) is preserved. Falls back to the rebuilt export
+    // if the source isn't a .docx or nothing could be placed.
+    if (isDocxSource(data.filename, data.mime_type) && data.s3_key) {
+      try {
+        const original = await downloadFromS3(data.s3_key);
+        const docxEdits = buildDocxEdits(redlineEdits, a.clause_analysis);
+        const { buffer: edited, applied } = editOriginalDocx(original, docxEdits);
+        if (applied > 0) buffer = edited;
+      } catch (e) {
+        console.error("[export/docx] in-place edit failed, falling back to rebuild:", (e as Error)?.message);
+      }
+    }
+
+    if (!buffer) {
+      buffer = await exportToDocx(data.filename, data.contract_type, {
+        riskLevel: a.risk_level,
+        riskSummary: a.risk_summary,
+        clauseAnalysis: a.clause_analysis,
+        negotiationPoints: a.negotiation_points,
+      }, data.summary ?? undefined, data.created_at, data.extracted_text ?? undefined, appliedIds, redlineEdits);
+    }
 
     await logActivity(req.userId, "contract.exported", req.params.id, { format: "docx" });
 
@@ -779,7 +834,7 @@ contractsRouter.post("/:id/redline/export/docx", async (req, res, next) => {
 
     const { data: contract, error } = await db
       .from("contracts")
-      .select("filename, extracted_text")
+      .select("filename, extracted_text, s3_key, mime_type")
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
       .single();
@@ -789,16 +844,28 @@ contractsRouter.post("/:id/redline/export/docx", async (req, res, next) => {
       return;
     }
 
-    let buffer: Buffer;
-    try {
-      buffer = await exportRedlineDocx(
-        contract.filename,
-        contract.extracted_text ?? "",
-        edits,
-      );
-    } catch (docxErr) {
-      console.error("[redline/export/docx] exportRedlineDocx threw:", (docxErr as Error)?.stack ?? docxErr);
-      throw docxErr;
+    let buffer: Buffer | undefined;
+
+    // Preferred: apply the redline as tracked changes onto the ORIGINAL .docx,
+    // preserving all source formatting. Fall back to the rebuilt redline doc.
+    if (isDocxSource(contract.filename, contract.mime_type) && contract.s3_key) {
+      try {
+        const original = await downloadFromS3(contract.s3_key);
+        const docxEdits = buildDocxEdits(edits, undefined);
+        const { buffer: edited, applied } = editOriginalDocx(original, docxEdits);
+        if (applied > 0) buffer = edited;
+      } catch (e) {
+        console.error("[redline/export/docx] in-place edit failed, falling back:", (e as Error)?.message);
+      }
+    }
+
+    if (!buffer) {
+      try {
+        buffer = await exportRedlineDocx(contract.filename, contract.extracted_text ?? "", edits);
+      } catch (docxErr) {
+        console.error("[redline/export/docx] exportRedlineDocx threw:", (docxErr as Error)?.stack ?? docxErr);
+        throw docxErr;
+      }
     }
 
     await logActivity(req.userId, "contract.exported", req.params.id, { format: "redline-docx" });
