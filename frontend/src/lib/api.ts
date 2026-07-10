@@ -31,26 +31,11 @@ export async function listClients(token: string | null): Promise<{ clients: Clie
   return apiFetch("/api/clients", token);
 }
 
-export async function createClient(
-  token: string | null,
-  data: { name: string; industry?: string; notes?: string }
-): Promise<{ client: Client }> {
-  return apiFetch("/api/clients", token, { method: "POST", body: JSON.stringify(data) });
-}
-
 export async function getClient(
   token: string | null,
   id: string
 ): Promise<{ client: Client; contracts: ContractListItem[] }> {
   return apiFetch(`/api/clients/${id}`, token);
-}
-
-export async function updateClient(
-  token: string | null,
-  id: string,
-  data: { name?: string; industry?: string | null; notes?: string | null; status?: ClientStatus }
-): Promise<{ client: Client }> {
-  return apiFetch(`/api/clients/${id}`, token, { method: "PATCH", body: JSON.stringify(data) });
 }
 
 // ─── Clause types ─────────────────────────────────────────────────────────────

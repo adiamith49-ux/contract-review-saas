@@ -1,18 +1,25 @@
 import { Router } from "express";
-import { z } from "zod";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { getUserClientIds, userHasClientAccess } from "../services/membership.service.js";
 
 export const clientsRouter = Router();
 clientsRouter.use(requireAuth);
 
-// GET /api/clients — all active clients (V1: no multi-tenant, all users see all clients)
+// GET /api/clients — only active clients the user is assigned to (via client_memberships)
 clientsRouter.get("/", async (req, res, next) => {
   try {
+    const memberIds = await getUserClientIds(req.userId!);
+    if (memberIds.length === 0) {
+      res.json({ clients: [] });
+      return;
+    }
+
     const { data, error } = await db
       .from("clients")
       .select("id, name, industry, notes, status, created_at, updated_at")
       .eq("status", "active")
+      .in("id", memberIds)
       .order("name");
 
     if (error) throw error;
@@ -38,31 +45,17 @@ clientsRouter.get("/", async (req, res, next) => {
   }
 });
 
-// POST /api/clients — create a new client
-clientsRouter.post("/", async (req, res, next) => {
-  try {
-    const body = z.object({
-      name: z.string().min(1).max(200),
-      industry: z.string().max(100).optional(),
-      notes: z.string().max(2000).optional(),
-    }).parse(req.body);
+// Client creation is admin-only — see POST /admin/clients. Users only see
+// clients they've been assigned to via client_memberships.
 
-    const { data, error } = await db
-      .from("clients")
-      .insert({ ...body, status: "active" })
-      .select()
-      .single();
-
-    if (error) throw error;
-    res.status(201).json({ client: data });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// GET /api/clients/:id — client detail
+// GET /api/clients/:id — client detail (members only)
 clientsRouter.get("/:id", async (req, res, next) => {
   try {
+    if (!(await userHasClientAccess(req.userId!, req.params.id))) {
+      res.status(404).json({ error: "Client not found" });
+      return;
+    }
+
     const { data, error } = await db
       .from("clients")
       .select("id, name, industry, notes, status, created_at, updated_at")

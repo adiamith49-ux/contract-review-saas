@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Users, Mail, Plus, X, Building2, UserPlus, Trash2 } from "lucide-react";
+import { Users, Plus, X, Building2, UserPlus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   listAdminUsers, listAdminClients, assignUserToClient, removeUserFromClient,
-  inviteUser, addUser, deleteAdminUser, type AdminUserRow, type AdminClient,
+  addUser, deleteAdminUser, type AdminUserRow, type AdminClient,
 } from "@/lib/admin-api";
 import { formatDate } from "@/lib/utils";
 
@@ -21,11 +21,6 @@ export default function AdminUsersPage() {
   const [assignTarget, setAssignTarget] = useState<AdminUserRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AdminUserRow | null>(null);
   const [deleting, setDeleting] = useState(false);
-
-  // Invite dialog
-  const [inviteOpen, setInviteOpen] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviting, setInviting] = useState(false);
 
   // Add user dialog
   const [addOpen, setAddOpen] = useState(false);
@@ -42,21 +37,6 @@ export default function AdminUsersPage() {
   }
 
   useEffect(() => { load(); }, []);
-
-  async function handleInvite(e: React.FormEvent) {
-    e.preventDefault();
-    setInviting(true);
-    try {
-      await inviteUser(inviteEmail);
-      toast.success(`Invitation sent to ${inviteEmail}`);
-      setInviteEmail("");
-      setInviteOpen(false);
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setInviting(false);
-    }
-  }
 
   async function handleAddUser(e: React.FormEvent) {
     e.preventDefault();
@@ -144,14 +124,9 @@ export default function AdminUsersPage() {
             {loading ? "Loading…" : `${users.length} user${users.length !== 1 ? "s" : ""} in the system`}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)}>
-            <Mail className="h-4 w-4 mr-1.5" /> Invite user
-          </Button>
-          <Button size="sm" onClick={() => setAddOpen(true)}>
-            <UserPlus className="h-4 w-4 mr-1.5" /> Add user
-          </Button>
-        </div>
+        <Button size="sm" onClick={() => setAddOpen(true)}>
+          <UserPlus className="h-4 w-4 mr-1.5" /> Add user
+        </Button>
       </div>
 
       {/* Users table */}
@@ -179,15 +154,10 @@ export default function AdminUsersPage() {
               <Users className="h-5 w-5 text-gray-400" />
             </div>
             <p className="text-sm font-semibold text-gray-700">No users yet</p>
-            <p className="text-xs text-gray-400 mt-1">Add or invite users to get them onboarded.</p>
-            <div className="flex items-center gap-2 mt-4">
-              <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)}>
-                <Mail className="h-3.5 w-3.5 mr-1.5" /> Invite user
-              </Button>
-              <Button size="sm" onClick={() => setAddOpen(true)}>
-                <UserPlus className="h-3.5 w-3.5 mr-1.5" /> Add user
-              </Button>
-            </div>
+            <p className="text-xs text-gray-400 mt-1">Add users to get them onboarded.</p>
+            <Button size="sm" className="mt-4" onClick={() => setAddOpen(true)}>
+              <UserPlus className="h-3.5 w-3.5 mr-1.5" /> Add user
+            </Button>
           </div>
         ) : (
           users.map(u => (
@@ -220,39 +190,6 @@ export default function AdminUsersPage() {
           ))
         )}
       </div>
-
-      {/* Invite dialog */}
-      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Invite team member</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleInvite} className="space-y-4 mt-1">
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1.5 block">Email address</label>
-              <Input
-                type="email"
-                placeholder="colleague@lawfirm.com"
-                value={inviteEmail}
-                onChange={e => setInviteEmail(e.target.value)}
-                required
-                autoFocus
-              />
-            </div>
-            <p className="text-xs text-gray-400">
-              They'll receive an email invitation to create their Contralyne account. Once they sign up, assign them to their clients here.
-            </p>
-            <div className="flex justify-end gap-3">
-              <DialogClose asChild>
-                <Button variant="outline" size="sm" type="button">Cancel</Button>
-              </DialogClose>
-              <Button size="sm" type="submit" disabled={inviting}>
-                {inviting ? "Sending…" : "Send invitation"}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
 
       {/* Add user dialog */}
       <Dialog open={addOpen} onOpenChange={open => { setAddOpen(open); if (!open) { setAddEmail(""); setAddFirstName(""); setAddLastName(""); } }}>
