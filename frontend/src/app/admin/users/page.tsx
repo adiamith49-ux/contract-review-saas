@@ -47,10 +47,13 @@ export default function AdminUsersPage() {
         first_name: addFirstName || undefined,
         last_name: addLastName || undefined,
       });
+      // The account is usable immediately either way — the user sets their password
+      // via "Forgot password" on the sign-in page (uses Clerk email, always works).
+      // A welcome email is a bonus notification when our mail server is configured.
       if (result.email_sent) {
-        toast.success(`User ${addEmail} created — welcome email with login steps sent.`);
+        toast.success(`${addEmail} added. A welcome email with sign-in steps was sent.`);
       } else {
-        toast.warning(`User ${addEmail} created, but the welcome email could not be sent. Tell them to sign in via "Forgot Password" to set their password.`);
+        toast.success(`${addEmail} added. They can sign in now — tell them to use "Forgot password?" to set their password.`);
       }
       setAddEmail("");
       setAddFirstName("");

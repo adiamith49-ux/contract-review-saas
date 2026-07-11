@@ -464,15 +464,17 @@ adminRouter.post("/users/add", requireAdmin, async (req, res, next) => {
       { onConflict: "clerk_user_id" },
     );
 
-    // Best-effort welcome email with login steps — creation must succeed even if mail fails
-    let email_sent = false;
-    if (isMailerConfigured()) {
-      try {
-        const greeting = first_name ? `Hi ${first_name},` : "Hi,";
-        await sendMail(
-          email,
-          "Your Contralyne account is ready",
-          `${greeting}
+    // The account works immediately: the user's email is verified (admin strategy),
+    // so they can set their password via "Forgot password" (Clerk's own email —
+    // independent of our SMTP). The welcome email below is only a convenience
+    // notification, sent in the background so it never blocks or slows this response.
+    const mailer_configured = isMailerConfigured();
+    if (mailer_configured) {
+      const greeting = first_name ? `Hi ${first_name},` : "Hi,";
+      sendMail(
+        email,
+        "Your Contralyne account is ready",
+        `${greeting}
 
 An account has been created for you on Contralyne, the AI contract review platform.
 
@@ -485,19 +487,17 @@ To log in for the first time:
 5. Choose a new password
 6. Sign in with your email and new password
 
-That's it — you're in. If you have any trouble logging in, reply to this email or contact your support@contralyne.com.
+That's it — you're in. If you have any trouble logging in, reply to this email or contact support@contralyne.com.
 
 — The Contralyne Team`,
-        );
-        email_sent = true;
-      } catch (mailErr) {
-        console.error("Welcome email failed for", email, mailErr);
-      }
+      ).catch(mailErr => console.error("Welcome email failed for", email, mailErr));
     }
 
+    // email_sent reflects whether a welcome email was *attempted* (mailer configured),
+    // not delivery — the account is usable regardless via Forgot Password.
     res.status(201).json({
       ok: true,
-      email_sent,
+      email_sent: mailer_configured,
       user: { clerk_user_id: clerkUser.id, email, created_at: clerkUser.createdAt },
     });
   } catch (err: any) {
