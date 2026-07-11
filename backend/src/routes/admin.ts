@@ -466,15 +466,14 @@ adminRouter.post("/users/add", requireAdmin, async (req, res, next) => {
 
     // The account works immediately: the user's email is verified (admin strategy),
     // so they can set their password via "Forgot password" (Clerk's own email —
-    // independent of our SMTP). The welcome email below is only a convenience
-    // notification, sent in the background so it never blocks or slows this response.
-    const mailer_configured = isMailerConfigured();
-    if (mailer_configured) {
+    // independent of our SMTP). The welcome email is a convenience notification;
+    // we report its ACTUAL delivery result (not just whether SMTP is configured)
+    // so the admin isn't told "sent" when the mail server rejected it. Bounded by
+    // a timeout so a hung SMTP connection can never block the response.
+    let email_sent = false;
+    if (isMailerConfigured()) {
       const greeting = first_name ? `Hi ${first_name},` : "Hi,";
-      sendMail(
-        email,
-        "Your Contralyne account is ready",
-        `${greeting}
+      const body = `${greeting}
 
 An account has been created for you on Contralyne, the AI contract review platform.
 
@@ -489,15 +488,21 @@ To log in for the first time:
 
 That's it — you're in. If you have any trouble logging in, reply to this email or contact support@contralyne.com.
 
-— The Contralyne Team`,
-      ).catch(mailErr => console.error("Welcome email failed for", email, mailErr));
+— The Contralyne Team`;
+      try {
+        await Promise.race([
+          sendMail(email, "Your Contralyne account is ready", body),
+          new Promise((_, rej) => setTimeout(() => rej(new Error("mail timeout")), 12000)),
+        ]);
+        email_sent = true;
+      } catch (mailErr) {
+        console.error("Welcome email failed for", email, (mailErr as Error)?.message);
+      }
     }
 
-    // email_sent reflects whether a welcome email was *attempted* (mailer configured),
-    // not delivery — the account is usable regardless via Forgot Password.
     res.status(201).json({
       ok: true,
-      email_sent: mailer_configured,
+      email_sent, // true only if the message was actually accepted by the mail server
       user: { clerk_user_id: clerkUser.id, email, created_at: clerkUser.createdAt },
     });
   } catch (err: any) {
