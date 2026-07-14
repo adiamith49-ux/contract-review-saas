@@ -15,7 +15,8 @@ import { normalizeWithMap } from "./redline.service.js";
 //                    original paragraph's <w:pPr> so indentation/numbering match.
 //   • comment       → anchor a Word comment across the matched paragraph.
 //
-// If a paragraph can't be matched, the edit is skipped (never corrupts the doc).
+// If a paragraph can't be matched, the finding is attached as a comment on the
+// title paragraph instead — findings are never dropped, the doc never rebuilt.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const AUTHOR = "Contralyne AI";
@@ -103,11 +104,21 @@ function findParagraph(chunks: string[], original: string): ParaMatch | null {
     let score = 0;
     if (norm.includes(exact)) {
       score = 1; // verbatim (redline edits) — strongest
+    } else if (norm.length >= 30 && exact.includes(norm)) {
+      // The AI quote spans multiple paragraphs (whole section, table rows) and
+      // this paragraph sits verbatim inside it — anchor here. Longer paragraphs
+      // score higher so the anchor lands on the meatiest part of the quote.
+      score = 0.6 + Math.min(0.3, norm.length / 500);
     } else {
-      // fuzzy: fraction of the target's significant words present in this paragraph
-      const pTokens = new Set(tokenize(paraText));
-      const hit = targetTokens.filter(t => pTokens.has(t)).length;
-      score = (hit / targetTokens.length) * 0.95; // cap below verbatim
+      const pTokens = tokenize(paraText);
+      const pSet = new Set(pTokens);
+      const hit = targetTokens.filter(t => pSet.has(t)).length;
+      // forward: fraction of the target's significant words present here.
+      // reverse: terse paragraphs (table cells, headings) rarely contain most of
+      // a long AI quote, but the quote usually contains most of THEIR words.
+      const forward = hit / targetTokens.length;
+      const reverse = pTokens.length >= 4 && hit >= 4 ? hit / pTokens.length : 0;
+      score = Math.max(forward, reverse * 0.85) * 0.95; // cap below verbatim
     }
     if (score > (best?.score ?? 0.55)) best = { paraXml: c, index: i, score }; // need >55% overlap
   }
@@ -179,35 +190,60 @@ export function editOriginalDocx(
   let idCounter = 1000;
   const comments: { id: number; text: string }[] = [];
   let applied = 0, skipped = 0;
-  const usedParagraphs = new Set<number>();
+  const trackedParagraphs = new Set<number>(); // paragraphs already rewritten as tracked changes
+  const unplaced: DocxEdit[] = [];
 
   for (const edit of edits) {
     const match = findParagraph(chunks, edit.originalText);
-    if (!match || usedParagraphs.has(match.index)) { skipped++; continue; }
-    usedParagraphs.add(match.index);
 
     if (edit.comment && !edit.revisedText) {
+      // Comment-only edits can stack — several findings may cite one paragraph
+      if (!match || trackedParagraphs.has(match.index)) { unplaced.push(edit); continue; }
       const cid = idCounter++;
       comments.push({ id: cid, text: edit.comment });
-      chunks[match.index] = addCommentToParagraph(match.paraXml, cid);
+      chunks[match.index] = addCommentToParagraph(chunks[match.index], cid);
       applied++;
       continue;
     }
 
-    // replace / insert / delete as tracked changes
-    const ppr = extractPpr(match.paraXml);
+    // replace / insert / delete as tracked changes — one per paragraph
+    if (!match || trackedParagraphs.has(match.index)) { unplaced.push(edit); continue; }
+    trackedParagraphs.add(match.index);
+    const current = chunks[match.index];
+    const ppr = extractPpr(current);
     const delId = idCounter++;
     const insId = idCounter++;
     let replacement = "";
-    if (edit.editType !== "insert") replacement += makeDeletedParagraph(match.paraXml, delId);
+    if (edit.editType !== "insert") replacement += makeDeletedParagraph(current, delId);
     if (edit.editType !== "delete" && edit.revisedText) replacement += makeInsertedParagraph(ppr, edit.revisedText, insId);
     if (edit.comment) {
       const cid = idCounter++;
       comments.push({ id: cid, text: edit.comment });
-      replacement = addCommentToParagraph(replacement || match.paraXml, cid);
+      replacement = addCommentToParagraph(replacement || current, cid);
     }
-    chunks[match.index] = replacement || match.paraXml;
+    chunks[match.index] = replacement || current;
     applied++;
+  }
+
+  // Findings that couldn't be anchored to their exact clause are attached as
+  // comments on the first substantial paragraph (the title) instead of being
+  // dropped — the document body stays untouched, so formatting is never lost.
+  if (unplaced.length > 0) {
+    const titleIdx = chunks.findIndex(c => c.startsWith("<w:p") && paragraphText(c).trim().length >= 4);
+    if (titleIdx >= 0) {
+      for (const edit of unplaced) {
+        const ref = edit.originalText.replace(/\s+/g, " ").trim().slice(0, 100);
+        const parts = [`Re: "${ref}${edit.originalText.length > 100 ? "…" : ""}"`];
+        if (edit.comment) parts.push(edit.comment);
+        if (edit.revisedText) parts.push(`Suggested revision: ${edit.revisedText}`);
+        const cid = idCounter++;
+        comments.push({ id: cid, text: parts.join(" — ") });
+        chunks[titleIdx] = addCommentToParagraph(chunks[titleIdx], cid);
+        applied++;
+      }
+    } else {
+      skipped += unplaced.length;
+    }
   }
 
   documentXml = pre + chunks.join("") + post;

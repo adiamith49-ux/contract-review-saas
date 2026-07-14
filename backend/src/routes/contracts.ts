@@ -542,14 +542,15 @@ contractsRouter.get("/:id/export/docx", async (req, res, next) => {
     let buffer: Buffer | undefined;
 
     // Preferred path: edit the ORIGINAL .docx in place so all source formatting
-    // (tables, styles, numbering) is preserved. Falls back to the rebuilt export
-    // if the source isn't a .docx or nothing could be placed.
+    // (tables, styles, headers/footers, numbering) is preserved. Only falls back
+    // to the rebuilt export when the source isn't a .docx or the file is corrupt —
+    // never because findings couldn't be anchored (those become title comments).
     if (isDocxSource(data.filename, data.mime_type) && data.s3_key) {
       try {
         const original = await downloadFromS3(data.s3_key);
         const docxEdits = buildDocxEdits(redlineEdits, a.clause_analysis);
-        const { buffer: edited, applied } = editOriginalDocx(original, docxEdits);
-        if (applied > 0) buffer = edited;
+        const { buffer: edited } = editOriginalDocx(original, docxEdits);
+        buffer = edited;
       } catch (e) {
         console.error("[export/docx] in-place edit failed, falling back to rebuild:", (e as Error)?.message);
       }
@@ -850,13 +851,14 @@ contractsRouter.post("/:id/redline/export/docx", async (req, res, next) => {
     let buffer: Buffer | undefined;
 
     // Preferred: apply the redline as tracked changes onto the ORIGINAL .docx,
-    // preserving all source formatting. Fall back to the rebuilt redline doc.
+    // preserving all source formatting. Only fall back to the rebuilt redline
+    // doc when the source isn't a .docx or the file is corrupt.
     if (isDocxSource(contract.filename, contract.mime_type) && contract.s3_key) {
       try {
         const original = await downloadFromS3(contract.s3_key);
         const docxEdits = buildDocxEdits(edits, undefined);
-        const { buffer: edited, applied } = editOriginalDocx(original, docxEdits);
-        if (applied > 0) buffer = edited;
+        const { buffer: edited } = editOriginalDocx(original, docxEdits);
+        buffer = edited;
       } catch (e) {
         console.error("[redline/export/docx] in-place edit failed, falling back:", (e as Error)?.message);
       }
