@@ -12,7 +12,6 @@ import {
   LineChart,
   LayoutDashboard,
   Settings,
-  Plus,
   Menu,
   X,
   User,
@@ -25,6 +24,7 @@ import { ContralyneLogoMark } from "@/components/ContralyneLogoMark";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { AppLauncher } from "./AppLauncher";
+import { NavTimer } from "./NavTimer";
 
 // ─── Nav config ───────────────────────────────────────────────────────────────
 
@@ -360,14 +360,8 @@ export function TopNav() {
 
           {/* Right side */}
           <div className="ml-auto flex items-center gap-1.5">
-            {/* Upload shortcut */}
-            <Link
-              href="/upload"
-              className="hidden lg:flex items-center gap-1.5 rounded-md bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-white transition-colors mr-1"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              New Request
-            </Link>
+            {/* Time tracker — start/stop creates an entry in the Time log */}
+            <NavTimer />
 
             {/* Settings icon */}
             <Link
