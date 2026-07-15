@@ -157,18 +157,68 @@ adminRouter.post("/auth/reset-password", authLimiter, async (req, res, next) => 
 
 adminRouter.get("/stats", requireAdmin, async (_req, res, next) => {
   try {
-    const [clients, contracts, users, tickets] = await Promise.all([
+    const [clients, users, openTickets, contracts, analyses, tickets] = await Promise.all([
       db.from("clients").select("id", { count: "exact", head: true }),
-      db.from("contracts").select("id", { count: "exact", head: true }),
       db.from("users").select("id", { count: "exact", head: true }),
       db.from("tickets").select("id", { count: "exact", head: true }).eq("status", "open"),
+      db.from("contracts").select("status, contract_type, created_at"),
+      db.from("analyses").select("risk_level"),
+      db.from("tickets").select("status"),
     ]);
+
+    const contractData = contracts.data ?? [];
+    const analysisData = analyses.data ?? [];
+    const ticketData = tickets.data ?? [];
+
+    // Uploads per month — last 6 months, zero-filled so charts don't skip empty months
+    const uploads_per_month: { month: string; count: number }[] = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      uploads_per_month.push({
+        month: key,
+        count: contractData.filter((c) => (c.created_at as string).slice(0, 7) === key).length,
+      });
+    }
+
+    // Risk breakdown — fixed order so chart colors stay stable
+    const risk_breakdown = (["low", "medium", "high", "critical"] as const).map((risk) => ({
+      risk,
+      count: analysisData.filter((a) => a.risk_level === risk).length,
+    }));
+
+    const contracts_by_status = (["uploaded", "processing", "analyzed", "failed"] as const).map((status) => ({
+      status,
+      count: contractData.filter((c) => c.status === status).length,
+    }));
+
+    const contracts_by_type = Object.entries(
+      contractData.reduce<Record<string, number>>((acc, c) => {
+        acc[c.contract_type] = (acc[c.contract_type] ?? 0) + 1;
+        return acc;
+      }, {}),
+    )
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count);
+
+    const tickets_by_status = (["open", "in_progress", "resolved"] as const).map((status) => ({
+      status,
+      count: ticketData.filter((t) => t.status === status).length,
+    }));
 
     res.json({
       clients: clients.count ?? 0,
-      contracts: contracts.count ?? 0,
+      contracts: contractData.length,
       users: users.count ?? 0,
-      open_tickets: tickets.count ?? 0,
+      open_tickets: openTickets.count ?? 0,
+      charts: {
+        uploads_per_month,
+        risk_breakdown,
+        contracts_by_status,
+        contracts_by_type,
+        tickets_by_status,
+      },
     });
   } catch (err) {
     next(err);
@@ -833,6 +883,13 @@ adminRouter.patch("/tickets/:id", requireAdmin, async (req, res, next) => {
       admin_notes: z.string().optional(),
     }).parse(req.body);
 
+    // Prior status + owner email needed to detect the transition to "resolved"
+    const { data: before } = await db
+      .from("tickets")
+      .select("status, users(email)")
+      .eq("id", req.params.id)
+      .single();
+
     const { data, error } = await db
       .from("tickets")
       .update({ ...body, updated_at: new Date().toISOString() })
@@ -841,7 +898,244 @@ adminRouter.patch("/tickets/:id", requireAdmin, async (req, res, next) => {
       .single();
 
     if (error || !data) { res.status(404).json({ error: "Ticket not found" }); return; }
-    res.json({ ticket: data });
+
+    // Best-effort resolution email — only on the transition into "resolved"
+    let email_sent = false;
+    // Supabase types the to-one join as an array; runtime shape can be either
+    const joinedUser = before?.users as unknown;
+    const ownerEmail: string | undefined = Array.isArray(joinedUser)
+      ? joinedUser[0]?.email
+      : (joinedUser as { email?: string } | null)?.email;
+    const justResolved = body.status === "resolved" && before?.status !== "resolved";
+    if (justResolved && ownerEmail && isMailerConfigured()) {
+      try {
+        const subjectRef = data.reference_name ? ` — ${data.reference_name}` : "";
+        await sendMail(
+          ownerEmail,
+          `Your Contralyne support ticket has been resolved${subjectRef}`,
+          `Hi,
+
+Good news — your support ticket on Contralyne has been resolved by our team.
+
+Ticket details:
+Type:      ${data.type}${data.reference_name ? `\nRegarding: ${data.reference_name}` : ""}
+Raised on: ${new Date(data.created_at).toDateString()}
+
+Your request:
+${data.description}
+${data.admin_notes ? `\nNote from our team:\n${data.admin_notes}\n` : ""}
+You can log in at ${config.WEB_URL}/sign-in to continue where you left off.
+
+If the issue isn't fully fixed, just reply to this email and we'll take another look.
+
+— The Contralyne Team`,
+        );
+        email_sent = true;
+      } catch (mailErr) {
+        console.error("Ticket resolution email failed for", ownerEmail, mailErr);
+      }
+    }
+
+    res.json({ ticket: data, email_sent });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── Contracts (global read-only overview) ────────────────────────────────────
+
+// Supabase types to-one joins as arrays; runtime shape can be either
+function joinedOne<T>(value: unknown): T | null {
+  if (Array.isArray(value)) return (value[0] as T) ?? null;
+  return (value as T) ?? null;
+}
+
+adminRouter.get("/contracts", requireAdmin, async (_req, res, next) => {
+  try {
+    const [contractsRes, usersRes] = await Promise.all([
+      db
+        .from("contracts")
+        .select("id, user_id, client_id, filename, contract_type, status, file_size, created_at, updated_at, clients(name), analyses(risk_level, created_at)")
+        .order("created_at", { ascending: false }),
+      db.from("users").select("clerk_user_id, email"),
+    ]);
+
+    if (contractsRes.error) throw contractsRes.error;
+
+    const emailByUser = new Map(
+      (usersRes.data ?? []).map((u) => [u.clerk_user_id as string, u.email as string]),
+    );
+
+    const contracts = (contractsRes.data ?? []).map((c) => {
+      const client = joinedOne<{ name: string }>(c.clients);
+      const analysis = joinedOne<{ risk_level: string; created_at: string }>(c.analyses);
+      return {
+        id: c.id,
+        filename: c.filename,
+        contract_type: c.contract_type,
+        status: c.status,
+        file_size: c.file_size,
+        created_at: c.created_at,
+        updated_at: c.updated_at,
+        client_name: client?.name ?? null,
+        user_email: emailByUser.get(c.user_id as string) ?? c.user_id,
+        risk_level: analysis?.risk_level ?? null,
+        analyzed_at: analysis?.created_at ?? null,
+      };
+    });
+
+    res.json({ contracts });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Full history for one contract: audit trail + analysis + chat volume
+adminRouter.get("/contracts/:id/history", requireAdmin, async (req, res, next) => {
+  try {
+    const id = req.params.id;
+    const [contract, activity, analysis, chat] = await Promise.all([
+      db
+        .from("contracts")
+        .select("id, user_id, filename, contract_type, status, file_size, mime_type, summary, error_message, created_at, updated_at, clients(name)")
+        .eq("id", id)
+        .single(),
+      db
+        .from("activity_logs")
+        .select("id, action, metadata, created_at")
+        .eq("contract_id", id)
+        .order("created_at", { ascending: false })
+        .limit(100),
+      db
+        .from("analyses")
+        .select("risk_level, model, created_at")
+        .eq("contract_id", id)
+        .maybeSingle(),
+      db.from("chat_messages").select("id", { count: "exact", head: true }).eq("contract_id", id),
+    ]);
+
+    if (contract.error || !contract.data) {
+      res.status(404).json({ error: "Contract not found" });
+      return;
+    }
+
+    const { data: owner } = await db
+      .from("users")
+      .select("email")
+      .eq("clerk_user_id", contract.data.user_id)
+      .maybeSingle();
+
+    res.json({
+      contract: {
+        ...contract.data,
+        clients: undefined,
+        client_name: joinedOne<{ name: string }>(contract.data.clients)?.name ?? null,
+        user_email: owner?.email ?? contract.data.user_id,
+      },
+      activity: activity.data ?? [],
+      analysis: analysis.data ?? null,
+      chat_count: chat.count ?? 0,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── Platform report (CSV download of everything) ─────────────────────────────
+
+// Excel-safe CSV cell: quote specials, neutralize formula-injection prefixes
+function csvCell(value: unknown): string {
+  let s = value == null ? "" : String(value);
+  if (/^[=+\-@]/.test(s)) s = `'${s}`;
+  if (/[",\n\r]/.test(s)) s = `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+adminRouter.get("/report", requireAdmin, async (_req, res, next) => {
+  try {
+    const [clientsRes, usersRes, contractsRes, ticketsRes, analysesRes] = await Promise.all([
+      db.from("clients").select("id, name, industry, status, created_at").order("created_at"),
+      db.from("users").select("clerk_user_id, email, created_at").order("created_at"),
+      db
+        .from("contracts")
+        .select("id, user_id, filename, contract_type, status, file_size, created_at, clients(name), analyses(risk_level)")
+        .order("created_at", { ascending: false }),
+      db
+        .from("tickets")
+        .select("type, reference_name, description, status, admin_notes, created_at, updated_at, users(email)")
+        .order("created_at", { ascending: false }),
+      db.from("analyses").select("risk_level"),
+    ]);
+
+    const clients = clientsRes.data ?? [];
+    const users = usersRes.data ?? [];
+    const contracts = contractsRes.data ?? [];
+    const tickets = ticketsRes.data ?? [];
+    const analyses = analysesRes.data ?? [];
+    const emailByUser = new Map(users.map((u) => [u.clerk_user_id as string, u.email as string]));
+
+    const lines: string[] = [];
+    const row = (...cells: unknown[]) => lines.push(cells.map(csvCell).join(","));
+
+    row("CONTRALYNE PLATFORM REPORT");
+    row("Generated", new Date().toISOString());
+    row();
+
+    row("SUMMARY");
+    row("Clients", clients.length);
+    row("Users", users.length);
+    row("Contracts", contracts.length);
+    row("Analyzed contracts", contracts.filter((c) => c.status === "analyzed").length);
+    row("High/critical risk", analyses.filter((a) => a.risk_level === "high" || a.risk_level === "critical").length);
+    row("Open tickets", tickets.filter((t) => t.status === "open").length);
+    row();
+
+    row("CONTRACTS");
+    row("Filename", "Client", "User", "Type", "Status", "Risk", "Size (KB)", "Uploaded");
+    for (const c of contracts) {
+      row(
+        c.filename,
+        joinedOne<{ name: string }>(c.clients)?.name ?? "",
+        emailByUser.get(c.user_id as string) ?? c.user_id,
+        c.contract_type,
+        c.status,
+        joinedOne<{ risk_level: string }>(c.analyses)?.risk_level ?? "",
+        Math.round(((c.file_size as number) ?? 0) / 1024),
+        (c.created_at as string).slice(0, 10),
+      );
+    }
+    row();
+
+    row("CLIENTS");
+    row("Name", "Industry", "Status", "Created");
+    for (const c of clients) row(c.name, c.industry ?? "", c.status, (c.created_at as string).slice(0, 10));
+    row();
+
+    row("USERS");
+    row("Email", "Created");
+    for (const u of users) row(u.email, (u.created_at as string).slice(0, 10));
+    row();
+
+    row("TICKETS");
+    row("Type", "Reference", "User", "Status", "Description", "Admin notes", "Created", "Updated");
+    for (const t of tickets) {
+      row(
+        t.type,
+        t.reference_name ?? "",
+        joinedOne<{ email: string }>(t.users)?.email ?? "",
+        t.status,
+        t.description,
+        t.admin_notes ?? "",
+        (t.created_at as string).slice(0, 10),
+        (t.updated_at as string).slice(0, 10),
+      );
+    }
+
+    const filename = `contralyne-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    // BOM so Excel opens it as UTF-8
+    res.send("﻿" + lines.join("\r\n"));
   } catch (err) {
     next(err);
   }

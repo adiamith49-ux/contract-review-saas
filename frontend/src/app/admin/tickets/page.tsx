@@ -54,10 +54,17 @@ export default function AdminTicketsPage() {
     if (!selected) return;
     setSaving(true);
     try {
-      const { ticket } = await updateAdminTicket(selected.id, { status, admin_notes: notes });
-      setTickets(prev => prev.map(t => t.id === ticket.id ? ticket : t));
+      const wasResolved = selected.status !== "resolved" && status === "resolved";
+      const { ticket, email_sent } = await updateAdminTicket(selected.id, { status, admin_notes: notes });
+      setTickets(prev => prev.map(t => t.id === ticket.id ? { ...t, ...ticket } : t));
       setSelected(null);
-      toast.success("Ticket updated");
+      if (wasResolved && email_sent) {
+        toast.success("Ticket resolved — the user has been notified by email.");
+      } else if (wasResolved) {
+        toast.warning("Ticket resolved, but the notification email could not be sent.");
+      } else {
+        toast.success("Ticket updated");
+      }
     } catch (err: any) {
       toast.error(err.message);
     } finally {

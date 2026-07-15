@@ -86,7 +86,7 @@ export default function ApprovalMatrixPage() {
           </p>
         </div>
         <Button size="sm" onClick={() => setDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-1.5" />Add Rule
+          <Plus className="h-4 w-4 mr-1.5" />Add Approver
         </Button>
       </div>
 

@@ -162,7 +162,7 @@ export const listAdminTickets = (status?: string) =>
   adminFetch<{ tickets: AdminTicket[] }>(`/admin/tickets${status ? `?status=${status}` : ""}`);
 
 export const updateAdminTicket = (id: string, data: { status?: string; admin_notes?: string }) =>
-  adminFetch<{ ticket: AdminTicket }>(`/admin/tickets/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+  adminFetch<{ ticket: AdminTicket; email_sent: boolean }>(`/admin/tickets/${id}`, { method: "PATCH", body: JSON.stringify(data) });
 
 // System / architecture overview
 export interface SystemInfo {
