@@ -102,7 +102,7 @@ export default function UploadPage() {
       }
       const active = r.filter(rule => rule.is_active);
       setRules(active);
-      setSelectedRuleIds(active.map(rule => rule.id));
+      // No playbooks pre-selected — the user opts in to the ones they want
     }).catch(() => {}).finally(() => setRulesLoading(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
