@@ -1,9 +1,18 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Building2, Users, FileText, Ticket, ArrowRight } from "lucide-react";
-import { getAdminStats, listAdminTickets, type AdminStats, type AdminTicket } from "@/lib/admin-api";
+import { Building2, Users, FileText, Ticket, ArrowRight, Download } from "lucide-react";
+import { toast } from "sonner";
+import {
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
+  PieChart, Pie, Cell,
+} from "recharts";
+import {
+  getAdminStats, listAdminTickets, downloadAdminReport,
+  type AdminStats, type AdminTicket,
+} from "@/lib/admin-api";
 import { formatDate } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -19,16 +28,47 @@ const TICKET_TYPE_LABELS: Record<string, string> = {
   other:           "Other",
 };
 
+const RISK_CHART_COLORS: Record<string, string> = {
+  low:      "#10b981",
+  medium:   "#f59e0b",
+  high:     "#f97316",
+  critical: "#ef4444",
+};
+
+const TYPE_LABELS: Record<string, string> = {
+  nda: "NDA", msa: "MSA", saas: "SaaS", sow: "SOW",
+  order_form: "Order Form", employment: "Employment",
+  vendor_agreement: "Vendor", other: "Other",
+};
+
+function monthLabel(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "short" });
+}
+
 export default function AdminDashboard() {
   const [stats, setStats]     = useState<AdminStats | null>(null);
   const [tickets, setTickets] = useState<AdminTicket[]>([]);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     Promise.all([getAdminStats(), listAdminTickets("open")])
       .then(([s, t]) => { setStats(s); setTickets(t.tickets.slice(0, 5)); })
       .finally(() => setLoading(false));
   }, []);
+
+  async function handleDownloadReport() {
+    setDownloading(true);
+    try {
+      await downloadAdminReport("dashboard");
+      toast.success("Dashboard report downloaded");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   const statCards = [
     { label: "Clients",       value: stats?.clients,      icon: Building2, color: "text-blue-600",    bg: "bg-blue-50"   },
@@ -37,11 +77,24 @@ export default function AdminDashboard() {
     { label: "Open Tickets",  value: stats?.open_tickets, icon: Ticket,    color: "text-red-600",     bg: "bg-red-50"    },
   ];
 
+  const uploads = stats?.charts?.uploads_per_month ?? [];
+  const uploadData = uploads.map((u) => ({ ...u, label: monthLabel(u.month) }));
+  const riskData = (stats?.charts?.risk_breakdown ?? []).filter((r) => r.count > 0);
+  const totalAnalyzed = riskData.reduce((sum, r) => sum + r.count, 0);
+  const typeData = stats?.charts?.contracts_by_type ?? [];
+  const maxTypeCount = Math.max(1, ...typeData.map((t) => t.count));
+
   return (
     <div className="p-6 lg:p-8 max-w-[1100px] mx-auto space-y-7">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">Admin Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Manage clients, users, content, and change requests.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Admin Dashboard</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Manage clients, users, content, and change requests.</p>
+        </div>
+        <Button size="sm" variant="outline" onClick={handleDownloadReport} disabled={downloading}>
+          <Download className="h-4 w-4 mr-1.5" />
+          {downloading ? "Preparing…" : "Download Report"}
+        </Button>
       </div>
 
       {/* Stat cards */}
@@ -59,12 +112,111 @@ export default function AdminDashboard() {
         ))}
       </div>
 
+      {/* Charts */}
+      <div className="grid lg:grid-cols-3 gap-4">
+        {/* Uploads per month */}
+        <div className="lg:col-span-2 bg-white rounded-xl border shadow-sm p-5">
+          <h2 className="text-sm font-semibold text-gray-900">Contract uploads</h2>
+          <p className="text-xs text-gray-400 mb-4">Last 6 months</p>
+          {loading ? (
+            <Skeleton className="h-56 w-full" />
+          ) : (
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={uploadData} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                  <Tooltip
+                    cursor={{ fill: "#f8fafc" }}
+                    contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }}
+                  />
+                  <Bar dataKey="count" name="Uploads" fill="#2563eb" radius={[4, 4, 0, 0]} maxBarSize={42} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+
+        {/* Risk breakdown donut */}
+        <div className="bg-white rounded-xl border shadow-sm p-5">
+          <h2 className="text-sm font-semibold text-gray-900">Risk breakdown</h2>
+          <p className="text-xs text-gray-400 mb-2">Analyzed contracts</p>
+          {loading ? (
+            <Skeleton className="h-56 w-full" />
+          ) : riskData.length === 0 ? (
+            <div className="h-56 flex items-center justify-center text-xs text-gray-400">
+              No analyses yet
+            </div>
+          ) : (
+            <>
+              <div className="h-40 relative">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={riskData}
+                      dataKey="count"
+                      nameKey="risk"
+                      innerRadius={48}
+                      outerRadius={68}
+                      paddingAngle={2}
+                      strokeWidth={0}
+                    >
+                      {riskData.map((r) => (
+                        <Cell key={r.risk} fill={RISK_CHART_COLORS[r.risk] ?? "#94a3b8"} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <p className="text-xl font-bold text-gray-900 tabular-nums">{totalAnalyzed}</p>
+                  <p className="text-[10px] text-gray-400">analyzed</p>
+                </div>
+              </div>
+              <div className="mt-3 space-y-1.5">
+                {riskData.map((r) => (
+                  <div key={r.risk} className="flex items-center gap-2 text-xs">
+                    <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: RISK_CHART_COLORS[r.risk] ?? "#94a3b8" }} />
+                    <span className="capitalize text-gray-600">{r.risk}</span>
+                    <span className="ml-auto font-medium text-gray-900 tabular-nums">{r.count}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Contracts by type */}
+      {!loading && typeData.length > 0 && (
+        <div className="bg-white rounded-xl border shadow-sm p-5">
+          <h2 className="text-sm font-semibold text-gray-900 mb-4">Contracts by type</h2>
+          <div className="space-y-2.5">
+            {typeData.map((t) => (
+              <div key={t.type} className="flex items-center gap-3">
+                <span className="text-xs text-gray-600 w-24 shrink-0">{TYPE_LABELS[t.type] ?? t.type}</span>
+                <div className="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-blue-600"
+                    style={{ width: `${(t.count / maxTypeCount) * 100}%` }}
+                  />
+                </div>
+                <span className="text-xs font-medium text-gray-900 tabular-nums w-8 text-right">{t.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Quick links */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { href: "/admin/clients",   label: "Manage Clients",  icon: Building2 },
           { href: "/admin/users",     label: "Manage Users",    icon: Users     },
-          { href: "/admin/clauses",   label: "Clause Library",  icon: FileText  },
+          { href: "/admin/contracts", label: "All Contracts",   icon: FileText  },
           { href: "/admin/playbooks", label: "Playbooks",       icon: FileText  },
         ].map(({ href, label, icon: Icon }) => (
           <Link

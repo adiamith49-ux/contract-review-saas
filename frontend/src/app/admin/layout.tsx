@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
   LayoutDashboard, Building2, Users, Library, Gavel,
-  Ticket, LogOut, Menu, X, Shield, Server,
+  Ticket, LogOut, Menu, X, Shield, Server, FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { adminMe, clearAdminToken, getAdminToken } from "@/lib/admin-api";
@@ -13,7 +13,7 @@ import { adminMe, clearAdminToken, getAdminToken } from "@/lib/admin-api";
 
 interface AdminContext { email: string }
 const Ctx = createContext<AdminContext | null>(null);
-export const useAdmin = () => useContext(Ctx);
+const useAdmin = () => useContext(Ctx);
 
 // ─── Sidebar nav ──────────────────────────────────────────────────────────────
 
@@ -21,6 +21,7 @@ const nav = [
   { href: "/admin/dashboard", label: "Dashboard",     icon: LayoutDashboard },
   { href: "/admin/clients",   label: "Clients",       icon: Building2       },
   { href: "/admin/users",     label: "Users",         icon: Users           },
+  { href: "/admin/contracts", label: "Contracts",     icon: FileText        },
   { href: "/admin/clauses",   label: "Clause Library",icon: Library         },
   { href: "/admin/playbooks", label: "Playbooks",     icon: Gavel           },
   { href: "/admin/tickets",   label: "Tickets",       icon: Ticket          },

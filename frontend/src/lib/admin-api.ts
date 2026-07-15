@@ -35,6 +35,32 @@ export interface AdminTicket {
 
 export interface AdminStats {
   clients: number; contracts: number; users: number; open_tickets: number;
+  charts: {
+    uploads_per_month:   { month: string; count: number }[];
+    risk_breakdown:      { risk: string; count: number }[];
+    contracts_by_status: { status: string; count: number }[];
+    contracts_by_type:   { type: string; count: number }[];
+    tickets_by_status:   { status: string; count: number }[];
+  };
+}
+
+export interface AdminContract {
+  id: string; filename: string; contract_type: string; status: string;
+  file_size: number; created_at: string; updated_at: string;
+  client_name: string | null; user_email: string;
+  risk_level: string | null; analyzed_at: string | null;
+}
+
+export interface AdminContractHistory {
+  contract: {
+    id: string; filename: string; contract_type: string; status: string;
+    file_size: number; mime_type: string; summary: string | null;
+    error_message: string | null; created_at: string; updated_at: string;
+    client_name: string | null; user_email: string;
+  };
+  activity: { id: string; action: string; metadata: Record<string, unknown>; created_at: string }[];
+  analysis: { risk_level: string; model: string; created_at: string } | null;
+  chat_count: number;
 }
 
 export function getAdminToken(): string | null {
@@ -156,6 +182,31 @@ export const updateAdminPlaybook = (id: string, data: Partial<AdminPlaybook>) =>
 
 export const deleteAdminPlaybook = (id: string) =>
   adminFetch<void>(`/admin/playbooks/${id}`, { method: "DELETE" });
+
+// Contracts (global read-only overview)
+export const listAdminContracts = () =>
+  adminFetch<{ contracts: AdminContract[] }>("/admin/contracts");
+
+export const getAdminContractHistory = (id: string) =>
+  adminFetch<AdminContractHistory>(`/admin/contracts/${id}/history`);
+
+// Per-tab formatted Excel reports (auth header required, so fetch as blob)
+export async function downloadAdminReport(kind: "dashboard" | "contracts"): Promise<void> {
+  const token = getAdminToken();
+  const res = await fetch(`${API_URL}/admin/report/${kind}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("Report download failed");
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `contralyne-${kind}-report-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 // Tickets
 export const listAdminTickets = (status?: string) =>

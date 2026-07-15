@@ -11,6 +11,7 @@ import { authLimiter } from "../middleware/rateLimit.js";
 import { extractText } from "../services/document.service.js";
 import { deleteFromS3 } from "../services/storage.service.js";
 import { isMailerConfigured, sendMail } from "../services/mailer.service.js";
+import { buildDashboardReport, buildContractsReport } from "../services/report.service.js";
 import { createClerkClient } from "@clerk/backend";
 
 const clerk = createClerkClient({ secretKey: config.CLERK_SECRET_KEY });
@@ -1041,101 +1042,24 @@ adminRouter.get("/contracts/:id/history", requireAdmin, async (req, res, next) =
   }
 });
 
-// ─── Platform report (CSV download of everything) ─────────────────────────────
+// ─── Reports (per-tab formatted Excel downloads) ──────────────────────────────
 
-// Excel-safe CSV cell: quote specials, neutralize formula-injection prefixes
-function csvCell(value: unknown): string {
-  let s = value == null ? "" : String(value);
-  if (/^[=+\-@]/.test(s)) s = `'${s}`;
-  if (/[",\n\r]/.test(s)) s = `"${s.replace(/"/g, '""')}"`;
-  return s;
-}
-
-adminRouter.get("/report", requireAdmin, async (_req, res, next) => {
+adminRouter.get("/report/:kind", requireAdmin, async (req, res, next) => {
   try {
-    const [clientsRes, usersRes, contractsRes, ticketsRes, analysesRes] = await Promise.all([
-      db.from("clients").select("id, name, industry, status, created_at").order("created_at"),
-      db.from("users").select("clerk_user_id, email, created_at").order("created_at"),
-      db
-        .from("contracts")
-        .select("id, user_id, filename, contract_type, status, file_size, created_at, clients(name), analyses(risk_level)")
-        .order("created_at", { ascending: false }),
-      db
-        .from("tickets")
-        .select("type, reference_name, description, status, admin_notes, created_at, updated_at, users(email)")
-        .order("created_at", { ascending: false }),
-      db.from("analyses").select("risk_level"),
-    ]);
-
-    const clients = clientsRes.data ?? [];
-    const users = usersRes.data ?? [];
-    const contracts = contractsRes.data ?? [];
-    const tickets = ticketsRes.data ?? [];
-    const analyses = analysesRes.data ?? [];
-    const emailByUser = new Map(users.map((u) => [u.clerk_user_id as string, u.email as string]));
-
-    const lines: string[] = [];
-    const row = (...cells: unknown[]) => lines.push(cells.map(csvCell).join(","));
-
-    row("CONTRALYNE PLATFORM REPORT");
-    row("Generated", new Date().toISOString());
-    row();
-
-    row("SUMMARY");
-    row("Clients", clients.length);
-    row("Users", users.length);
-    row("Contracts", contracts.length);
-    row("Analyzed contracts", contracts.filter((c) => c.status === "analyzed").length);
-    row("High/critical risk", analyses.filter((a) => a.risk_level === "high" || a.risk_level === "critical").length);
-    row("Open tickets", tickets.filter((t) => t.status === "open").length);
-    row();
-
-    row("CONTRACTS");
-    row("Filename", "Client", "User", "Type", "Status", "Risk", "Size (KB)", "Uploaded");
-    for (const c of contracts) {
-      row(
-        c.filename,
-        joinedOne<{ name: string }>(c.clients)?.name ?? "",
-        emailByUser.get(c.user_id as string) ?? c.user_id,
-        c.contract_type,
-        c.status,
-        joinedOne<{ risk_level: string }>(c.analyses)?.risk_level ?? "",
-        Math.round(((c.file_size as number) ?? 0) / 1024),
-        (c.created_at as string).slice(0, 10),
-      );
-    }
-    row();
-
-    row("CLIENTS");
-    row("Name", "Industry", "Status", "Created");
-    for (const c of clients) row(c.name, c.industry ?? "", c.status, (c.created_at as string).slice(0, 10));
-    row();
-
-    row("USERS");
-    row("Email", "Created");
-    for (const u of users) row(u.email, (u.created_at as string).slice(0, 10));
-    row();
-
-    row("TICKETS");
-    row("Type", "Reference", "User", "Status", "Description", "Admin notes", "Created", "Updated");
-    for (const t of tickets) {
-      row(
-        t.type,
-        t.reference_name ?? "",
-        joinedOne<{ email: string }>(t.users)?.email ?? "",
-        t.status,
-        t.description,
-        t.admin_notes ?? "",
-        (t.created_at as string).slice(0, 10),
-        (t.updated_at as string).slice(0, 10),
-      );
+    const kind = req.params.kind;
+    if (kind !== "dashboard" && kind !== "contracts") {
+      res.status(404).json({ error: "Unknown report type" });
+      return;
     }
 
-    const filename = `contralyne-report-${new Date().toISOString().slice(0, 10)}.csv`;
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    const buffer = kind === "dashboard"
+      ? await buildDashboardReport()
+      : await buildContractsReport();
+
+    const filename = `contralyne-${kind}-report-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    // BOM so Excel opens it as UTF-8
-    res.send("﻿" + lines.join("\r\n"));
+    res.send(buffer);
   } catch (err) {
     next(err);
   }
