@@ -208,9 +208,9 @@ export default function ContractDetailPage() {
   const isAnalyzed = contract.status === "analyzed" && !!analysis;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-y-auto">
       {/* ── Contract header bar ─────────────────────────────────────────── */}
-      <div className="shrink-0 px-3 md:px-5 py-2.5 border-b bg-white flex items-center justify-between gap-2 md:gap-4 z-20">
+      <div className="sticky top-0 shrink-0 px-3 md:px-5 py-2.5 border-b bg-white flex items-center justify-between gap-2 md:gap-4 z-20">
         <div className="flex items-center gap-3 min-w-0">
           <Link
             href="/contracts"
@@ -362,30 +362,21 @@ export default function ContractDetailPage() {
         );
       })()}
 
-      {/*
-        These 4 accordions used to sit directly in the fixed-height page flex
-        column — expanding one shrank the document viewer's flex-1 area down
-        to almost nothing with no page scroll to compensate ("suffocation").
-        Capping this group's height and letting it scroll internally means
-        the document viewer always keeps at least half the screen.
-      */}
-      <div className="shrink-0 max-h-[45vh] overflow-y-auto">
-        {/* ── Legal intake ───────────────────────────────────────────────── */}
-        <IntakePanel contractId={id} getToken={getToken} />
+      {/* ── Legal intake ─────────────────────────────────────────────────── */}
+      <IntakePanel contractId={id} getToken={getToken} />
 
-        {/* ── Approval workflow ──────────────────────────────────────────── */}
-        <ApprovalPanel contractId={id} contractStatus={contract.contract_status} getToken={getToken} onChanged={load} />
+      {/* ── Approval workflow ────────────────────────────────────────────── */}
+      <ApprovalPanel contractId={id} contractStatus={contract.contract_status} getToken={getToken} onChanged={load} />
 
-        {/* ── Versions & comparison ──────────────────────────────────────── */}
-        <VersionComparePanel contractId={id} getToken={getToken} />
+      {/* ── Versions & comparison ────────────────────────────────────────── */}
+      <VersionComparePanel contractId={id} getToken={getToken} />
 
-        {/* ── Matter workspace: comments, tasks, activity, team ──────────── */}
-        <MatterWorkspace contractId={id} getToken={getToken} />
-      </div>
+      {/* ── Matter workspace: comments, tasks, activity, team ────────────── */}
+      <MatterWorkspace contractId={id} getToken={getToken} />
 
       {/* ── Body ─────────────────────────────────────────────────────────── */}
       {!isAnalyzed ? (
-        <div className="flex-1 flex items-center justify-center bg-gray-50">
+        <div className="flex-1 min-h-[65vh] flex items-center justify-center bg-gray-50">
           <NotAnalyzedState
             status={contract.status}
             onAnalyze={handleAnalyze}
@@ -395,7 +386,7 @@ export default function ContractDetailPage() {
       ) : view === "redline" ? (
         // ── Redline view ────────────────────────────────────────────────────
         redlining ? (
-          <div className="flex-1 flex items-center justify-center bg-gray-50">
+          <div className="flex-1 min-h-[65vh] flex items-center justify-center bg-gray-50">
             <div className="flex flex-col items-center gap-3 text-center">
               <Loader2 className="h-10 w-10 text-primary animate-spin" />
               <p className="font-medium text-gray-700">Generating redlines…</p>
@@ -414,7 +405,7 @@ export default function ContractDetailPage() {
         ) : null
       ) : (
         // ── Review view ─────────────────────────────────────────────────────
-        <div className="flex flex-col lg:flex-row flex-1 min-h-0 overflow-hidden relative">
+        <div className="flex flex-col lg:flex-row flex-1 min-h-[65vh] overflow-hidden relative">
           {/* Document viewer */}
           <div className="flex-1 min-h-0 min-w-0">
             <DocumentViewer
