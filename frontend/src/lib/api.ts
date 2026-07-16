@@ -492,11 +492,28 @@ export interface RedlineResult {
   model: string;
 }
 
+export interface RedlineEditInput {
+  clause_ref: string;
+  original_text: string;
+  revised_text: string;
+  edit_type: "replace" | "insert" | "delete";
+  risk: "High" | "Medium" | "Low";
+  playbook_rule: string;
+  rationale: string;
+}
+
+// Redlines ONLY the edits passed in — callers must build this from the
+// findings the user actually applied in the Review panel, not the whole
+// contract, so "Redline" reflects exactly what was accepted.
 export async function runRedline(
   token: string | null,
   contractId: string,
+  edits: RedlineEditInput[],
 ): Promise<RedlineResult> {
-  return apiFetch(`/api/contracts/${contractId}/redline`, token, { method: "POST" });
+  return apiFetch(`/api/contracts/${contractId}/redline`, token, {
+    method: "POST",
+    body: JSON.stringify({ edits }),
+  });
 }
 
 export async function downloadRedlineDocx(

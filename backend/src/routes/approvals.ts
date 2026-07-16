@@ -99,6 +99,30 @@ const ruleSchema = z.object({
   is_active: z.boolean().default(true),
 });
 
+// ─── Cross-account approver access ────────────────────────────────────────────
+// V1 has no orgs/RBAC — every other table is scoped strictly to its owning
+// user_id. Approval steps are the one place a *different* registered Clerk
+// user (the named approver) legitimately needs to read and act on someone
+// else's contract, matched purely by email since there's no membership model.
+
+export async function getUserEmail(userId: string): Promise<string | null> {
+  const { data } = await db.from("users").select("email").eq("clerk_user_id", userId).maybeSingle();
+  return data?.email ?? null;
+}
+
+// True if this email is named as an approver on ANY step of this contract's
+// history — grants read access to the contract + its approval chain.
+export async function isApproverForContract(email: string, contractId: string): Promise<boolean> {
+  const { data } = await db
+    .from("contract_approvals")
+    .select("id")
+    .eq("contract_id", contractId)
+    .ilike("approver_email", email)
+    .limit(1)
+    .maybeSingle();
+  return !!data;
+}
+
 function notifyApprover(step: { approver_name: string; approver_email: string | null }, contractName: string, contractId: string) {
   if (!isMailerConfigured() || !step.approver_email) return;
   const url = `${config.WEB_URL}/contracts/${contractId}`;
@@ -282,11 +306,21 @@ approvalsRouter.post("/contracts/:contractId/submit", async (req, res, next) => 
 // GET /api/approvals/contracts/:contractId
 approvalsRouter.get("/contracts/:contractId", async (req, res, next) => {
   try {
+    const contractId = req.params.contractId;
+    const { data: contract } = await db.from("contracts").select("user_id").eq("id", contractId).maybeSingle();
+    if (!contract) return res.status(404).json({ error: "Contract not found" });
+
+    let authorized = contract.user_id === req.userId;
+    if (!authorized) {
+      const email = await getUserEmail(req.userId);
+      authorized = !!email && await isApproverForContract(email, contractId);
+    }
+    if (!authorized) return res.status(404).json({ error: "Contract not found" });
+
     const { data, error } = await db
       .from("contract_approvals")
       .select("*")
-      .eq("contract_id", req.params.contractId)
-      .eq("user_id", req.userId)
+      .eq("contract_id", contractId)
       .order("round", { ascending: false })
       .order("step_order");
     if (error) throw error;
@@ -324,9 +358,20 @@ approvalsRouter.post("/steps/:stepId/decide", async (req, res, next) => {
       .from("contract_approvals")
       .select("*")
       .eq("id", req.params.stepId)
-      .eq("user_id", req.userId)
       .single();
     if (sErr || !step) return res.status(404).json({ error: "Approval step not found" });
+
+    // Contract owner can act on any step (paper-trail model — no orgs/RBAC in
+    // V1), or the caller's own account email must match THIS step's named
+    // approver, so e.g. the CFO step can only be decided by whoever's logged
+    // in as the CFO's email, not by clicking around as the contract owner.
+    let authorized = step.user_id === req.userId;
+    if (!authorized) {
+      const email = await getUserEmail(req.userId);
+      authorized = !!email && !!step.approver_email && email.toLowerCase() === step.approver_email.toLowerCase();
+    }
+    if (!authorized) return res.status(403).json({ error: "You are not the named approver for this step" });
+
     if (step.status !== "pending") return res.status(409).json({ error: "This step has already been decided" });
 
     // Sequential chain: only the earliest pending step in the round is actionable
@@ -369,7 +414,9 @@ approvalsRouter.post("/steps/:stepId/decide", async (req, res, next) => {
     }
 
     if (newContractStatus) {
-      await db.from("contracts").update({ contract_status: newContractStatus, updated_at: new Date().toISOString() }).eq("id", step.contract_id).eq("user_id", req.userId);
+      // step.user_id is the CONTRACT OWNER (set when the chain was created) —
+      // req.userId may be a different account when a named approver decided.
+      await db.from("contracts").update({ contract_status: newContractStatus, updated_at: new Date().toISOString() }).eq("id", step.contract_id).eq("user_id", step.user_id);
     }
 
     await logActivity(req.userId, `approval.${decision}`, step.contract_id, {
@@ -378,6 +425,17 @@ approvalsRouter.post("/steps/:stepId/decide", async (req, res, next) => {
       step: step.step_order,
       comment: comment.trim() || undefined,
     });
+    // So the contract owner sees this in their own activity feed even when a
+    // different account (the named approver) made the decision.
+    if (step.user_id !== req.userId) {
+      await logActivity(step.user_id, `approval.${decision}`, step.contract_id, {
+        approver: step.approver_name,
+        round: step.round,
+        step: step.step_order,
+        comment: comment.trim() || undefined,
+        decided_by: req.userId,
+      });
+    }
 
     res.json({ status: decision, contract_status: newContractStatus, chain_complete: decision === "approved" && remaining.length === 0 });
   } catch (err) { next(err); }

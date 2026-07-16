@@ -142,12 +142,35 @@ export default function ContractDetailPage() {
   }
 
   async function handleRedline() {
-    if (!contract) return;
+    if (!contract || !analysis) return;
+
+    // Only redline clause findings the user actually applied in the Review
+    // panel — and only ones with real contract text + a suggested revision
+    // (risk/negotiation/ambiguity items have no verbatim text to anchor a
+    // tracked change to, so they can't become redlines).
+    const editsToRedline = analysis.clause_analysis
+      .map((c, i) => ({ c, id: `c-${i}` }))
+      .filter(({ c, id }) => appliedIds.has(id) && c.contractText && c.suggestedLanguage)
+      .map(({ c }) => ({
+        clause_ref: c.clause,
+        original_text: c.contractText!,
+        revised_text: c.suggestedLanguage!,
+        edit_type: "replace" as const,
+        risk: (c.risk === "critical" || c.risk === "high" ? "High" : c.risk === "medium" ? "Medium" : "Low") as "High" | "Medium" | "Low",
+        playbook_rule: c.playbookRule ?? "",
+        rationale: c.finding,
+      }));
+
+    if (editsToRedline.length === 0) {
+      toast.warning("Apply at least one clause change with suggested language before redlining");
+      return;
+    }
+
     setRedlining(true);
     setView("redline");
     try {
       const token = await getToken();
-      const result = await runRedline(token, id);
+      const result = await runRedline(token, id, editsToRedline);
       setRedlineResult(result);
       if (result.matched_count === 0) {
         toast.warning("Redlines generated but none could be placed — see the Redline Edits panel");

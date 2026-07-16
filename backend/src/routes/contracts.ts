@@ -16,6 +16,7 @@ import { extractText, validateFileType } from "../services/document.service.js";
 import { exportToDocx, exportToPdf } from "../services/export.service.js";
 import { buildS3Key, deleteFromS3, downloadFromS3, getPresignedUrl, uploadToS3 } from "../services/storage.service.js";
 import { editOriginalDocx, type DocxEdit } from "../services/docxEdit.service.js";
+import { getUserEmail, isApproverForContract } from "./approvals.js";
 
 // True when the original upload is a Word .docx (only these can be edited in place)
 function isDocxSource(filename: string, mimeType?: string | null): boolean {
@@ -311,12 +312,24 @@ contractsRouter.get("/", async (req, res, next) => {
 // GET /api/contracts/:id
 contractsRouter.get("/:id", async (req, res, next) => {
   try {
-    const { data, error } = await db
+    const selectCols = "id, filename, title, counterparty, contract_type, contract_status, status, file_size, s3_key, summary, extracted_text, start_date, end_date, renewal_date, owner_name, contract_value, version_number, parent_contract_id, created_at, analyses(*), legal_intake(*)";
+
+    let { data, error } = await db
       .from("contracts")
-      .select("id, filename, title, counterparty, contract_type, contract_status, status, file_size, s3_key, summary, extracted_text, start_date, end_date, renewal_date, owner_name, contract_value, version_number, parent_contract_id, created_at, analyses(*), legal_intake(*)")
+      .select(selectCols)
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
       .single();
+
+    if (error || !data) {
+      // Not the owner — allow read access if this user is a named approver
+      // on the contract's approval chain (V1 has no orgs/RBAC, so this is
+      // matched by email rather than a membership table).
+      const email = await getUserEmail(req.userId);
+      if (email && await isApproverForContract(email, req.params.id)) {
+        ({ data, error } = await db.from("contracts").select(selectCols).eq("id", req.params.id).single());
+      }
+    }
 
     if (error || !data) { res.status(404).json({ error: "Contract not found" }); return; }
 
@@ -730,7 +743,20 @@ contractsRouter.patch("/:id", async (req, res, next) => {
   }
 });
 
+const redlineEditInputSchema = z.object({
+  clause_ref: z.string(),
+  original_text: z.string(),
+  revised_text: z.string(),
+  edit_type: z.enum(["replace", "insert", "delete"]),
+  risk: z.enum(["High", "Medium", "Low"]),
+  playbook_rule: z.string(),
+  rationale: z.string(),
+});
+
 // POST /api/contracts/:id/redline
+// If the caller supplies `edits` (the findings the user applied in the Review
+// panel), redline ONLY those — no AI call. Omitting `edits` runs the AI over
+// the whole contract (used by older clients / direct API callers).
 contractsRouter.post("/:id/redline", analyzeLimiter, async (req, res, next) => {
   try {
     const { data: contract, error } = await db
@@ -743,39 +769,51 @@ contractsRouter.post("/:id/redline", analyzeLimiter, async (req, res, next) => {
     if (error || !contract) { res.status(404).json({ error: "Contract not found" }); return; }
     if (!contract.extracted_text) { res.status(422).json({ error: "Contract text not extracted yet" }); return; }
 
-    // Fetch active playbook rules + clause library in parallel
-    const [{ data: ruleRows }, { data: clauseRows }] = await Promise.all([
-      db.from("review_rules").select("title, playbook_text, rules").or(`user_id.eq.${req.userId},is_admin_managed.eq.true`).eq("is_active", true),
-      db.from("clause_library").select("title, clause_type, content").eq("status", "approved").or(`user_id.eq.${req.userId},is_admin_managed.eq.true`),
-    ]);
+    const suppliedEdits = z.array(redlineEditInputSchema).safeParse(req.body?.edits);
 
-    const playbookParts = (ruleRows ?? []).map((row: any) => {
-      const header = row.title ? `PLAYBOOK: ${row.title}\n` : "";
-      if (row.playbook_text?.trim()) return header + (row.playbook_text as string);
-      const legacyRules = row.rules as Array<{ clause_type: string; requirement: string; severity: string }> | null;
-      if (legacyRules?.length) {
-        return header + legacyRules.map(r => `[${(r.severity ?? "medium").toUpperCase()}] ${r.clause_type}: ${r.requirement}`).join("\n");
-      }
-      return null;
-    }).filter((t: unknown): t is string => Boolean(t));
+    let edits: ReturnType<typeof redlineEditInputSchema.parse>[];
+    let model: string;
 
-    const playbookText = playbookParts.length > 0 ? playbookParts.join("\n\n---\n\n") : undefined;
-    const clauseLibrary = (clauseRows ?? []).map((r: any) => ({
-      title: r.title as string,
-      clause_type: r.clause_type as "approved" | "fallback" | "unacceptable",
-      content: r.content as string,
-    }));
-    const intake = Array.isArray(contract.legal_intake) ? contract.legal_intake[0] : (contract.legal_intake ?? null);
+    if (suppliedEdits.success && suppliedEdits.data.length > 0) {
+      edits = suppliedEdits.data;
+      model = "user-applied";
+    } else {
+      // Fetch active playbook rules + clause library in parallel
+      const [{ data: ruleRows }, { data: clauseRows }] = await Promise.all([
+        db.from("review_rules").select("title, playbook_text, rules").or(`user_id.eq.${req.userId},is_admin_managed.eq.true`).eq("is_active", true),
+        db.from("clause_library").select("title, clause_type, content").eq("status", "approved").or(`user_id.eq.${req.userId},is_admin_managed.eq.true`),
+      ]);
 
-    const { edits, model } = await redlineContract(
-      contract.extracted_text,
-      contract.contract_type as ContractType,
-      intake,
-      playbookText,
-      clauseLibrary.length > 0 ? clauseLibrary : undefined,
-    );
+      const playbookParts = (ruleRows ?? []).map((row: any) => {
+        const header = row.title ? `PLAYBOOK: ${row.title}\n` : "";
+        if (row.playbook_text?.trim()) return header + (row.playbook_text as string);
+        const legacyRules = row.rules as Array<{ clause_type: string; requirement: string; severity: string }> | null;
+        if (legacyRules?.length) {
+          return header + legacyRules.map(r => `[${(r.severity ?? "medium").toUpperCase()}] ${r.clause_type}: ${r.requirement}`).join("\n");
+        }
+        return null;
+      }).filter((t: unknown): t is string => Boolean(t));
 
-    console.log("[redline-route] AI returned", edits.length, "edits");
+      const playbookText = playbookParts.length > 0 ? playbookParts.join("\n\n---\n\n") : undefined;
+      const clauseLibrary = (clauseRows ?? []).map((r: any) => ({
+        title: r.title as string,
+        clause_type: r.clause_type as "approved" | "fallback" | "unacceptable",
+        content: r.content as string,
+      }));
+      const intake = Array.isArray(contract.legal_intake) ? contract.legal_intake[0] : (contract.legal_intake ?? null);
+
+      const aiResult = await redlineContract(
+        contract.extracted_text,
+        contract.contract_type as ContractType,
+        intake,
+        playbookText,
+        clauseLibrary.length > 0 ? clauseLibrary : undefined,
+      );
+      edits = aiResult.edits;
+      model = aiResult.model;
+    }
+
+    console.log(`[redline-route] ${model === "user-applied" ? "using applied" : "AI returned"}`, edits.length, "edits");
     if (edits.length > 0) {
       console.log("[redline-route] first edit original_text (100):", edits[0]?.original_text?.slice(0, 100));
     }
