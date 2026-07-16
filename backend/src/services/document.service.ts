@@ -84,13 +84,66 @@ export function normalizeExtractedText(text: string): string {
   return out;
 }
 
+function stripTags(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .trim();
+}
+
+// mammoth.extractRawText flattens <w:tbl> rows into disconnected plain-text
+// lines with no delimiter — a "Field | Value" table becomes two lines with
+// no relationship between them. convertToHtml preserves <table>/<tr>/<td>
+// structure, so we walk that and re-emit each table as GitHub-style
+// "| cell | cell |" rows — still plain text (safe for the AI prompt, chat
+// context, and fuzzy redline matching, all of which expect a plain string),
+// but with row/column structure the frontend viewer can detect and render
+// as a real <table> instead of stray paragraphs.
+export function htmlToStructuredText(html: string): string {
+  const blocks: string[] = [];
+  let lastIndex = 0;
+  const tableRe = /<table[^>]*>[\s\S]*?<\/table>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = tableRe.exec(html)) !== null) {
+    const before = stripTags(html.slice(lastIndex, m.index)).trim();
+    if (before) blocks.push(before);
+
+    const rows: string[] = [];
+    const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    let rm: RegExpExecArray | null;
+    while ((rm = rowRe.exec(m[0])) !== null) {
+      const cells: string[] = [];
+      const cellRe = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
+      let cm: RegExpExecArray | null;
+      while ((cm = cellRe.exec(rm[1])) !== null) {
+        cells.push(stripTags(cm[1]).replace(/\s+/g, " ").trim());
+      }
+      if (cells.length > 0) rows.push(`| ${cells.join(" | ")} |`);
+    }
+    if (rows.length > 0) blocks.push(rows.join("\n"));
+
+    lastIndex = m.index + m[0].length;
+  }
+  const tail = stripTags(html.slice(lastIndex)).trim();
+  if (tail) blocks.push(tail);
+
+  return blocks.join("\n\n");
+}
+
 export async function extractText(buffer: Buffer, mimeType: string): Promise<string> {
   if (
     mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     mimeType === "application/msword"
   ) {
-    const result = await mammoth.extractRawText({ buffer });
-    return normalizeExtractedText(result.value.trim());
+    const result = await mammoth.convertToHtml({ buffer });
+    return normalizeExtractedText(htmlToStructuredText(result.value).trim());
   }
 
   if (mimeType === "application/pdf") {

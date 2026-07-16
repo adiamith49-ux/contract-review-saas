@@ -24,6 +24,22 @@ function parseContractParagraphs(text: string): string[] {
     .filter(p => p.length > 10);
 }
 
+// The backend emits DOCX tables as contiguous "| cell | cell |" lines (see
+// document.service.ts) so table structure survives as plain text — detect
+// that shape here and render a real <table> instead of a wall of pipes.
+function isTableBlock(text: string): boolean {
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+  return lines.length > 0 && lines.every(l => /^\|.*\|$/.test(l));
+}
+
+function parseTableRows(text: string): string[][] {
+  return text
+    .split("\n")
+    .map(l => l.trim())
+    .filter(Boolean)
+    .map(row => row.slice(1, -1).split("|").map(c => c.trim()));
+}
+
 function isHeading(text: string): boolean {
   const t = text.trim();
   if (t.length > 250 || t.length < 3) return false;
@@ -172,6 +188,7 @@ export function DocumentViewer({ text, analysis, activeId, appliedIds, panelOpen
           const isActive = activeId !== null && annotations.some(a => a.id === activeId);
           const allApplied = annotations.length > 0 && annotations.every(a => appliedIds?.has(a.id));
           const heading = isHeading(para);
+          const isTable = isTableBlock(para);
 
           // Three-state highlight: active (blue) > all-applied (green) > flagged (red)
           const highlightCls = annotations.length === 0 ? "" :
@@ -183,7 +200,7 @@ export function DocumentViewer({ text, analysis, activeId, appliedIds, panelOpen
           const appliedWithReplacement = annotations.filter(
             a => appliedIds?.has(a.id) && a.suggestedLanguage,
           );
-          const showTrackedChange = allApplied && appliedWithReplacement.length > 0;
+          const showTrackedChange = !isTable && allApplied && appliedWithReplacement.length > 0;
 
           return (
             <div
@@ -192,7 +209,27 @@ export function DocumentViewer({ text, analysis, activeId, appliedIds, panelOpen
               className={cn("mb-5 rounded-sm transition-all duration-200", highlightCls)}
             >
               {/* Paragraph / heading text — show strikethrough when tracked change is applied */}
-              {showTrackedChange ? (
+              {isTable ? (
+                <table className="w-full text-[13px] border-collapse my-1">
+                  <tbody>
+                    {parseTableRows(para).map((cells, rIdx) => (
+                      <tr key={rIdx} className="border-b border-gray-100 last:border-0">
+                        {cells.map((cell, cIdx) => (
+                          <td
+                            key={cIdx}
+                            className={cn(
+                              "align-top py-1.5 px-2",
+                              cIdx === 0 ? "font-medium text-gray-500 bg-gray-50 w-1/3" : "text-gray-800",
+                            )}
+                          >
+                            {cell}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : showTrackedChange ? (
                 <div className="space-y-1">
                   {appliedWithReplacement.map(ann => (
                     <div key={ann.id}>

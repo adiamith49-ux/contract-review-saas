@@ -160,9 +160,13 @@ export default function UploadPage() {
         filled.add("governingLaw");
       }
       if (meta.contract_value) {
-        // AI may return "$5,000,000", "5 million USD", etc. — keep only digits/decimal.
-        const digits = String(meta.contract_value).replace(/[^0-9.]/g, "");
-        if (digits && !Number.isNaN(Number(digits))) { setContractValue(digits); filled.add("contractValue"); }
+        // AI may return "$5,000,000", or occasionally more than one amount
+        // (e.g. "$500,000/yr, $1,500,000 total") — stripping all non-digits
+        // in that case would concatenate them into garbage (5000001500000),
+        // so pick the largest individual number-group instead.
+        const matches = String(meta.contract_value).match(/\d[\d,]*(?:\.\d+)?/g) ?? [];
+        const nums = matches.map(m => Number(m.replace(/,/g, ""))).filter(n => Number.isFinite(n) && n > 0);
+        if (nums.length > 0) { setContractValue(String(Math.max(...nums))); filled.add("contractValue"); }
       }
       setAiFilledFields(filled);
     }).catch(() => {

@@ -93,9 +93,18 @@ const metaSchema = z.object({
   end_date: z.string().optional(),
   renewal_date: z.string().optional(),
   owner_name: z.string().max(500).optional(),
-  // Tolerate blank / non-numeric / NaN from the client → treat as "no value"
+  // Tolerate blank / non-numeric / NaN from the client → treat as "no value".
+  // The AI is told to return a single total, but if it (or a client) ever
+  // sends a string with more than one number (e.g. "$500,000/yr, $1,500,000
+  // total"), stripping all non-digits would concatenate them into garbage
+  // (5000001500000) — so pick the largest individual number-group instead.
   contract_value: z.preprocess(
-    v => { const n = typeof v === "string" ? Number(v.replace(/[^0-9.]/g, "")) : Number(v); return Number.isFinite(n) && n > 0 ? n : undefined; },
+    v => {
+      if (typeof v !== "string") { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : undefined; }
+      const matches = v.match(/\d[\d,]*(?:\.\d+)?/g) ?? [];
+      const nums = matches.map(m => Number(m.replace(/,/g, ""))).filter(n => Number.isFinite(n) && n > 0);
+      return nums.length > 0 ? Math.max(...nums) : undefined;
+    },
     z.number().positive().optional(),
   ),
   contract_status: businessStatusEnum.optional(),

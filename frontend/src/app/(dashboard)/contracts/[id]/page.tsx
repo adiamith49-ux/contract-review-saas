@@ -362,17 +362,26 @@ export default function ContractDetailPage() {
         );
       })()}
 
-      {/* ── Legal intake ─────────────────────────────────────────────────── */}
-      <IntakePanel contractId={id} getToken={getToken} />
+      {/*
+        These 4 accordions used to sit directly in the fixed-height page flex
+        column — expanding one shrank the document viewer's flex-1 area down
+        to almost nothing with no page scroll to compensate ("suffocation").
+        Capping this group's height and letting it scroll internally means
+        the document viewer always keeps at least half the screen.
+      */}
+      <div className="shrink-0 max-h-[45vh] overflow-y-auto">
+        {/* ── Legal intake ───────────────────────────────────────────────── */}
+        <IntakePanel contractId={id} getToken={getToken} />
 
-      {/* ── Approval workflow ────────────────────────────────────────────── */}
-      <ApprovalPanel contractId={id} contractStatus={contract.contract_status} getToken={getToken} onChanged={load} />
+        {/* ── Approval workflow ──────────────────────────────────────────── */}
+        <ApprovalPanel contractId={id} contractStatus={contract.contract_status} getToken={getToken} onChanged={load} />
 
-      {/* ── Versions & comparison ────────────────────────────────────────── */}
-      <VersionComparePanel contractId={id} getToken={getToken} />
+        {/* ── Versions & comparison ──────────────────────────────────────── */}
+        <VersionComparePanel contractId={id} getToken={getToken} />
 
-      {/* ── Matter workspace: comments, tasks, activity, team ────────────── */}
-      <MatterWorkspace contractId={id} getToken={getToken} />
+        {/* ── Matter workspace: comments, tasks, activity, team ──────────── */}
+        <MatterWorkspace contractId={id} getToken={getToken} />
+      </div>
 
       {/* ── Body ─────────────────────────────────────────────────────────── */}
       {!isAnalyzed ? (

@@ -89,7 +89,7 @@ const extractMetaTool: Anthropic.Tool = {
       start_date: { type: "string", description: "Contract start or effective date in YYYY-MM-DD format if found" },
       end_date: { type: "string", description: "Contract end or expiry date in YYYY-MM-DD format if found" },
       governing_law: { type: "string", description: "Governing law / jurisdiction clause e.g. 'New York, USA' or 'England and Wales'" },
-      contract_value: { type: "string", description: "Total contract value or fee amount if stated, including currency" },
+      contract_value: { type: "string", description: "The single TOTAL contract value only, as one plain number (currency symbols/commas OK, e.g. '$1,500,000'). If the contract states multiple amounts (e.g. an annual fee AND a total over the term), return ONLY the total — never combine or list more than one number. Omit this field if no total value is stated." },
     },
   },
 };
