@@ -105,8 +105,32 @@ function notifyApprover(step: { approver_name: string; approver_email: string | 
   sendMail(
     step.approver_email,
     `Approval requested: ${contractName}`,
-    `Hi ${step.approver_name},\n\nThe contract "${contractName}" is pending your approval on Contralyne.\n\nReview it here: ${url}\n\n— Contralyne`,
+    `Hi ${step.approver_name},\n\nThe contract "${contractName}" is pending your approval on Contralyne.\n\nReview it here: ${url}\n\nThis has also been added to your task list: ${config.WEB_URL}/tasks\n\n— Contralyne`,
   ).catch(() => { /* notification failure must not block the approval flow */ });
+}
+
+// If the approver is a registered user, drop the approval on their task list too.
+// Best-effort: an unknown email (external approver) or a DB hiccup must not block the flow.
+async function assignApproverTask(step: { approver_name: string; approver_email: string | null }, contractName: string, contractId: string) {
+  try {
+    if (!step.approver_email) return;
+    const { data: approver } = await db
+      .from("users")
+      .select("clerk_user_id")
+      .ilike("email", step.approver_email)
+      .maybeSingle();
+    if (!approver) return;
+    await db.from("tasks").insert({
+      user_id: approver.clerk_user_id,
+      title: `Approve contract: ${contractName}`,
+      notes: `Your approval is requested for "${contractName}". Open the contract to approve, reject, or request changes.`,
+      priority: "high",
+      contract_id: contractId,
+      assignee: "Approval Workflow",
+    });
+  } catch (err) {
+    console.error("Failed to create approver task for", step.approver_email, err);
+  }
 }
 
 // ─── Matrix CRUD ──────────────────────────────────────────────────────────────
@@ -247,6 +271,7 @@ approvalsRouter.post("/contracts/:contractId/submit", async (req, res, next) => 
     });
 
     notifyApprover(chain[0].rule, contract.title || contract.filename, contractId);
+    await assignApproverTask(chain[0].rule, contract.title || contract.filename, contractId);
 
     res.status(201).json({ round, steps: steps ?? [] });
   } catch (err) { next(err); }
@@ -333,6 +358,7 @@ approvalsRouter.post("/steps/:stepId/decide", async (req, res, next) => {
         const next = remaining[0];
         const { data: c } = await db.from("contracts").select("filename, title").eq("id", step.contract_id).single();
         notifyApprover(next, c?.title || c?.filename || "a contract", step.contract_id);
+        await assignApproverTask(next, c?.title || c?.filename || "a contract", step.contract_id);
       }
     } else {
       // Reject / changes requested: void the rest of the chain

@@ -6,6 +6,10 @@ import { requireAuth } from "../middleware/auth.js";
 export const tasksRouter = Router();
 tasksRouter.use(requireAuth);
 
+// "Admin" and "Approval Workflow" are reserved markers for system-assigned tasks —
+// users cannot create or relabel tasks with them
+const RESERVED_ASSIGNEES = ["admin", "approval workflow"];
+
 const taskSchema = z.object({
   title:    z.string().min(1).max(500),
   notes:    z.string().optional().default(""),
@@ -13,7 +17,10 @@ const taskSchema = z.object({
   due_date: z.string().nullable().optional(),
   done:     z.boolean().optional().default(false),
   contract_id: z.string().uuid().nullable().optional(),
-  assignee: z.string().max(200).nullable().optional(),
+  assignee: z.string().max(200).nullable().optional()
+    .refine(v => !v || !RESERVED_ASSIGNEES.includes(v.trim().toLowerCase()), {
+      message: "This assignee name is reserved",
+    }),
 });
 
 // GET /api/tasks
@@ -61,9 +68,21 @@ tasksRouter.patch("/:id", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// DELETE /api/tasks/:id
+// DELETE /api/tasks/:id — personal tasks only; admin/approval tasks are managed upstream
 tasksRouter.delete("/:id", async (req, res, next) => {
   try {
+    const { data: task } = await db
+      .from("tasks")
+      .select("assignee")
+      .eq("id", req.params.id)
+      .eq("user_id", req.userId)
+      .maybeSingle();
+    if (!task) { res.status(404).json({ error: "Task not found" }); return; }
+    if (task.assignee === "Admin" || task.assignee === "Approval Workflow") {
+      res.status(403).json({ error: "Assigned tasks can only be removed by your admin" });
+      return;
+    }
+
     const { error } = await db
       .from("tasks")
       .delete()

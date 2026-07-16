@@ -183,6 +183,29 @@ export const updateAdminPlaybook = (id: string, data: Partial<AdminPlaybook>) =>
 export const deleteAdminPlaybook = (id: string) =>
   adminFetch<void>(`/admin/playbooks/${id}`, { method: "DELETE" });
 
+// Tasks (admin assigns work to users)
+export interface AdminTask {
+  id: string; user_id: string; user_email: string;
+  title: string; notes: string;
+  priority: "low" | "medium" | "high";
+  due_date: string | null; done: boolean;
+  contract_id: string | null; assignee: string | null;
+  created_at: string;
+}
+
+export const listAdminTasks = () => adminFetch<{ tasks: AdminTask[] }>("/admin/tasks");
+
+export const createAdminTask = (data: {
+  user_id: string; title: string; notes?: string;
+  priority?: "low" | "medium" | "high"; due_date?: string | null;
+}) =>
+  adminFetch<{ task: AdminTask; email_sent: boolean }>("/admin/tasks", {
+    method: "POST", body: JSON.stringify(data),
+  });
+
+export const deleteAdminTask = (id: string) =>
+  adminFetch<void>(`/admin/tasks/${id}`, { method: "DELETE" });
+
 // Contracts (global read-only overview)
 export const listAdminContracts = () =>
   adminFetch<{ contracts: AdminContract[] }>("/admin/contracts");

@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useAuth, useUser } from "@clerk/nextjs";
+import Link from "next/link";
 import {
-  ClipboardList, Plus, Trash2, CheckCircle2,
-  Circle, Calendar, Loader2,
+  ClipboardList, Plus, Trash2, CheckCircle2, Circle,
+  Calendar, Loader2, UserCheck, FileSearch,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,10 @@ const PRIORITY_CONFIG: Record<Priority, { label: string; color: string; dot: str
   medium: { label: "Medium", color: "text-amber-600   bg-amber-50   border-amber-200",   dot: "bg-amber-500"   },
   high:   { label: "High",   color: "text-red-600     bg-red-50     border-red-200",     dot: "bg-red-500"     },
 };
+
+// Tasks with these markers were assigned by the system — the user can complete
+// them but not delete them
+const isAssigned = (t: Task) => t.assignee === "Admin" || t.assignee === "Approval Workflow";
 
 export default function TasksPage() {
   const { getToken } = useAuth();
@@ -118,7 +123,9 @@ export default function TasksPage() {
               </div>
               <h1 className="text-2xl font-bold text-gray-900">My Tasks</h1>
             </div>
-            <p className="text-gray-500 text-sm ml-12">Keep track of your work, {firstName}.</p>
+            <p className="text-gray-500 text-sm ml-12">
+              Your personal tasks plus work assigned to you, {firstName}.
+            </p>
           </div>
           <Button onClick={() => setShowForm(!showForm)} className="gap-2">
             <Plus className="h-4 w-4" />
@@ -140,10 +147,10 @@ export default function TasksPage() {
           ))}
         </div>
 
-        {/* Add task form */}
+        {/* Add task form — personal tasks only, never visible to the admin */}
         {showForm && (
           <div className="bg-white rounded-xl border border-primary/30 shadow-sm p-5 mb-6">
-            <h2 className="text-sm font-semibold text-gray-700 mb-4">Add New Task</h2>
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">Add Personal Task</h2>
             <div className="space-y-3">
               <Input
                 placeholder="Task title…"
@@ -220,10 +227,12 @@ export default function TasksPage() {
               {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
             </div>
           ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="flex flex-col items-center justify-center py-16 text-center px-6">
               <ClipboardList className="h-10 w-10 text-gray-200 mb-3" />
               <p className="text-sm text-gray-500">No tasks here</p>
-              <p className="text-xs text-gray-400 mt-1">Click "New Task" to get started</p>
+              <p className="text-xs text-gray-400 mt-1 max-w-xs">
+                Create a personal task with &quot;New Task&quot; — tasks assigned by your admin and approval requests also appear here.
+              </p>
             </div>
           ) : (
             <ul className="divide-y divide-gray-50">
@@ -232,6 +241,7 @@ export default function TasksPage() {
                 const overdue = task.due_date && !task.done && task.due_date < new Date().toISOString().split("T")[0];
                 const isToggling = togglingId === task.id;
                 const isDeleting = deletingId === task.id;
+                const assigned = isAssigned(task);
                 return (
                   <li
                     key={task.id}
@@ -243,6 +253,7 @@ export default function TasksPage() {
                     <button
                       onClick={() => toggleDone(task)}
                       disabled={isToggling}
+                      aria-label={task.done ? "Mark as pending" : "Mark as done"}
                       className="mt-0.5 shrink-0 text-gray-300 hover:text-primary transition-colors disabled:opacity-50"
                     >
                       {isToggling
@@ -263,6 +274,27 @@ export default function TasksPage() {
                           <span className={cn("h-1.5 w-1.5 rounded-full", p.dot)} />
                           {p.label}
                         </span>
+                        {task.assignee === "Admin" && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-600">
+                            <UserCheck className="h-3 w-3" />
+                            Assigned by admin
+                          </span>
+                        )}
+                        {task.assignee === "Approval Workflow" && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-600">
+                            <UserCheck className="h-3 w-3" />
+                            Approval request
+                          </span>
+                        )}
+                        {task.contract_id && (
+                          <Link
+                            href={`/contracts/${task.contract_id}`}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+                          >
+                            <FileSearch className="h-3 w-3" />
+                            Open contract
+                          </Link>
+                        )}
                         {task.due_date && (
                           <span className={cn("inline-flex items-center gap-1 text-[11px]", overdue ? "text-red-500 font-medium" : "text-gray-400")}>
                             <Calendar className="h-3 w-3" />
@@ -273,13 +305,17 @@ export default function TasksPage() {
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => handleDelete(task.id)}
-                      disabled={isDeleting}
-                      className="mt-0.5 shrink-0 text-gray-200 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all disabled:opacity-50"
-                    >
-                      {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                    </button>
+                    {/* Only personal tasks can be deleted by the user */}
+                    {!assigned && (
+                      <button
+                        onClick={() => handleDelete(task.id)}
+                        disabled={isDeleting}
+                        aria-label="Delete task"
+                        className="mt-0.5 shrink-0 text-gray-200 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all disabled:opacity-50"
+                      >
+                        {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      </button>
+                    )}
                   </li>
                 );
               })}

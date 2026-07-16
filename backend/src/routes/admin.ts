@@ -1042,6 +1042,109 @@ adminRouter.get("/contracts/:id/history", requireAdmin, async (req, res, next) =
   }
 });
 
+// ─── Tasks (admin assigns work to users) ──────────────────────────────────────
+
+adminRouter.get("/tasks", requireAdmin, async (_req, res, next) => {
+  try {
+    // Only admin-assigned tasks — users' personal tasks stay private to them
+    const [tasksRes, usersRes] = await Promise.all([
+      db.from("tasks").select("*").eq("assignee", "Admin").order("created_at", { ascending: false }),
+      db.from("users").select("clerk_user_id, email"),
+    ]);
+    if (tasksRes.error) throw tasksRes.error;
+
+    const emailByUser = new Map(
+      (usersRes.data ?? []).map((u) => [u.clerk_user_id as string, u.email as string]),
+    );
+    const tasks = (tasksRes.data ?? []).map((t) => ({
+      ...t,
+      user_email: emailByUser.get(t.user_id as string) ?? t.user_id,
+    }));
+    res.json({ tasks });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.post("/tasks", requireAdmin, async (req, res, next) => {
+  try {
+    const body = z.object({
+      user_id: z.string().min(1),
+      title: z.string().min(1).max(500),
+      notes: z.string().max(2000).optional().default(""),
+      priority: z.enum(["low", "medium", "high"]).default("medium"),
+      due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+    }).parse(req.body);
+
+    // Assignee must be a registered user — also gives us the email for notification
+    const { data: target } = await db
+      .from("users")
+      .select("clerk_user_id, email")
+      .eq("clerk_user_id", body.user_id)
+      .maybeSingle();
+    if (!target) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    const { data: task, error } = await db
+      .from("tasks")
+      .insert({
+        user_id: body.user_id,
+        title: body.title,
+        notes: body.notes,
+        priority: body.priority,
+        due_date: body.due_date ?? null,
+        assignee: "Admin", // marks the task as admin-assigned on the user's task list
+      })
+      .select()
+      .single();
+    if (error) throw error;
+
+    // Best-effort notification — assignment must succeed even if mail fails
+    let email_sent = false;
+    if (isMailerConfigured()) {
+      try {
+        const due = body.due_date
+          ? `\nDue date:  ${new Date(body.due_date + "T00:00:00").toDateString()}`
+          : "";
+        await sendMail(
+          target.email,
+          `New task assigned to you: ${body.title}`,
+          `Hi,
+
+A new task has been assigned to you on Contralyne:
+
+Task:      ${body.title}
+Priority:  ${body.priority}${due}${body.notes ? `\n\nDetails:\n${body.notes}` : ""}
+
+View your tasks: ${config.WEB_URL}/tasks
+
+— The Contralyne Team`,
+        );
+        email_sent = true;
+      } catch (mailErr) {
+        console.error("Task assignment email failed for", target.email, mailErr);
+      }
+    }
+
+    res.status(201).json({ task: { ...task, user_email: target.email }, email_sent });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.delete("/tasks/:id", requireAdmin, async (req, res, next) => {
+  try {
+    // Admin may only delete tasks the admin assigned — never users' personal tasks
+    const { error } = await db.from("tasks").delete().eq("id", req.params.id).eq("assignee", "Admin");
+    if (error) throw error;
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ─── Reports (per-tab formatted Excel downloads) ──────────────────────────────
 
 adminRouter.get("/report/:kind", requireAdmin, async (req, res, next) => {
