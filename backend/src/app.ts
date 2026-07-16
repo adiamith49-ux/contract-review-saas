@@ -24,7 +24,10 @@ import { webhooksRouter } from "./routes/webhooks.js";
 const app = express();
 
 app.use(helmet());
-app.use(cors({ origin: config.WEB_URL, credentials: true }));
+// Two allowed origins in production: the app (app.contralyne.com) and the
+// landing site (contralyne.com — its contact form posts to this API)
+const corsOrigins = Array.from(new Set([config.WEB_URL, config.LANDING_URL].filter(Boolean)));
+app.use(cors({ origin: corsOrigins, credentials: true }));
 
 // Webhooks must be registered BEFORE express.json() — svix needs the raw body for signature verification
 app.use("/api/webhooks", webhooksRouter);

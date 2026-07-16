@@ -12,3 +12,4 @@ coverage/
 .vercel
 flow.md
 supabase/.temp/ 
+.env*
