@@ -42,7 +42,7 @@ function LandingNav() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-50 bg-[#f2f1ee]/95 backdrop-blur border-b border-[#1a1a17]/10">
+    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-[#1a1a17]/10">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
@@ -139,7 +139,7 @@ function Hero() {
         {/* Headline */}
         <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[#1a1a17] max-w-4xl mx-auto leading-[1.1]">
           Review contracts faster.{" "}
-          <span className="text-[#308970]">Negotiate smarter.</span>
+          <span className="font-serif italic text-[#308970]">Negotiate smarter.</span>
         </h1>
 
         {/* Subheadline */}
@@ -244,24 +244,55 @@ const mockClauses = [
   { clause: "Force Majeure", note: "Broad, favours vendor", color: "bg-yellow-500" },
 ];
 
-// ─── Trust strip ──────────────────────────────────────────────────────────────
+// ─── Stat cards (Ironclad-style bold colour blocks) ──────────────────────────
 
-function TrustStrip() {
+function StatCards() {
   const stats = [
-    { value: "75–85%", label: "of material risks caught" },
-    { value: "US · UK · EU · IN", label: "jurisdiction-aware" },
-    { value: "PDF & DOCX", label: "incl. scanned PDFs (OCR)" },
-    { value: "SOC2", label: "certified infrastructure" },
+    {
+      tag: "Accuracy",
+      value: "75–85%",
+      label: "of material risks caught before signature",
+      bg: "bg-[#308970]",
+    },
+    {
+      tag: "Coverage",
+      value: "4",
+      label: "jurisdictions covered — US, UK, EU & India",
+      bg: "bg-[#9b6bd6]",
+    },
+    {
+      tag: "Speed",
+      value: "5 min",
+      label: "from upload to clause-by-clause analysis",
+      bg: "bg-[#e35429]",
+    },
+    {
+      tag: "Simplicity",
+      value: "0",
+      label: "add-ins to install — works in any browser",
+      bg: "bg-[#6c81cf]",
+    },
   ];
 
   return (
-    <section className="bg-white border-y border-[#1a1a17]/10">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
+    <section className="bg-[#f2f1ee] py-20 sm:py-24">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <h2 className="text-center text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-[#1a1a17] mb-14 leading-tight">
+          Faster reviews, fewer surprises, and{" "}
+          <span className="font-serif italic font-medium">measurable value</span>
+        </h2>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {stats.map((s) => (
-            <div key={s.label} className="text-center">
-              <p className="text-xl sm:text-2xl font-bold text-[#1a1a17]">{s.value}</p>
-              <p className="text-sm text-[#1a1a17]/55 mt-1">{s.label}</p>
+            <div
+              key={s.tag}
+              className={`${s.bg} rounded-3xl p-7 flex flex-col min-h-[320px] text-white transition-transform duration-200 hover:-translate-y-1`}
+            >
+              <span className="self-start rounded-full bg-[#1a1a17] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-white">
+                {s.tag}
+              </span>
+              <p className="mt-auto text-5xl lg:text-6xl font-extrabold tracking-tight">{s.value}</p>
+              <p className="mt-3 text-base leading-snug text-white/90">{s.label}</p>
             </div>
           ))}
         </div>
@@ -276,38 +307,44 @@ function Features() {
   const features = [
     {
       icon: AlertTriangle,
+      tile: "bg-[#e35429]/10 text-[#d64a20]",
       title: "Clause-Level Risk Flags",
       description: "Every clause scored critical, high, medium, or low with plain-English explanations. Know exactly which provisions need attention before the negotiation call.",
     },
     {
       icon: Globe,
+      tile: "bg-[#6c81cf]/10 text-[#5b70c2]",
       title: "Jurisdiction Intelligence",
       description: "Deep context for US (UCC, Delaware corporate law), UK (English contract law, Companies Act 2006), EU (GDPR), and India (Indian Contract Act). Not generic AI output.",
     },
     {
       icon: Handshake,
+      tile: "bg-[#9b6bd6]/10 text-[#8a56cc]",
       title: "Negotiation Suggestions",
       description: "Specific redline language you can use directly. Not just \"this is risky\" — Claude drafts alternative clauses tailored to your jurisdiction and deal context.",
     },
     {
       icon: Zap,
+      tile: "bg-[#308970]/10 text-[#308970]",
       title: "Per-Contract AI Chat",
       description: "Ask follow-up questions in plain English. The AI remembers the full contract text, the analysis, and your entire conversation — no context lost between sessions.",
     },
     {
       icon: Gavel,
+      tile: "bg-[#6c81cf]/10 text-[#5b70c2]",
       title: "Review Rules & Playbook",
       description: "Define your firm's standards once — \"limitation of liability must be mutual\", \"arbitration required\". Every contract is reviewed against them automatically.",
     },
     {
       icon: Download,
+      tile: "bg-[#e35429]/10 text-[#d64a20]",
       title: "Export with Redlines",
       description: "Download DOCX with Word tracked changes and inline comments, or PDF with a two-column redlines layout. Ready to send to the other side.",
     },
   ];
 
   return (
-    <section id="features" className="py-20 sm:py-24 bg-white">
+    <section id="features" className="py-20 sm:py-24 bg-[#f2f1ee]">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-14">
           <p className="text-sm font-semibold text-[#308970] uppercase tracking-wider mb-3">Features</p>
@@ -319,9 +356,9 @@ function Features() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {features.map((f) => (
-            <div key={f.title} className="rounded-xl bg-[#f2f1ee] border border-transparent p-6 hover:border-[#308970]/40 transition-all">
-              <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-[#308970]/10 mb-4">
-                <f.icon className="h-5 w-5 text-[#308970]" />
+            <div key={f.title} className="rounded-2xl bg-white p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
+              <div className={`inline-flex items-center justify-center w-10 h-10 rounded-lg ${f.tile} mb-4`}>
+                <f.icon className="h-5 w-5" />
               </div>
               <h3 className="text-base font-semibold text-[#1a1a17] mb-2">{f.title}</h3>
               <p className="text-sm text-[#1a1a17]/60 leading-relaxed">{f.description}</p>
@@ -340,18 +377,21 @@ function HowItWorks() {
     {
       number: "01",
       icon: Upload,
+      tile: "bg-[#308970]",
       title: "Upload your contract",
       description: "Drop in a PDF or DOCX — up to 10MB. Text is extracted instantly. Scanned PDFs are processed via AWS Textract OCR, so even image-based documents work.",
     },
     {
       number: "02",
       icon: ScanSearch,
+      tile: "bg-[#e35429]",
       title: "Set your deal context",
       description: "Add jurisdiction, counterparty name, deal value, and urgency. Your active review rules are applied automatically. The AI reviews against your actual deal, not a generic template.",
     },
     {
       number: "03",
       icon: FileText,
+      tile: "bg-[#6c81cf]",
       title: "Review, chat, and export",
       description: "Get instant clause-by-clause analysis with risk flags and negotiation suggestions. Ask follow-up questions via chat. Export to Word with tracked changes or PDF with redlines.",
     },
@@ -369,15 +409,11 @@ function HowItWorks() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {steps.map((step, i) => (
-            <div key={step.number} className="relative">
-              {/* Connector line */}
-              {i < steps.length - 1 && (
-                <div className="hidden md:block absolute top-8 left-[calc(50%+2.5rem)] right-0 h-px bg-[#1a1a17]/15" />
-              )}
+          {steps.map((step) => (
+            <div key={step.number} className="rounded-2xl bg-white p-7 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
               <div className="text-center md:text-left">
-                <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#308970]/10 mb-5">
-                  <step.icon className="h-6 w-6 text-[#308970]" />
+                <div className={`inline-flex items-center justify-center w-14 h-14 rounded-2xl ${step.tile} mb-5`}>
+                  <step.icon className="h-6 w-6 text-white" />
                 </div>
                 <div className="flex items-baseline gap-3 mb-3 justify-center md:justify-start">
                   <span className="text-3xl font-black text-[#1a1a17]/15">{step.number}</span>
@@ -406,7 +442,7 @@ function Playbook() {
   ];
 
   return (
-    <section className="py-20 sm:py-24 bg-white">
+    <section className="py-20 sm:py-24 bg-[#f2f1ee]">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div>
@@ -426,11 +462,11 @@ function Playbook() {
               ))}
             </ul>
           </div>
-          <div className="rounded-xl border border-[#1a1a17]/10 bg-[#f2f1ee] p-6">
+          <div className="rounded-2xl bg-white p-6 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wider text-[#1a1a17]/45 mb-4">Your Active Review Rules</p>
             <div className="space-y-2.5">
               {rules.map((rule) => (
-                <div key={rule} className="flex items-center gap-3 rounded-lg bg-white border border-[#1a1a17]/10 px-3 py-2.5 text-sm text-[#1a1a17]/80 shadow-sm">
+                <div key={rule} className="flex items-center gap-3 rounded-lg bg-[#f2f1ee] px-3 py-2.5 text-sm text-[#1a1a17]/80">
                   <div className="h-1.5 w-1.5 rounded-full bg-[#308970] shrink-0" />
                   {rule}
                 </div>
@@ -480,11 +516,11 @@ function WhyContralyne() {
         <div className="max-w-3xl mx-auto space-y-4">
           {comparisons.map((c, i) => (
             <div key={i} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="rounded-lg bg-white/60 border border-[#1a1a17]/10 px-4 py-3 flex items-start gap-2.5">
-                <X className="h-4 w-4 text-[#1a1a17]/35 mt-0.5 shrink-0" />
+              <div className="rounded-xl bg-white px-4 py-3 flex items-start gap-2.5 shadow-sm">
+                <X className="h-4 w-4 text-[#e35429] mt-0.5 shrink-0" />
                 <p className="text-sm text-[#1a1a17]/60">{c.them}</p>
               </div>
-              <div className="rounded-lg bg-white border border-[#308970]/30 px-4 py-3 flex items-start gap-2.5 shadow-sm">
+              <div className="rounded-xl bg-white border-l-4 border-[#308970] px-4 py-3 flex items-start gap-2.5 shadow-sm">
                 <Check className="h-4 w-4 text-[#308970] mt-0.5 shrink-0" />
                 <p className="text-sm text-[#1a1a17] font-medium">{c.us}</p>
               </div>
@@ -500,14 +536,14 @@ function WhyContralyne() {
 
 function Security() {
   const items = [
-    { icon: Lock, title: "Encrypted at rest and in transit", desc: "All contract files stored on AWS S3 with AES-256 encryption. TLS 1.3 in transit." },
-    { icon: Shield, title: "Pre-signed URLs — no public buckets", desc: "Files are never publicly accessible. Every download is a time-limited, user-specific URL." },
-    { icon: Shield, title: "SOC2-certified stack", desc: "AWS, Clerk, Supabase, and Vercel are independently SOC2 certified. Your data is on infrastructure your security team trusts." },
-    { icon: Globe, title: "Your contracts never train AI", desc: "Anthropic's API is used with commercial terms that prohibit training on your data. Your contracts stay yours." },
+    { icon: Lock, tile: "bg-[#308970]/10 text-[#308970]", title: "Encrypted at rest and in transit", desc: "All contract files stored on AWS S3 with AES-256 encryption. TLS 1.3 in transit." },
+    { icon: Shield, tile: "bg-[#9b6bd6]/10 text-[#8a56cc]", title: "Pre-signed URLs — no public buckets", desc: "Files are never publicly accessible. Every download is a time-limited, user-specific URL." },
+    { icon: Shield, tile: "bg-[#e35429]/10 text-[#d64a20]", title: "SOC2-certified stack", desc: "AWS, Clerk, Supabase, and Vercel are independently SOC2 certified. Your data is on infrastructure your security team trusts." },
+    { icon: Globe, tile: "bg-[#6c81cf]/10 text-[#5b70c2]", title: "Your contracts never train AI", desc: "Anthropic's API is used with commercial terms that prohibit training on your data. Your contracts stay yours." },
   ];
 
   return (
-    <section id="security" className="py-20 sm:py-24 bg-white">
+    <section id="security" className="py-20 sm:py-24 bg-[#f2f1ee]">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-14">
           <p className="text-sm font-semibold text-[#308970] uppercase tracking-wider mb-3">Security</p>
@@ -519,9 +555,9 @@ function Security() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {items.map((item) => (
-            <div key={item.title} className="rounded-xl bg-[#f2f1ee] border border-transparent p-6">
-              <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-[#308970]/10 mb-4">
-                <item.icon className="h-5 w-5 text-[#308970]" />
+            <div key={item.title} className="rounded-2xl bg-white p-6 shadow-sm">
+              <div className={`inline-flex items-center justify-center w-10 h-10 rounded-lg ${item.tile} mb-4`}>
+                <item.icon className="h-5 w-5" />
               </div>
               <h3 className="text-sm font-semibold text-[#1a1a17] mb-2">{item.title}</h3>
               <p className="text-xs text-[#1a1a17]/60 leading-relaxed">{item.desc}</p>
@@ -607,7 +643,7 @@ function ContactSection() {
           </div>
 
           {/* Form */}
-          <div className="rounded-xl border border-[#1a1a17]/10 bg-white p-6 sm:p-8 shadow-sm">
+          <div className="rounded-2xl bg-white p-6 sm:p-8 shadow-sm">
             {sent ? (
               <div className="text-center py-14">
                 <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#308970]/10 mb-5">
@@ -774,7 +810,7 @@ export default function LandingPage() {
       <LandingNav />
       <main>
         <Hero />
-        <TrustStrip />
+        <StatCards />
         <Features />
         <HowItWorks />
         <Playbook />
