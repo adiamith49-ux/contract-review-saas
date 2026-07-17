@@ -485,7 +485,7 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
   return (
     <div className="w-[380px] shrink-0 flex flex-col bg-white border-l shadow-[-2px_0_12px_rgba(0,0,0,0.08)]">
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className="shrink-0 flex items-center gap-2.5 px-4 py-3 bg-[#1a2035] text-white">
+      <div className="shrink-0 flex items-center gap-2.5 px-4 py-3 bg-[#1a1a17] text-white">
         <ListChecks className="h-4 w-4 text-white/60 shrink-0" />
         <span className="text-sm font-semibold flex-1">AI Review</span>
         <RiskBadge level={analysis.risk_level} className="text-[9px] shrink-0" />

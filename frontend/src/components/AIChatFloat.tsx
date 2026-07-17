@@ -88,7 +88,7 @@ export function AIChatFloat({ contractId, isAnalyzed }: Props) {
           style={{ maxHeight: "min(520px, calc(100vh - 100px))" }}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 bg-[#1a2035] shrink-0">
+          <div className="flex items-center justify-between px-4 py-3 bg-[#1a1a17] shrink-0">
             <div className="flex items-center gap-2">
               <MessageSquare className="h-4 w-4 text-emerald-400" />
               <span className="text-sm font-semibold text-white">AI Contract Assistant</span>

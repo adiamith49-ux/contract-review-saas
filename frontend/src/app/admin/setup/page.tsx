@@ -40,7 +40,7 @@ export default function AdminSetupPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-[#111110] flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
           <div className="h-14 w-14 rounded-2xl bg-primary/90 flex items-center justify-center mb-4 shadow-xl">
@@ -50,7 +50,7 @@ export default function AdminSetupPage() {
           <p className="text-sm text-slate-400 mt-0.5">One-time setup — only if no admin exists</p>
         </div>
 
-        <div className="bg-slate-900 rounded-2xl border border-slate-700/60 p-6 shadow-2xl">
+        <div className="bg-[#1a1a17] rounded-2xl border border-slate-700/60 p-6 shadow-2xl">
           <form onSubmit={handleSetup} className="space-y-4">
             {[
               { label: "Full name",   key: "name",     type: "text",     placeholder: "Amith" },

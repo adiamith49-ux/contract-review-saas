@@ -46,9 +46,11 @@ function LandingNav() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 shrink-0">
-            <ContralyneLogoMark className="h-7 w-7" />
-            <span className="text-lg font-bold tracking-tight text-[#1a1a17]">Contralyne</span>
+          <Link href="/" className="flex items-center gap-2.5 shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="" className="h-8 w-auto" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/name-logo.png" alt="Contralyne — review, negotiate, red line, close" className="h-5 w-auto" />
           </Link>
 
           {/* Desktop nav */}
@@ -129,8 +131,9 @@ function Hero() {
       <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         {/* Badge */}
         <div className="inline-flex items-center gap-2 bg-[#308970]/10 text-[#308970] rounded-full px-4 py-1.5 text-sm font-semibold mb-8">
-          <Zap className="h-3.5 w-3.5" />
-          AI-native contract review — jurisdiction-aware
+          Review , Negotiate ,{" "}
+          <span className="text-red-600">Red Line</span>
+          {" "}, Close.
         </div>
 
         {/* Headline */}
@@ -718,7 +721,7 @@ function Footer() {
           {/* Brand */}
           <div className="md:col-span-2">
             <div className="flex items-center gap-2 mb-3">
-              <ContralyneLogoMark className="h-6 w-6" />
+              <ContralyneLogoMark className="h-7 w-7" onDark />
               <span className="text-base font-bold text-[#f2f1ee]">Contralyne</span>
             </div>
             <p className="text-sm leading-relaxed max-w-xs">

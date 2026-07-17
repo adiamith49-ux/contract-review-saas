@@ -437,7 +437,7 @@ export default function ContractDetailPage() {
           {!panelOpen && (
             <button
               onClick={() => setPanelOpen(true)}
-              className="absolute right-0 top-1/2 -translate-y-1/2 z-20 bg-[#1a2035] text-white rounded-l-lg px-1.5 py-4 shadow-lg hover:opacity-90 transition-opacity"
+              className="absolute right-0 top-1/2 -translate-y-1/2 z-20 bg-[#1a1a17] text-white rounded-l-lg px-1.5 py-4 shadow-lg hover:opacity-90 transition-opacity"
               title="Show AI Review Panel"
             >
               <span className="[writing-mode:vertical-rl] rotate-180 text-[10px] font-bold tracking-widest uppercase select-none">
@@ -451,7 +451,7 @@ export default function ContractDetailPage() {
       {/* ── Summary drawer ──────────────────────────────────────────────── */}
       {summaryOpen && (
         <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md shadow-2xl flex flex-col bg-white border-l">
-          <div className="shrink-0 flex items-center gap-2.5 px-4 py-3 border-b bg-[#1a2035] text-white">
+          <div className="shrink-0 flex items-center gap-2.5 px-4 py-3 border-b bg-[#1a1a17] text-white">
             <AlignLeft className="h-4 w-4 text-white/60 shrink-0" />
             <span className="text-sm font-semibold flex-1">AI Summary</span>
             <button

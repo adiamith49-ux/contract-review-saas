@@ -4,10 +4,11 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
   LayoutDashboard, Building2, Users, Library, Gavel,
-  Ticket, LogOut, Menu, X, Shield, Server, FileText, ClipboardList,
+  Ticket, LogOut, Menu, X, Server, FileText, ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { adminMe, clearAdminToken, getAdminToken } from "@/lib/admin-api";
+import { ContralyneLogoMark } from "@/components/ContralyneLogoMark";
 
 // ─── Auth context ─────────────────────────────────────────────────────────────
 
@@ -40,13 +41,11 @@ function AdminSidebar({ onClose }: { onClose?: () => void }) {
   }
 
   return (
-    <aside className="flex h-screen w-60 flex-col bg-slate-900 text-slate-100 shrink-0">
+    <aside className="flex h-screen w-60 flex-col bg-[#1a1a17] text-slate-100 shrink-0">
       {/* Logo */}
       <div className="flex h-16 items-center justify-between px-5 border-b border-slate-700/60">
         <div className="flex items-center gap-2.5">
-          <div className="h-7 w-7 rounded-lg bg-primary/90 flex items-center justify-center">
-            <Shield className="h-4 w-4 text-white" />
-          </div>
+          <ContralyneLogoMark className="h-8 w-8" onDark />
           <div>
             <p className="text-sm font-bold tracking-tight">Contralyne</p>
             <p className="text-[10px] text-slate-400 -mt-0.5">Admin Panel</p>
@@ -132,7 +131,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   if (checking) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-[#111110] flex items-center justify-center">
         <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
       </div>
     );

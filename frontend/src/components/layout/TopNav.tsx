@@ -281,7 +281,7 @@ function MobileMenu({ onClose }: { onClose: () => void }) {
   const initials  = (user?.firstName?.[0] ?? "") + (user?.lastName?.[0] ?? "") || "U";
 
   return (
-    <div className="absolute top-full left-0 right-0 bg-[#1a2035] border-t border-white/10 shadow-2xl z-40 lg:hidden">
+    <div className="absolute top-full left-0 right-0 bg-[#1a1a17] border-t border-white/10 shadow-2xl z-40 lg:hidden">
       {/* User info */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-white/10">
         {avatarUrl ? (
@@ -334,7 +334,7 @@ export function TopNav() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <header className="relative shrink-0 bg-[#1a2035] border-b border-white/10 z-30">
+    <header className="relative shrink-0 bg-[#1a1a17] border-b border-white/10 z-30">
       <div className="mx-auto max-w-screen-2xl px-4 sm:px-6">
         <div className="flex h-14 items-center gap-2">
 
@@ -343,7 +343,7 @@ export function TopNav() {
 
           {/* Logo */}
           <Link href="/dashboard" className="flex items-center gap-2 shrink-0 mr-4">
-            <ContralyneLogoMark className="h-7 w-7" />
+            <ContralyneLogoMark className="h-7 w-7" onDark />
             <span className="text-base font-bold text-white tracking-tight">Contralyne</span>
           </Link>
 
