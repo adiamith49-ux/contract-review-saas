@@ -41,14 +41,14 @@ function AdminSidebar({ onClose }: { onClose?: () => void }) {
   }
 
   return (
-    <aside className="flex h-screen w-60 flex-col bg-[#1a1a17] text-slate-100 shrink-0">
+    <aside className="flex h-screen w-60 flex-col bg-[#1a1a17] text-[#f2f1ee] shrink-0">
       {/* Logo */}
-      <div className="flex h-16 items-center justify-between px-5 border-b border-slate-700/60">
+      <div className="flex h-16 items-center justify-between px-5 border-b border-white/10">
         <div className="flex items-center gap-2.5">
           <ContralyneLogoMark className="h-8 w-8" onDark />
           <div>
             <p className="text-sm font-bold tracking-tight">Contralyne</p>
-            <p className="text-[10px] text-slate-400 -mt-0.5">Admin Panel</p>
+            <p className="text-[10px] text-[#f2f1ee]/50 -mt-0.5">Admin Panel</p>
           </div>
         </div>
         {onClose && (
@@ -70,8 +70,8 @@ function AdminSidebar({ onClose }: { onClose?: () => void }) {
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                 active
-                  ? "bg-slate-700 text-white"
-                  : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+                  ? "bg-[#308970] text-white"
+                  : "text-[#f2f1ee]/55 hover:bg-white/10 hover:text-white"
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
@@ -82,13 +82,13 @@ function AdminSidebar({ onClose }: { onClose?: () => void }) {
       </nav>
 
       {/* Bottom */}
-      <div className="border-t border-slate-700/60 px-3 py-3">
+      <div className="border-t border-white/10 px-3 py-3">
         <div className="px-3 py-1.5 mb-1">
-          <p className="text-[11px] text-slate-400 truncate">{admin?.email}</p>
+          <p className="text-[11px] text-[#f2f1ee]/50 truncate">{admin?.email}</p>
         </div>
         <button
           onClick={logout}
-          className="w-full flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-red-400 transition-colors"
+          className="w-full flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-[#f2f1ee]/55 hover:bg-white/10 hover:text-red-400 transition-colors"
         >
           <LogOut className="h-4 w-4 shrink-0" />
           Sign out
@@ -141,7 +141,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <Ctx.Provider value={admin}>
-      <div className="flex h-screen overflow-hidden bg-slate-50">
+      <div className="flex h-screen overflow-hidden bg-[#f2f1ee]">
         {/* Desktop sidebar */}
         <div className="hidden lg:flex">
           <AdminSidebar />

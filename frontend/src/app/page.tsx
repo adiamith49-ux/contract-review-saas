@@ -32,6 +32,12 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 // Green #308970 · Cream #f2f1ee · Ink #1a1a17 (near-black, Ironclad-style)
 const btnPrimary =
   "rounded-full bg-[#308970] text-white hover:bg-[#276e5a] shadow-none";
+// Nav link: black text + red underline that grows outward from the center on
+// hover and shrinks back to the center on leave.
+const navLink =
+  "relative text-sm font-semibold text-black transition-colors " +
+  "after:absolute after:left-0 after:right-0 after:-bottom-1.5 after:h-[2px] after:bg-red-600 " +
+  "after:origin-center after:scale-x-0 after:transition-transform after:duration-300 hover:after:scale-x-100";
 const btnOutline =
   "rounded-full border border-[#1a1a17]/25 bg-transparent text-[#1a1a17] hover:bg-[#1a1a17]/5 hover:text-[#1a1a17] shadow-none";
 
@@ -54,11 +60,11 @@ function LandingNav() {
           </Link>
 
           {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-6">
-            <a href="#features" className="text-sm text-[#1a1a17]/70 hover:text-[#1a1a17] transition-colors">Features</a>
-            <a href="#how-it-works" className="text-sm text-[#1a1a17]/70 hover:text-[#1a1a17] transition-colors">How It Works</a>
-            <a href="#security" className="text-sm text-[#1a1a17]/70 hover:text-[#1a1a17] transition-colors">Security</a>
-            <a href="#contact" className="text-sm text-[#1a1a17]/70 hover:text-[#1a1a17] transition-colors">Contact</a>
+          <nav className="hidden md:flex items-center gap-7">
+            <a href="#features" className={navLink}>Features</a>
+            <a href="#how-it-works" className={navLink}>How It Works</a>
+            <a href="#security" className={navLink}>Security</a>
+            <a href="#contact" className={navLink}>Contact</a>
           </nav>
 
           {/* Desktop CTAs */}
@@ -94,10 +100,10 @@ function LandingNav() {
         {/* Mobile menu */}
         {mobileOpen && (
           <div className="md:hidden border-t border-[#1a1a17]/10 py-4 space-y-2">
-            <a href="#features" onClick={() => setMobileOpen(false)} className="block px-2 py-2 text-sm text-[#1a1a17]/80 rounded hover:bg-[#1a1a17]/5">Features</a>
-            <a href="#how-it-works" onClick={() => setMobileOpen(false)} className="block px-2 py-2 text-sm text-[#1a1a17]/80 rounded hover:bg-[#1a1a17]/5">How It Works</a>
-            <a href="#security" onClick={() => setMobileOpen(false)} className="block px-2 py-2 text-sm text-[#1a1a17]/80 rounded hover:bg-[#1a1a17]/5">Security</a>
-            <a href="#contact" onClick={() => setMobileOpen(false)} className="block px-2 py-2 text-sm text-[#1a1a17]/80 rounded hover:bg-[#1a1a17]/5">Contact</a>
+            <a href="#features" onClick={() => setMobileOpen(false)} className="block px-2 py-2 text-sm font-semibold text-black rounded hover:bg-[#1a1a17]/5">Features</a>
+            <a href="#how-it-works" onClick={() => setMobileOpen(false)} className="block px-2 py-2 text-sm font-semibold text-black rounded hover:bg-[#1a1a17]/5">How It Works</a>
+            <a href="#security" onClick={() => setMobileOpen(false)} className="block px-2 py-2 text-sm font-semibold text-black rounded hover:bg-[#1a1a17]/5">Security</a>
+            <a href="#contact" onClick={() => setMobileOpen(false)} className="block px-2 py-2 text-sm font-semibold text-black rounded hover:bg-[#1a1a17]/5">Contact</a>
             <div className="pt-2 border-t border-[#1a1a17]/10 space-y-2">
               {isLoaded && isSignedIn ? (
                 <Button asChild className={`w-full ${btnPrimary}`}>
@@ -137,7 +143,7 @@ function Hero() {
         </div>
 
         {/* Headline */}
-        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[#1a1a17] max-w-4xl mx-auto leading-[1.1]">
+        <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-[#1a1a17] max-w-4xl mx-auto leading-[1.05]">
           Review contracts faster.{" "}
           <span className="font-serif italic text-[#308970]">Negotiate smarter.</span>
         </h1>
@@ -347,9 +353,11 @@ function Features() {
     <section id="features" className="py-20 sm:py-24 bg-[#f2f1ee]">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-14">
-          <p className="text-sm font-semibold text-[#308970] uppercase tracking-wider mb-3">Features</p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-[#1a1a17]">Everything your legal team needs</h2>
-          <p className="mt-4 text-lg text-[#1a1a17]/60 max-w-2xl mx-auto">
+          <span className="inline-block rounded-full bg-[#1a1a17] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-white mb-5">Features</span>
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-[#1a1a17] leading-tight">
+            Everything your legal team <span className="font-serif italic font-medium">needs</span>
+          </h2>
+          <p className="mt-5 text-lg sm:text-xl text-[#1a1a17]/60 max-w-2xl mx-auto">
             Built for corporate lawyers, in-house counsel, and legal teams who review contracts daily.
           </p>
         </div>
@@ -360,8 +368,8 @@ function Features() {
               <div className={`inline-flex items-center justify-center w-10 h-10 rounded-lg ${f.tile} mb-4`}>
                 <f.icon className="h-5 w-5" />
               </div>
-              <h3 className="text-base font-semibold text-[#1a1a17] mb-2">{f.title}</h3>
-              <p className="text-sm text-[#1a1a17]/60 leading-relaxed">{f.description}</p>
+              <h3 className="text-lg font-bold text-[#1a1a17] mb-2">{f.title}</h3>
+              <p className="text-[15px] text-[#1a1a17]/60 leading-relaxed">{f.description}</p>
             </div>
           ))}
         </div>
@@ -401,9 +409,11 @@ function HowItWorks() {
     <section id="how-it-works" className="py-20 sm:py-24 bg-[#f2f1ee]">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-14">
-          <p className="text-sm font-semibold text-[#308970] uppercase tracking-wider mb-3">How It Works</p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-[#1a1a17]">From upload to negotiation in minutes</h2>
-          <p className="mt-4 text-lg text-[#1a1a17]/60 max-w-xl mx-auto">
+          <span className="inline-block rounded-full bg-[#1a1a17] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-white mb-5">How It Works</span>
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-[#1a1a17] leading-tight">
+            From upload to negotiation <span className="font-serif italic font-medium">in minutes</span>
+          </h2>
+          <p className="mt-5 text-lg sm:text-xl text-[#1a1a17]/60 max-w-xl mx-auto">
             No complex setup. No Word add-in to install. Works in any browser.
           </p>
         </div>
@@ -417,9 +427,9 @@ function HowItWorks() {
                 </div>
                 <div className="flex items-baseline gap-3 mb-3 justify-center md:justify-start">
                   <span className="text-3xl font-black text-[#1a1a17]/15">{step.number}</span>
-                  <h3 className="text-lg font-semibold text-[#1a1a17]">{step.title}</h3>
+                  <h3 className="text-xl font-bold text-[#1a1a17]">{step.title}</h3>
                 </div>
-                <p className="text-sm text-[#1a1a17]/60 leading-relaxed">{step.description}</p>
+                <p className="text-[15px] text-[#1a1a17]/60 leading-relaxed">{step.description}</p>
               </div>
             </div>
           ))}
@@ -446,11 +456,12 @@ function Playbook() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div>
-            <p className="text-sm font-semibold text-[#308970] uppercase tracking-wider mb-3">Review Rules</p>
-            <h2 className="text-3xl sm:text-4xl font-bold text-[#1a1a17] mb-5">
-              Review every contract against your firm&apos;s standards
+            <span className="inline-block rounded-full bg-[#1a1a17] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-white mb-5">Review Rules</span>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-[#1a1a17] leading-tight mb-5">
+              Review every contract against your firm&apos;s{" "}
+              <span className="font-serif italic font-medium">standards</span>
             </h2>
-            <p className="text-[#1a1a17]/60 leading-relaxed mb-6">
+            <p className="text-lg text-[#1a1a17]/60 leading-relaxed mb-6">
               Define your playbook once — clause requirements, fallback positions, mandatory language. Every contract you analyze is automatically reviewed against these rules. Deviations are flagged as specific risks, not generic warnings.
             </p>
             <ul className="space-y-2.5">
@@ -506,9 +517,11 @@ function WhyContralyne() {
     <section className="py-20 sm:py-24 bg-[#f2f1ee]">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-14">
-          <p className="text-sm font-semibold text-[#308970] uppercase tracking-wider mb-3">Why Contralyne</p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-[#1a1a17]">Built for the way lawyers actually work</h2>
-          <p className="mt-4 text-lg text-[#1a1a17]/60 max-w-xl mx-auto">
+          <span className="inline-block rounded-full bg-[#1a1a17] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-white mb-5">Why Contralyne</span>
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-[#1a1a17] leading-tight">
+            Built for the way lawyers <span className="font-serif italic font-medium">actually work</span>
+          </h2>
+          <p className="mt-5 text-lg sm:text-xl text-[#1a1a17]/60 max-w-xl mx-auto">
             Not a Word add-in. Not an enterprise CLM. A focused, fast, AI-native contract review tool.
           </p>
         </div>
@@ -546,9 +559,11 @@ function Security() {
     <section id="security" className="py-20 sm:py-24 bg-[#f2f1ee]">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-14">
-          <p className="text-sm font-semibold text-[#308970] uppercase tracking-wider mb-3">Security</p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-[#1a1a17]">Enterprise-grade security, end to end</h2>
-          <p className="mt-4 text-lg text-[#1a1a17]/60 max-w-2xl mx-auto">
+          <span className="inline-block rounded-full bg-[#1a1a17] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-white mb-5">Security</span>
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-[#1a1a17] leading-tight">
+            Enterprise-grade security, <span className="font-serif italic font-medium">end to end</span>
+          </h2>
+          <p className="mt-5 text-lg sm:text-xl text-[#1a1a17]/60 max-w-2xl mx-auto">
             Built on the same infrastructure used by thousands of security-conscious SaaS companies.
           </p>
         </div>
@@ -559,8 +574,8 @@ function Security() {
               <div className={`inline-flex items-center justify-center w-10 h-10 rounded-lg ${item.tile} mb-4`}>
                 <item.icon className="h-5 w-5" />
               </div>
-              <h3 className="text-sm font-semibold text-[#1a1a17] mb-2">{item.title}</h3>
-              <p className="text-xs text-[#1a1a17]/60 leading-relaxed">{item.desc}</p>
+              <h3 className="text-base font-bold text-[#1a1a17] mb-2">{item.title}</h3>
+              <p className="text-sm text-[#1a1a17]/60 leading-relaxed">{item.desc}</p>
             </div>
           ))}
         </div>
@@ -616,11 +631,11 @@ function ContactSection() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
           {/* Pitch */}
           <div>
-            <p className="text-sm font-semibold text-[#308970] uppercase tracking-wider mb-3">Contact Sales</p>
-            <h2 className="text-3xl sm:text-4xl font-bold text-[#1a1a17] mb-5">
-              Bring Contralyne to your firm
+            <span className="inline-block rounded-full bg-[#1a1a17] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-white mb-5">Contact Sales</span>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-[#1a1a17] leading-tight mb-5">
+              Bring Contralyne <span className="font-serif italic font-medium">to your firm</span>
             </h2>
-            <p className="text-[#1a1a17]/60 leading-relaxed mb-8">
+            <p className="text-lg text-[#1a1a17]/60 leading-relaxed mb-8">
               Contralyne is licensed to law firms and in-house legal teams. Tell us about your team and the contracts you review, and we&apos;ll get back to you with a tailored walkthrough and pricing.
             </p>
             <ul className="space-y-3.5">
@@ -720,8 +735,8 @@ function CtaBanner({ isSignedIn }: { isSignedIn: boolean }) {
   return (
     <section className="py-20 sm:py-24 bg-[#308970]">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <h2 className="text-3xl sm:text-4xl font-extrabold text-white mb-5">
-          See Contralyne on your own contracts
+        <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white leading-tight mb-5">
+          See Contralyne on <span className="font-serif italic font-medium">your own contracts</span>
         </h2>
         <p className="text-lg text-white/80 mb-10 max-w-xl mx-auto">
           Legal teams use Contralyne to catch risks faster, negotiate better positions, and close deals with confidence. Request a demo and see it on your documents.

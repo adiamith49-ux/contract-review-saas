@@ -29,7 +29,7 @@ const TICKET_TYPE_LABELS: Record<string, string> = {
 };
 
 const RISK_CHART_COLORS: Record<string, string> = {
-  low:      "#10b981",
+  low:      "#308970",
   medium:   "#f59e0b",
   high:     "#f97316",
   critical: "#ef4444",
@@ -128,10 +128,10 @@ export default function AdminDashboard() {
                   <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
                   <Tooltip
-                    cursor={{ fill: "#f8fafc" }}
+                    cursor={{ fill: "#f2f1ee" }}
                     contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }}
                   />
-                  <Bar dataKey="count" name="Uploads" fill="#2563eb" radius={[4, 4, 0, 0]} maxBarSize={42} />
+                  <Bar dataKey="count" name="Uploads" fill="#308970" radius={[4, 4, 0, 0]} maxBarSize={42} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
