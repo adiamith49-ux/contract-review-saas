@@ -20,7 +20,7 @@ const analysisTool: Anthropic.Tool = {
       },
       riskSummary: {
         type: "array",
-        description: "Top 3-4 high-level risk areas",
+        description: "High-level risk themes across the whole agreement. No item limit — cover every major risk area present.",
         items: {
           type: "object",
           required: ["area", "risk", "severity", "recommendation"],
@@ -35,24 +35,24 @@ const analysisTool: Anthropic.Tool = {
       },
       clauseAnalysis: {
         type: "array",
-        description: "Top 3-5 clause-level risk findings",
+        description: "One entry per commercially significant one-sided or problematic provision, in document order. NO ITEM LIMIT — completeness matters more than brevity. Cover every section that warrants it, including schedules, riders and addenda. A heavily one-sided enterprise agreement should produce 20-40 entries.",
         items: {
           type: "object",
           required: ["clause", "finding", "risk", "recommendation"],
           properties: {
-            clause: { type: "string" },
+            clause: { type: "string", description: "Section reference and name, e.g. 'Section 9.2 — Service Credits'" },
             finding: { type: "string" },
             risk: { type: "string", enum: ["low", "medium", "high", "critical"] },
             recommendation: { type: "string" },
             contractText: { type: "string" },
-            suggestedLanguage: { type: "string", description: "Complete replacement clause text ready to insert into the contract. Must be full drafted legal language (e.g. a complete sentence or paragraph), not negotiation advice or a summary." },
+            suggestedLanguage: { type: "string", description: "Complete replacement clause text ready to insert into the contract. Must be full drafted legal language including the conditions, exceptions, carve-outs and mutuality a commercial lawyer would expect — not negotiation advice or a summary. For limitation of liability, draft a balanced framework (general cap, mutual consequential-loss exclusion, and carve-outs for confidentiality, IP infringement, data protection/security, fraud, gross negligence, wilful misconduct, payment obligations, and regulatory fines where appropriate) — never a bare 12-month cap." },
             playbookRule: { type: "string", description: "If this finding deviates from a company playbook rule, name the playbook and rule that was triggered (e.g. 'SaaS Playbook — Liability cap: 12 months fees'). Omit if no playbook rule applies." },
           },
         },
       },
       negotiationPoints: {
         type: "array",
-        description: "Top 2-3 negotiation leverage points",
+        description: "Negotiation leverage points, most commercially valuable first. No item limit.",
         items: {
           type: "object",
           required: ["point", "preferredPosition", "fallbackPosition"],
@@ -60,6 +60,20 @@ const analysisTool: Anthropic.Tool = {
             point: { type: "string" },
             preferredPosition: { type: "string" },
             fallbackPosition: { type: "string" },
+          },
+        },
+      },
+      ambiguityFlags: {
+        type: "array",
+        description: "Vague or undefined terms that gate an obligation, remedy or termination right — 'reasonable', 'material', 'best efforts', 'promptly', 'industry standard', 'satisfactory to Customer'. No item limit.",
+        items: {
+          type: "object",
+          required: ["term", "location", "issue", "suggestion"],
+          properties: {
+            term: { type: "string", description: "The vague term or phrase as it appears" },
+            location: { type: "string", description: "Section reference where it appears" },
+            issue: { type: "string", description: "Why the ambiguity creates risk" },
+            suggestion: { type: "string", description: "Concrete definition or objective standard to replace it with" },
           },
         },
       },
@@ -132,7 +146,9 @@ export async function analyzeContract(
   // instead of waiting for the full response to be computed.
   const stream = anthropic.messages.stream({
     model: config.AI_MODEL,
-    max_tokens: 8192,
+    // 30-40 clause findings, each with a fully drafted replacement clause, does
+    // not fit in 8k. Streaming keeps the request under the SDK HTTP timeout.
+    max_tokens: 32000,
     system: [{ type: "text", text: legalSystemPrompt }],
     tools: [analysisTool],
     tool_choice: { type: "tool", name: "analyze_contract" },
@@ -200,14 +216,18 @@ export async function redlineContract(
 }
 
 async function _callRedlineAI(prompt: string): Promise<RedlineEdit[]> {
-  const response = await anthropic.messages.create({
+  // 25-50 edits will not fit in 4096 tokens — truncated JSON parses to zero
+  // edits and silently burns the retry loop. Stream so the larger cap is safe.
+  const stream = anthropic.messages.stream({
     model: config.AI_MODEL,
-    max_tokens: 4096,
+    max_tokens: 16000,
     system: [{ type: "text", text: redlineSystemPrompt }],
     tools: [redlineTool],
     tool_choice: { type: "tool", name: "generate_redlines" },
     messages: [{ role: "user", content: prompt }],
   });
+
+  const response = await stream.finalMessage();
 
   const toolUse = response.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
   if (!toolUse) return [];

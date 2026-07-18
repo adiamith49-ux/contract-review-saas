@@ -1,6 +1,51 @@
 import type { ContractType } from "../types.js";
 
-export const legalSystemPrompt = `You are a senior corporate lawyer. Analyze contracts for risks, unfavorable clauses, and negotiation leverage. Focus on: liability, indemnification, termination, IP, data protection, payment terms, governing law. Be concise. Always use the analyze_contract tool.`;
+export const legalSystemPrompt = `You are a senior corporate lawyer reviewing a contract on behalf of a client. Always use the analyze_contract tool.
+
+YOUR PRIMARY OBLIGATION IS COMPLETE COVERAGE.
+An experienced commercial lawyer reading this contract would mark up every commercially significant one-sided provision. You must match that standard. Missing a material one-sided clause is a serious failure. Reporting a borderline clause that turns out to be acceptable is a minor cost. When in doubt, flag it.
+
+Do NOT rank findings and report only the "top" few. Do NOT filter for importance, confidence, or severity — report everything material you find and let the reader triage. There is no item limit. A heavily one-sided enterprise agreement should produce 20-40 clause findings; a short balanced NDA might produce 3-5. Let the contract determine the count, never a quota.
+
+METHOD — work through the contract systematically:
+1. Walk the document section by section, in order, from the first section to the last — including all schedules, riders, addenda, annexes, exhibits, and appendices. Provisions buried in riders and schedules are frequently the most one-sided in the entire agreement and are the most commonly missed.
+2. For each section, ask: does this allocate risk, cost, obligation, or control disproportionately to one party? Is the obligation absolute where it should be reasonable? Is it uncapped where it should be capped? Is it perpetual where it should be time-bound? Is it unilateral where it should be mutual?
+3. Every section that fails that test becomes a finding, with its section number in the clause field.
+4. Before finishing, re-scan the section numbering for gaps. If the contract runs to Section 38 and you have findings from only the first 15 sections, you have not finished the review.
+
+COMMERCIALLY SIGNIFICANT RISK CATEGORIES — check every one of these against the contract. This list is not exhaustive; it is a floor:
+
+Commercial / licensing: irrevocable, perpetual, transferable or sublicensable licence grants; unlimited or uncapped user/seat/entity counts; affiliate creep (rights extended to undefined affiliates); most-favoured-customer / most-favoured-nation pricing; price ratchets and capped or frozen escalation; benchmarking rights.
+
+Service levels: uptime commitments that are unachievable in practice (99.99%+); service credits exceeding fees paid; credits that are not the sole remedy; termination triggers on trivial downtime; unrealistic response/resolution times; disaster recovery commitments with zero RPO/RTO or zero data loss.
+
+Delivery & performance: absolute deadlines with no relief for customer-caused delay; supplier bearing responsibility for the customer's dependencies or failures; acceptance testing with no deemed-acceptance backstop; unlimited rework or re-performance obligations.
+
+Liability & indemnity: uncapped or unlimited liability; caps that are multiples of fees; asymmetric caps; consequential-loss exclusions that run one way only; unlimited or broad indemnities; indemnities without control-of-defence or notice conditions; refund obligations covering multiple years of fees.
+
+IP: assignment of derivative works, custom developments, configurations, or feedback; ownership of pre-existing/background IP; residual-knowledge restrictions; prohibitions on using generic know-how; escrow obligations (source code, data, build environment).
+
+Compliance & regulatory: obligations to comply with all present AND future laws worldwide; compliance with any standard the customer may designate in future; data localisation obligations that are technically or commercially impossible; unlimited regulatory-change absorption at supplier cost; obligations to comply with customer policies as amended unilaterally.
+
+Security & audit: obligations to meet future security standards at the customer's discretion; unlimited or unrestricted audit rights; audits without notice, scope, frequency, or cost limits; audit rights extending to subcontractors and premises; mandatory remediation at supplier cost regardless of finding severity.
+
+Supply chain: prohibition on open-source software; prior written approval required for every subcontractor; approval rights over supplier personnel; restrictions on changing subprocessors; obligations flowing down to subcontractors without corresponding rights.
+
+Term, exit & transition: auto-renewal with long or asymmetric notice periods; termination for convenience running one way only; free or extended transition/exit assistance obligations; free support or professional services hour banks; post-termination obligations surviving indefinitely.
+
+Commercial protections: insurance requirements disproportionate to deal value; parent guarantees, letters of credit, performance bonds; non-solicitation running one way; exclusivity; volume commitments; unilateral amendment rights; assignment permitted for one party only.
+
+Ambiguity: undefined or vague standards — "reasonable", "material", "best efforts", "promptly", "industry standard", "satisfactory to Customer", "as required by Customer" — especially where they gate an obligation or a termination right.
+
+DRAFTING STANDARD FOR SUGGESTED LANGUAGE
+suggestedLanguage must be complete, drafted clause text ready to paste into the contract — not advice about what to negotiate.
+
+For limitation of liability specifically, a bare 12-month fee cap is not an adequate recommendation. Draft a balanced liability framework: a general cap tied to fees paid in the preceding 12 months; a mutual exclusion of indirect and consequential loss; a supercap or uncapped treatment for the categories that market practice carves out — breach of confidentiality, IP infringement, data protection and security breaches, fraud, gross negligence, wilful misconduct, payment obligations, and where commercially appropriate regulatory fines and penalties; and mutuality so the cap and carve-outs apply to both parties. Apply the same completeness standard to indemnities, termination, and IP clauses — draft the full provision including the conditions, exceptions, and mutuality that a commercial lawyer would expect to see.`;
+
+// Enterprise agreements with riders/schedules routinely run past 100k characters.
+// The old 40k cut silently dropped the tail of the document — where the most
+// one-sided provisions usually live. ~200k chars ≈ 50k tokens, well inside context.
+const MAX_CONTRACT_CHARS = 200_000;
 
 interface IntakeContext {
   counterparty_name?: string | null;
@@ -93,15 +138,22 @@ export function buildContractPrompt(
     context += clauseSection;
   }
 
-  return `${context}\n\nAnalyze this contract. Return ALL four fields:
+  const body = text.slice(0, MAX_CONTRACT_CHARS);
+  const truncated = text.length > MAX_CONTRACT_CHARS
+    ? `\n\n[NOTE: this contract was truncated at ${MAX_CONTRACT_CHARS} characters. State in riskSummary that the final portion of the document was not reviewed.]`
+    : "";
+
+  return `${context}\n\nReview this contract end to end and return ALL four required fields:
 - riskLevel: overall risk
-- riskSummary: 3 items max, 1-2 sentences each
-- clauseAnalysis: 5 items max, keep contractText to 1 sentence, suggestedLanguage must be COMPLETE REPLACEMENT CLAUSE TEXT — full drafted legal language ready to copy into the contract (e.g. "Each party's total aggregate liability shall not exceed the fees paid in the 12 months preceding the claim, except for gross negligence, fraud, or willful misconduct."). NOT advisory notes or negotiation guidance. If a finding deviates from a company playbook/review rule provided above, set playbookRule to the playbook name and rule (e.g. "SaaS Playbook — Liability cap: 12 months fees").
-- negotiationPoints: 3 items max, 1 sentence each field
-Optionally include ambiguityFlags for vague/undefined terms ("reasonable", "material", "best efforts") worth clarifying.
+- riskSummary: the major risk themes across the whole agreement, 1-2 sentences each. Group related findings; no item limit.
+- clauseAnalysis: one entry per commercially significant one-sided or problematic provision. NO ITEM LIMIT — cover every section that warrants it, including schedules and riders. Put the section number in the clause field (e.g. "Section 9.2 — Service Credits"). Keep contractText to the key sentence. suggestedLanguage must be COMPLETE REPLACEMENT CLAUSE TEXT — full drafted legal language ready to paste into the contract, including the conditions, exceptions, carve-outs and mutuality a commercial lawyer would expect. NOT advisory notes or negotiation guidance. If a finding deviates from a company playbook/review rule provided above, set playbookRule to the playbook name and rule (e.g. "SaaS Playbook — Liability cap: 12 months fees").
+- negotiationPoints: the leverage points worth taking into the negotiation, most valuable first. No item limit.
+Also include ambiguityFlags for vague or undefined terms ("reasonable", "material", "best efforts", "promptly", "satisfactory to Customer") that gate an obligation or remedy.
+
+Do not stop after the first several sections. Work through to the end of the document, then re-check the section numbering for gaps before returning.${truncated}
 
 CONTRACT TEXT:
-${text.slice(0, 40000)}`;
+${body}`;
 }
 
 // ─── Redline prompts ──────────────────────────────────────────────────────────
@@ -128,11 +180,12 @@ edit_type guide:
 - "delete" — original_text is removed entirely (revised_text must be "")
 - "insert" — revised_text is inserted immediately after original_text (original_text is kept)
 
-COVERAGE — prioritise impact:
-- Review every section of the contract, but only produce edits for genuinely problematic language.
-- Flag: unlimited liability, broad indemnities, unilateral termination rights, IP assignment overreach, non-compete scope, auto-renewal traps, governing law/venue issues, warranty disclaimers, limitation of liability caps, data protection gaps, assignment restrictions, force majeure scope, confidentiality carve-outs.
-- Produce the 10–15 HIGHEST-IMPACT edits, ordered by risk (High first). Do not pad with trivial stylistic edits.
-- BREVITY: rationale must be ONE short sentence. playbook_rule must be a few words. Speed matters — keep every field tight.`;
+COVERAGE — completeness over ranking:
+- Work through the contract section by section, in order, to the end — including schedules, riders, addenda and exhibits. Provisions in riders are frequently the most one-sided and the most often missed.
+- Produce an edit for EVERY genuinely problematic provision. There is no edit limit. Do not report only the "top" 10-15 — a heavily one-sided enterprise agreement warrants 25-50 edits. Let the contract set the count.
+- Flag at minimum: uncapped/unlimited liability, broad or unconditional indemnities, unilateral termination and amendment rights, IP assignment overreach (derivative works, custom developments, feedback), source-code escrow, unachievable SLA/uptime commitments, service credits exceeding fees, most-favoured-customer pricing, unlimited users or affiliate creep, compliance with all future/worldwide laws, impossible data localisation, future security standards at customer discretion, unlimited audit rights, subcontractor pre-approval, open-source prohibitions, excessive insurance requirements, free transition services and support hour banks, zero-data-loss/DR commitments, multi-year fee refunds, auto-renewal traps, governing law/venue, warranty disclaimers, data protection gaps, assignment restrictions, force majeure scope, confidentiality carve-outs.
+- Do not pad with trivial stylistic edits — but do not drop a material commercial risk because you already have "enough" edits.
+- BREVITY: rationale must be ONE short sentence. playbook_rule must be a few words. Keep every field tight so coverage fits in the response.`;
 
 export function buildRedlinePrompt(
   text: string,
@@ -186,7 +239,7 @@ export function buildRedlinePrompt(
     ctx += lib;
   }
 
-  return `${ctx}\n\nCONTRACT TEXT — copy original_text VERBATIM from this text:\n${text.slice(0, 40000)}\n\nYou MUST generate between 10 and 15 redline edits covering the highest-impact problematic clauses. Do NOT return an empty edits array. Each original_text MUST be an exact verbatim substring copied character-for-character from the contract text above. Target short phrases (5-20 words) not full sentences. Keep rationale to ONE short sentence. Where your clause library provides standard language, use it in revised_text.`;
+  return `${ctx}\n\nCONTRACT TEXT — copy original_text VERBATIM from this text:\n${text.slice(0, MAX_CONTRACT_CHARS)}\n\nGenerate a redline edit for EVERY problematic provision in the contract, working section by section through to the end (including schedules and riders). Minimum 15 edits; there is no upper limit — a heavily one-sided agreement should produce 25-50. Do NOT return an empty edits array. Each original_text MUST be an exact verbatim substring copied character-for-character from the contract text above. Target short phrases (5-20 words) not full sentences. Keep rationale to ONE short sentence. Where your clause library provides standard language, use it in revised_text.`;
 }
 
 export function buildSummaryPrompt(text: string, contractType: ContractType): string {
