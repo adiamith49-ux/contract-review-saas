@@ -131,23 +131,27 @@ function Hero() {
   const { isSignedIn, isLoaded } = useAuth();
 
   return (
-    <section className="relative overflow-hidden bg-[#D9FAF4] pt-16 pb-20 sm:pt-24 sm:pb-28">
+    <section className="relative overflow-hidden bg-[#081a1a] pt-16 pb-20 sm:pt-24 sm:pb-28">
+      {/* Soft teal glow, echoing the reference's wave graphic */}
+      <div className="absolute -top-40 right-0 h-[32rem] w-[32rem] rounded-full bg-[#00BFA6]/20 blur-[120px] pointer-events-none" />
+      <div className="absolute top-1/3 -left-24 h-80 w-80 rounded-full bg-[#00BFA6]/10 blur-[100px] pointer-events-none" />
+
       <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         {/* Badge */}
-        <div className="inline-flex items-center gap-2 bg-[#00BFA6]/10 text-[#00BFA6] rounded-full px-4 py-1.5 text-sm font-semibold mb-8">
+        <div className="inline-flex items-center gap-2 border border-[#00BFA6]/30 bg-[#00BFA6]/10 text-[#00BFA6] rounded-full px-4 py-1.5 text-sm font-semibold mb-8">
           Review , Negotiate ,{" "}
-          <span className="text-red-600">Red Line</span>
+          <span className="text-red-500">Red Line</span>
           {" "}, Close.
         </div>
 
         {/* Headline */}
-        <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-[#0F2A2A] max-w-4xl mx-auto leading-[1.05]">
+        <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white max-w-4xl mx-auto leading-[1.05]">
           Review contracts faster.{" "}
           <span className="font-serif italic text-[#00BFA6]">Negotiate smarter.</span>
         </h1>
 
         {/* Subheadline */}
-        <p className="mt-6 text-lg sm:text-xl text-[#0F2A2A]/70 max-w-2xl mx-auto leading-relaxed">
+        <p className="mt-6 text-lg sm:text-xl text-white/70 max-w-2xl mx-auto leading-relaxed">
           Upload any PDF or DOCX contract, add your deal context — jurisdiction, counterparty, deal value — and get clause-by-clause risk analysis with negotiation-ready suggestions in minutes.
         </p>
 
@@ -166,7 +170,7 @@ function Hero() {
                   Request a Demo <ArrowRight className="ml-2 h-4 w-4" />
                 </a>
               </Button>
-              <Button size="lg" variant="outline" asChild className={`text-base px-8 h-12 ${btnOutline}`}>
+              <Button size="lg" variant="outline" asChild className="text-base px-8 h-12 rounded-full border border-white/25 bg-transparent text-white hover:bg-white/10 hover:text-white shadow-none">
                 <a href="#how-it-works">See How It Works</a>
               </Button>
             </>
@@ -174,13 +178,13 @@ function Hero() {
         </div>
 
         {/* Trust note */}
-        <p className="mt-6 text-xs text-[#0F2A2A]/45">
+        <p className="mt-6 text-xs text-white/45">
           Works with PDF &amp; DOCX · Built on AWS, Clerk, Supabase, and Vercel — SOC2-certified infrastructure
         </p>
 
         {/* Mock UI preview */}
         <div className="mt-16 relative">
-          <div className="max-w-4xl mx-auto rounded-xl border border-[#0F2A2A]/10 shadow-2xl shadow-[#0F2A2A]/10 overflow-hidden bg-white">
+          <div className="max-w-4xl mx-auto rounded-xl border border-white/10 shadow-2xl shadow-black/40 overflow-hidden bg-white">
             {/* Mock header bar */}
             <div className="flex items-center gap-2 px-4 py-3 bg-[#D9FAF4] border-b border-[#0F2A2A]/10">
               <div className="w-3 h-3 rounded-full bg-red-400" />
@@ -231,7 +235,7 @@ function Hero() {
             </div>
           </div>
           {/* Subtle fade at bottom */}
-          <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#D9FAF4] to-transparent pointer-events-none" />
+          <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#081a1a] to-transparent pointer-events-none" />
         </div>
       </div>
     </section>
