@@ -234,7 +234,7 @@ export function RedlineViewer({
       {/* ── Sidebar ────────────────────────────────────────────────────────── */}
       <div className="w-[300px] shrink-0 border-l bg-white flex flex-col shadow-[-2px_0_12px_rgba(0,0,0,0.08)]">
         {/* Header */}
-        <div className="shrink-0 px-4 py-3 bg-[#1a1a17] text-white flex items-center gap-2.5">
+        <div className="shrink-0 px-4 py-3 bg-[#0F2A2A] text-white flex items-center gap-2.5">
           <Zap className="h-4 w-4 text-white/60 shrink-0" />
           <span className="text-sm font-semibold flex-1">Redline Edits</span>
         </div>

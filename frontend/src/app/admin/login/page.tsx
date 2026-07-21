@@ -69,7 +69,7 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#111110] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-[#081a1a] flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
@@ -80,7 +80,7 @@ export default function AdminLoginPage() {
           <p className="text-sm text-slate-400 mt-0.5">Admin Panel</p>
         </div>
 
-        <div className="bg-[#1a1a17] rounded-2xl border border-slate-700/60 p-6 shadow-2xl">
+        <div className="bg-[#0F2A2A] rounded-2xl border border-slate-700/60 p-6 shadow-2xl">
           {view === "signin" && (
             <>
               <h2 className="text-base font-semibold text-white mb-5">Sign in to admin</h2>

@@ -1,5 +1,4 @@
 import type { Config } from "tailwindcss";
-import colors from "tailwindcss/colors";
 
 const config: Config = {
   darkMode: ["class"],
@@ -11,21 +10,20 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Warm neutrals to match the cream #f2f1ee brand background
-        gray: colors.stone,
-        // Brand green scale (#308970 at 600) — rebrands every emerald-* usage
+        // Brand teal scale (#00BFA6 Teal Wave at 600, #0F2A2A Deep Lagoon at 950)
+        // — rebrands every emerald-* usage across the app
         emerald: {
-          50: "#eef7f4",
-          100: "#d7ece5",
-          200: "#b3dacd",
-          300: "#83c0ab",
-          400: "#52a389",
-          500: "#3a9478",
-          600: "#308970",
-          700: "#27715c",
-          800: "#215c4c",
-          900: "#19453a",
-          950: "#0f2d26",
+          50: "#eafaf7",
+          100: "#d1f3ec",
+          200: "#a3e7d9",
+          300: "#6dd6c2",
+          400: "#33c2a8",
+          500: "#00b39a",
+          600: "#00bfa6",
+          700: "#00997f",
+          800: "#027b6c",
+          900: "#0a5f54",
+          950: "#0f2a2a",
         },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
