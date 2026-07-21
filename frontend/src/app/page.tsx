@@ -31,7 +31,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 // ─── Brand palette ─────────────────────────────────────────────────────────────
 // Teal Wave #00BFA6 · Aqua Silk #D9FAF4 · Deep Lagoon #0F2A2A (+ logo red accent)
 const btnPrimary =
-  "rounded-full bg-[#00BFA6] text-white hover:bg-[#019485] shadow-none";
+  "rounded-full bg-[#0F2A2A] text-white hover:bg-[#163a3a] shadow-none";
 // Nav link: black text + red underline that grows outward from the center on
 // hover and shrinks back to the center on leave.
 const navLink =
@@ -256,13 +256,13 @@ function StatCards() {
       tag: "Accuracy",
       value: "75–85%",
       label: "of material risks caught before signature",
-      bg: "bg-[#00BFA6]",
+      bg: "bg-[#0F2A2A]",
     },
     {
       tag: "Coverage",
       value: "4",
       label: "jurisdictions covered — US, UK, EU & India",
-      bg: "bg-[#0F2A2A]",
+      bg: "bg-[#00BFA6]",
     },
     {
       tag: "Speed",
@@ -731,7 +731,7 @@ function ContactSection() {
 
 function CtaBanner({ isSignedIn }: { isSignedIn: boolean }) {
   return (
-    <section className="py-20 sm:py-24 bg-[#00BFA6]">
+    <section className="py-20 sm:py-24 bg-[#0F2A2A]">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white leading-tight mb-5">
           See Contralyne on <span className="font-serif italic font-medium">your own contracts</span>

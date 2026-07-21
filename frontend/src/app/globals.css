@@ -3,7 +3,8 @@
 @tailwind utilities;
 
 @layer base {
-  /* Brand palette: Teal Wave #00BFA6 · Aqua Silk #D9FAF4 · Deep Lagoon #0F2A2A (+ logo red accent) */
+  /* Brand palette: main = Deep Lagoon #0F2A2A · side accent = Teal Wave #00BFA6
+     · background = Aqua Silk #D9FAF4 (+ logo red accent) */
   :root {
     --background: 169 70% 92%;
     --foreground: 180 47% 11%;
@@ -13,7 +14,7 @@
     --popover-foreground: 180 47% 11%;
     --border: 169 40% 85%;
     --input: 169 35% 83%;
-    --primary: 172 100% 37%;
+    --primary: 180 47% 11%;
     --primary-foreground: 0 0% 100%;
     --secondary: 169 55% 90%;
     --secondary-foreground: 180 40% 15%;
@@ -23,7 +24,7 @@
     --accent-foreground: 172 80% 20%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    --ring: 172 100% 37%;
+    --ring: 180 47% 11%;
     --radius: 0.5rem;
   }
 }
