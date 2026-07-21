@@ -26,7 +26,7 @@ AI-based contract review and negotiation web app.
 | Milestone | Amount | Status |
 |---|---|---|
 | Milestone 1 — Upfront | ₹8,000 | Received |
-| Milestone 2 — Mid-delivery | ₹6,000 | Pending |
+| Milestone 2 — Mid-delivery | ₹6,000 | Received (2026-07-14) |
 | Milestone 3 — Final | ₹6,000 | Pending |
 
 IP transfers to client only upon receipt of full payment.
@@ -60,7 +60,10 @@ Client pays AI API + hosting costs. Developer fee only is ₹20,000.
 
 ### AI: Anthropic claude-sonnet-4-6
 - Tool use for structured JSON output (`tool_choice: { type: "tool", name: "analyze_contract" }`)
-- Prompt caching (`cache_control: { type: "ephemeral" }`) on system prompt — cuts repeated call costs
+- Analysis + redline calls are **streamed** — required, since `max_tokens` above ~16k will
+  otherwise hit the SDK HTTP timeout
+- Prompt caching is **NOT implemented** (this doc previously claimed it was). SDK is pinned
+  at `@anthropic-ai/sdk@0.30.0`, where `cache_control` exists only in the beta namespace
 - Entry point: `backend/src/services/ai.service.ts`
 
 ---
@@ -79,11 +82,19 @@ Scope frozen at contract signing. Changes require: written description → writt
 - Functional testing, one bug-fix round, Vercel deployment with SSL + custom domain
 - 2 months post-delivery bug-fix support (24h response, working days)
 
-### Out of Scope (V1)
-- Admin panel, dark mode, landing page
+### Built beyond original scope (delivered anyway — no extra fee charged)
+Admin panel, landing page, approval routing, task assignment, client records + memberships,
+comments, redlines, draft comparison, calendar, time tracking, tickets. Record these when
+discussing scope — they are goodwill delivery, not contractual obligations.
+
+### Still out of scope (V1)
+- Dark mode
 - Custom-trained models, fine-tuning
-- Multi-tenant / org/team accounts, billing/subscription
-- MFA, SSO/SAML, RBAC
+- **Multi-tenant / org accounts** — see Tenancy model; collaboration ≠ tenancy
+- **RBAC** — no roles table; admin is a separate auth system, not a role
+- **Tamper-evident audit logging** — `activity_logs` is an activity feed
+- MFA, SSO/SAML, SOC2 certification
+- Billing/subscription
 - Bulk export, DocuSign/e-signature
 - Load/stress/penetration testing
 - New features during support period
@@ -94,41 +105,60 @@ Scope frozen at contract signing. Changes require: written description → writt
 
 ## Monorepo Structure
 
+> Directories were renamed 2026-06-11: `apps/api` → `backend`, `apps/web` → `frontend`.
+> Vercel `rootDirectory` matches. CLI deploys must run from the repo root.
+
 ```
 contract-review-saas/
-├── apps/
-│   ├── api/                  Express + TypeScript (port 4000) — Pranav
-│   │   ├── vercel.json       Vercel build config (src/app.ts, @vercel/node)
-│   │   └── src/
-│   │       ├── app.ts             Express app (CORS, helmet, routes — no dotenv, Vercel-safe)
-│   │       ├── index.ts           Local dev entry (dotenv + app.ts)
-│   │       ├── config.ts          Zod-validated env — single source of truth
-│   │       ├── db.ts              Supabase client
-│   │       ├── types.ts           Inlined shared types (no workspace dep needed)
-│   │       ├── middleware/
-│   │       │   ├── auth.ts        Clerk JWT verification (standalone verifyToken)
-│   │       │   ├── error.ts       Global error handler
-│   │       │   └── rateLimit.ts   Per-route rate limiters
-│   │       ├── routes/
-│   │       │   ├── contracts.ts   Core contract CRUD + AI routes
-│   │       │   ├── clauses.ts     Clause library CRUD
-│   │       │   ├── rules.ts       Review rules / playbook CRUD
-│   │       │   ├── analytics.ts   Dashboard stats
-│   │       │   ├── activity.ts    Paginated audit log
-│   │       │   └── account.ts     GDPR hard-delete
-│   │       └── services/
-│   │           ├── ai.service.ts       Anthropic — analyze + summarize + ambiguity detection
-│   │           ├── chat.service.ts     Follow-up Q&A with context memory
-│   │           ├── prompts.ts          Legal prompt builder (US/UK-first, jurisdiction-aware)
-│   │           ├── document.service.ts PDF/DOCX extraction + AWS Textract OCR fallback
-│   │           ├── storage.service.ts  S3 upload/download/delete (pre-signed URLs)
-│   │           ├── export.service.ts   DOCX (Word comments + tracked redlines) + PDF export
-│   │           └── activity.service.ts Audit log writer
-│   └── frontend/             Next.js frontend (port 3000) — Kartik
-│       ├── vercel.json        framework: nextjs
-│       └── src/
-│           ├── lib/types.ts   Inlined shared types
-│           └── middleware.ts  Clerk v5 auth middleware
+├── backend/                  Express + TypeScript (port 4000) — Pranav
+│   ├── vercel.json           Vercel build config (src/app.ts, @vercel/node)
+│   └── src/
+│       ├── app.ts             Express app (CORS, helmet, routes — no dotenv, Vercel-safe)
+│       ├── index.ts           Local dev entry (dotenv + app.ts)
+│       ├── config.ts          Zod-validated env + fail-closed secret check
+│       ├── db.ts              Supabase client
+│       ├── types.ts           Inlined shared types (no workspace dep needed)
+│       ├── middleware/
+│       │   ├── auth.ts        Clerk JWT verification (standalone verifyToken)
+│       │   ├── adminAuth.ts   Admin-panel JWT (SEPARATE auth system — see Admin Auth)
+│       │   ├── error.ts       Global error handler
+│       │   └── rateLimit.ts   Per-route rate limiters
+│       ├── routes/
+│       │   ├── contracts.ts   Core contract CRUD + AI routes
+│       │   ├── comments.ts    Per-contract comments + team paths
+│       │   ├── approvals.ts   Approval matrix routing + decisions
+│       │   ├── tasks.ts       Task assignment
+│       │   ├── clients.ts     Client records + membership assignment
+│       │   ├── clauses.ts     Clause library CRUD
+│       │   ├── rules.ts       Review rules / playbook CRUD
+│       │   ├── analytics.ts   Dashboard stats
+│       │   ├── activity.ts    Paginated activity log
+│       │   ├── account.ts     GDPR hard-delete
+│       │   ├── admin.ts       Admin panel (mounted at /admin, not /api)
+│       │   ├── tickets.ts     Support tickets
+│       │   ├── time.ts        Time tracking
+│       │   ├── calendar.ts    Renewal / key-date calendar
+│       │   ├── contact.ts     Landing-page contact form
+│       │   └── webhooks.ts    Clerk user sync
+│       └── services/
+│           ├── ai.service.ts        Anthropic — analyze + redline + summarize + changes
+│           ├── chat.service.ts      Follow-up Q&A with context memory
+│           ├── prompts.ts           Legal prompt builder (US/UK-first, jurisdiction-aware)
+│           ├── document.service.ts  PDF/DOCX extraction + AWS Textract OCR fallback
+│           ├── redline.service.ts   Verbatim-match redline edits onto contract text
+│           ├── docxEdit.service.ts  Applies accepted redlines into the DOCX
+│           ├── compare.service.ts   Paragraph diff between two drafts
+│           ├── storage.service.ts   S3 upload/download/delete (pre-signed URLs)
+│           ├── export.service.ts    DOCX (Word comments + tracked redlines) + PDF export
+│           ├── report.service.ts    Reporting output
+│           ├── membership.service.ts Client-membership resolution
+│           ├── mailer.service.ts    SMTP (admin password reset, notifications)
+│           └── activity.service.ts  Activity log writer
+├── frontend/                 Next.js frontend (port 3000) — Kartik
+│   ├── vercel.json           framework: nextjs
+│   └── src/
+│       ├── lib/types.ts      Inlined shared types
+│       └── middleware.ts     Clerk v5 auth middleware
 ├── packages/
 │   └── database/schema.sql   Supabase schema — run in SQL editor to init
 ├── package.json              npm workspaces root
@@ -159,14 +189,28 @@ All routes require `Authorization: Bearer <clerk_jwt>` except `/health`.
 | DELETE | `/api/contracts/:id/chat` | — | Clear chat history |
 | DELETE | `/api/contracts/:id` | — | Delete contract + S3 file |
 
+### Collaboration + workflow
+| Method | Path | Description |
+|---|---|---|
+| GET/POST/PATCH/DELETE | `/api/clients` | Client records + member assignment (`client_memberships`) |
+| GET/POST/PATCH/DELETE | `/api/tasks` | Task assignment per contract |
+| GET/POST | `/api/approvals` | Approval matrix routing, approve/reject/request-changes |
+| GET/POST/DELETE | `/api/contracts/:id/comments` | Per-contract comment threads |
+| GET | `/api/calendar` | Renewal + key-date calendar |
+| GET/POST | `/api/time` | Time tracking |
+| GET/POST | `/api/tickets` | Support tickets |
+
 ### Other
 | Method | Path | Description |
 |---|---|---|
 | GET/POST/PATCH/DELETE | `/api/clauses` | Clause library management |
 | GET/POST/PATCH/DELETE | `/api/rules` | Review rules / playbook management |
 | GET | `/api/analytics` | Dashboard stats — totals, risk breakdown, uploads per month |
-| GET | `/api/activity` | Paginated audit log (all user actions) |
+| GET | `/api/activity` | Paginated activity log (all user actions) |
 | DELETE | `/api/account` | GDPR hard-delete — all user data + S3 files |
+| POST | `/api/contact` | Landing-page contact form (public) |
+| POST | `/api/webhooks` | Clerk user sync (public, signature-verified) |
+| * | `/admin/*` | Admin panel — **separate JWT auth**, not Clerk, not under `/api` |
 
 ---
 
@@ -183,7 +227,38 @@ Run `packages/database/schema.sql` in Supabase SQL editor.
 | `chat_messages` | Per-contract Q&A history (role: user/assistant) |
 | `clause_library` | User's saved approved/fallback clauses |
 | `review_rules` | Playbook rule sets — injected into AI prompt when is_active = true |
-| `activity_logs` | Full audit trail of all actions |
+| `clients` | Client grouping layer for contracts (scoped by `user_id`) |
+| `client_memberships` | Assigns users to clients — the sharing mechanism |
+| `tasks` | Task assignment per contract |
+| `approval_rules` | Approval matrix (value/risk thresholds → required approvers) |
+| `contract_approvals` | One row per approver per submission round |
+| `contract_comments` | Per-contract comment threads |
+| `contract_comparisons` | Stored draft-vs-draft diffs |
+| `redlines` | AI-generated clause-level edits (latest per contract) |
+| `activity_logs` | Activity trail of all actions |
+
+### Tenancy model — read before promising anything
+
+**There is no multi-tenancy.** There is no `organizations` / `tenants` table. `clients` is
+scoped by `user_id` — each user owns their own client records. Isolation is still
+**per-Clerk-user**, with `client_memberships` layered on top as a sharing mechanism.
+
+**There is no RBAC.** No roles table, no permission model. Admin is a *separate parallel
+auth system* (`/admin`, its own JWT), not a role within the user model.
+
+So the honest answer to "can I provision my 40-lawyer firm with role-scoped access under
+one org?" is **no**. What exists is multi-user collaboration with client assignment and
+approval routing — real and valuable, but not org-level tenancy.
+
+`activity_logs` is likewise an **activity feed, not an audit log**: a plain mutable table
+written with the service-role key, with no append-only constraint, no tamper-evidence, and
+no retention policy — and `DELETE /api/account` hard-deletes it. Audit-grade means the log
+survives the actor and cannot be edited by them.
+
+When describing this to clients, say: *"multi-user collaboration with client assignment and
+approval routing is built; org-level tenancy, RBAC, and tamper-evident audit logging are the
+next tier."* Do not claim multi-tenancy, RBAC, or audit-grade logging — a procurement
+security questionnaire will catch it.
 
 ---
 
@@ -217,8 +292,36 @@ Users never lose contract context:
 | Feature | Notes |
 |---|---|
 | Scanned PDF OCR (AWS Textract) | Fallback when pdf-parse returns empty text |
-| Ambiguity detection | Dedicated pass in AI tool schema — flags "reasonable", "material", "best efforts" |
+| Ambiguity detection | Declared in the AI tool schema — flags "reasonable", "material", "best efforts" |
 | Jurisdiction-aware prompts | US (UCC, Delaware), UK (English contract law, Companies Act 2006), EU (GDPR), India (Indian Contract Act) |
+| Uncapped risk coverage | See below — output caps removed 2026-07-21 |
+
+### Coverage fix (2026-07-21) — read before touching `prompts.ts` or `ai.service.ts`
+
+Amith's enterprise stress-test review found the AI missing ~20 materially one-sided clauses.
+The cause was **our own hard caps**, not model capability:
+
+- `prompts.ts` instructed `clauseAnalysis: 5 items max`, `riskSummary: 3 max`, `negotiationPoints: 3 max`
+- The tool schema reinforced the same limits (`"Top 3-5"`, `"Top 3-4"`, `"Top 2-3"`)
+- `text.slice(0, 40000)` silently truncated long contracts — which is why the misses were
+  back-loaded (Sections 25, 31–38, riders were never sent to the model)
+
+A capable model *obeys* "top 5": it reads everything, ranks, and reports 5 — which looks
+identical to a recall failure from the outside.
+
+**Never reintroduce an item cap on analysis or redline output.** Coverage is the product.
+Current settings: no item limits, 200k char contract limit, `max_tokens` 32k (analysis) /
+16k (redline, streamed — a truncated tool-use JSON parses to *zero* results).
+
+Also fixed: `ambiguityFlags` was wired through DB, exports and UI but never declared in the
+tool schema, so the panel was always empty in production.
+
+⚠️ `missingClauses` has the same dead-wiring bug and is **still broken** — the frontend panel
+and types exist, but the schema field and the `analyses.missing_clauses` column do not.
+Needs an `ALTER TABLE` before it can ship.
+
+⚠️ **Recall is not yet measured.** The caps are gone; the hit rate against Amith's 20-item
+list has not been scored. Do not claim enterprise-grade coverage until that test is run.
 
 ### Remaining limitations (V1.5+)
 
@@ -286,7 +389,22 @@ Users never lose contract context:
 - AI output always via tool use with strict schema — never parse free-text AI responses
 - All key actions logged to `activity_logs` via `logActivity()`
 - Config always from `config.ts` — never `process.env` directly
-- Org isolation note: no multi-tenant in V1 — `user_id` is Clerk user ID, single user per account
+- Never give a secret a working default. A placeholder that *grants* access is far more
+  dangerous than one that denies it — `config.ts` refuses to boot in production if any
+  secret still holds its dev placeholder
+- Org isolation: `user_id` is the Clerk user ID and remains the isolation boundary.
+  `client_memberships` grants shared access; it does not create a tenant. See Tenancy model
+
+### Admin Auth — the one exception to "Clerk handles all auth"
+
+`/admin` uses a **custom JWT** signed with `ADMIN_JWT_SECRET` (`middleware/adminAuth.ts`),
+verifying only the signature and `iss: "contralyne-admin"`. This predates and contradicts the
+Clerk-only rule above. Treat it as tech debt, not a pattern to copy.
+
+Because it is custom, it is only as strong as the secret:
+- Must be 32+ random bytes: `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
+- Never a memorable phrase — this key alone gates full admin access to live client data
+- Rotating it invalidates all existing admin sessions (admins re-login; no data impact)
 
 ---
 
@@ -307,6 +425,18 @@ AWS_SECRET_ACCESS_KEY=
 S3_BUCKET_NAME=contralyn-contracts
 ANTHROPIC_API_KEY=sk-ant-...
 AI_MODEL=claude-sonnet-4-6
+# Signs admin-panel tokens. 32+ RANDOM bytes — never a memorable phrase.
+# Production refuses to boot if this is left at its dev placeholder.
+ADMIN_JWT_SECRET=
+CLERK_WEBHOOK_SECRET=
+# SMTP — admin password-reset + notifications; reset disabled when unset
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM=
+CONTACT_EMAIL=contact@contralyne.com
+LANDING_URL=
 ```
 
 ---
@@ -347,13 +477,25 @@ npm run dev:web
 - [x] Activity log endpoint (paginated)
 - [x] DOCX export with Word comments + tracked-change redlines
 - [x] Scanned PDF OCR (AWS Textract fallback)
-- [x] Ambiguity detection in AI schema
+- [x] Ambiguity detection in AI schema (schema field added 2026-07-21 — panel was dead before)
 - [x] Jurisdiction prompt modules (US / UK / EU / India)
+- [x] Approval routing, task assignment, clients + memberships, comments, redlines,
+      draft comparison, calendar, time tracking, tickets, admin panel (beyond original scope)
+- [x] Risk-coverage caps removed (2026-07-21) — see Coverage fix
+- [x] Fail-closed secret validation in `config.ts` (2026-07-21)
+- [ ] **Score recall against Amith's 20-item stress-test list** — the caps are gone but the
+      hit rate is unmeasured; this is the gate on any "enterprise-grade coverage" claim
+- [ ] Rotate `ADMIN_JWT_SECRET` to 32+ random bytes (currently 27 chars, human-chosen)
+- [ ] `missingClauses` — needs schema field + `analyses.missing_clauses` column
+- [ ] Prompt caching — CLAUDE.md previously claimed this; SDK is pinned at `0.30.0` where
+      `cache_control` is beta-only. Needs an SDK upgrade first
+- [ ] Set `maxDuration` in `backend/vercel.json` — 32k-token analyses run for minutes and
+      inherit the plan default; confirm the Vercel plan ceiling before setting
 - [x] Frontend (Kartik) — done, live at contralyne.com
 - [x] Vercel deployment (auto-deploy on git push to main)
 - [x] Supabase + S3 + Clerk provisioned and live
 - [ ] Transfer Supabase + S3 billing to Amith
-- [ ] Milestone 2 — ₹6,000
+- [x] Milestone 2 — ₹6,000 (received 2026-07-14)
 - [ ] Milestone 3 — ₹6,000
 
 ---
