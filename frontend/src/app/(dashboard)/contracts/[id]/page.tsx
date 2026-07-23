@@ -509,7 +509,17 @@ function NotAnalyzedState({
       <div className="flex flex-col items-center justify-center py-24 text-center">
         <Loader2 className="h-10 w-10 text-primary animate-spin mb-4" />
         <p className="font-medium text-gray-700">AI is analyzing your contract…</p>
-        <p className="text-sm text-gray-400 mt-1">This usually takes 30–60 seconds</p>
+        <p className="text-sm text-gray-400 mt-1">A thorough review can take a few minutes for a long contract.</p>
+        {/* Escape hatch: if a prior run got interrupted the status can stay stuck
+            here. Re-running is safe — the server rejects a genuinely in-flight
+            analysis and only re-runs a stale one. */}
+        <button
+          onClick={onAnalyze}
+          disabled={analyzing}
+          className="mt-6 text-xs text-gray-400 hover:text-primary underline underline-offset-2 disabled:opacity-50"
+        >
+          {analyzing ? "Re-running…" : "Taking too long? Re-run analysis"}
+        </button>
       </div>
     );
   }
