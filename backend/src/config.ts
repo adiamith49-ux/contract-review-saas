@@ -19,6 +19,13 @@ const EnvSchema = z.object({
   S3_BUCKET_NAME: str("contralyn-contracts"),
   ANTHROPIC_API_KEY: str("dev-placeholder"),
   AI_MODEL: str("claude-sonnet-4-6"),
+  // Ceiling on analysis output tokens = the dominant term in analysis wall-clock
+  // time. MUST fit the serverless function's max duration or the function is
+  // killed mid-run and the contract wedges at "processing". Default 8000 fits a
+  // ~60-90s function (bounded ~8-10 findings). Once you raise the Vercel function
+  // Max Duration to 300s+ (project Settings → Functions), set this env var to
+  // 20000 for full uncapped recall — no code change needed. See ai.service.ts.
+  ANALYSIS_MAX_TOKENS: z.coerce.number().default(8000),
   ADMIN_JWT_SECRET: str("change-me-admin-secret"),
   CLERK_WEBHOOK_SECRET: str(""),
   // SMTP — used for admin password-reset emails; reset is disabled when unset

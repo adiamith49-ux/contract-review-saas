@@ -77,7 +77,12 @@ export function buildContractPrompt(
   contractType: ContractType,
   intake?: IntakeContext | null,
   playbookText?: string,
-  clauseLibrary?: ClauseLibraryEntry[]
+  clauseLibrary?: ClauseLibraryEntry[],
+  // Output-token budget for this run. When small (constrained serverless
+  // function duration), we bound the number of findings so generation finishes
+  // cleanly instead of truncating the tool-call JSON. Raise the function
+  // maxDuration + ANALYSIS_MAX_TOKENS to lift the bound and get full recall.
+  maxTokens = 20000
 ): string {
   const jurisdiction = intake?.jurisdiction ?? "us";
   let context = `CONTRACT TYPE: ${contractType.replace("_", " ").toUpperCase()}`;
@@ -143,6 +148,14 @@ export function buildContractPrompt(
     ? `\n\n[NOTE: this contract was truncated at ${MAX_CONTRACT_CHARS} characters. State in riskSummary that the final portion of the document was not reviewed.]`
     : "";
 
+  // Under a constrained output budget, bound the number of findings so the
+  // response completes cleanly instead of being truncated mid-JSON (which would
+  // fail the whole analysis). Prioritise the most one-sided, highest-impact
+  // clauses. Lifted automatically once ANALYSIS_MAX_TOKENS is raised.
+  const outputBudget = maxTokens < 16000
+    ? `\n\nOUTPUT BUDGET (TEMPORARY): this run has a limited response budget. Report the ~10 HIGHEST-IMPACT, most one-sided clauses (not every minor one), each stated concisely, so the full response fits. Prioritise ruthlessly by how damaging and how one-sided each clause is. If the contract has more material issues than fit, cover the worst ~10 and note in riskSummary that additional lower-priority issues exist. Keep suggestedLanguage to the essential operative text.`
+    : "";
+
   return `${context}\n\nReview this contract end to end and return ALL four required fields:
 - riskLevel: overall risk
 - riskSummary: the major risk themes across the whole agreement, 1-2 sentences each. Group related findings; no item limit.
@@ -152,7 +165,7 @@ Also include ambiguityFlags for vague or undefined terms ("reasonable", "materia
 
 Do not stop after the first several sections. Work through to the end of the document, then re-check the section numbering for gaps before returning.
 
-COVERAGE FIRST, THEN ECONOMY: catching every material one-sided clause matters more than anything else — never drop a finding to save space. But keep each finding economical so the whole review fits in one response: state the finding in 1-2 sentences, and make suggestedLanguage the necessary operative clause text with its key carve-outs — not exhaustive boilerplate or recitals. Breadth of coverage over length per item.${truncated}
+COVERAGE FIRST, THEN ECONOMY: catching every material one-sided clause matters more than anything else — never drop a finding to save space. But keep each finding economical so the whole review fits in one response: state the finding in 1-2 sentences, and make suggestedLanguage the necessary operative clause text with its key carve-outs — not exhaustive boilerplate or recitals. Breadth of coverage over length per item.${outputBudget}${truncated}
 
 CONTRACT TEXT:
 ${body}`;
