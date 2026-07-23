@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ChevronDown, ChevronUp, Loader2, GitCompare, Upload, Plus, Minus, Pencil,
-  Sparkles, Download, ArrowRight,
+  Sparkles, Download, ArrowRight, Columns2, AlignJustify,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,7 @@ export function VersionComparePanel({ contractId, getToken }: Props) {
   const [againstId, setAgainstId] = useState<string>("");
   const [comparing, setComparing] = useState(false);
   const [result, setResult] = useState<Comparison | null>(null);
+  const [diffView, setDiffView] = useState<"inline" | "sidebyside">("sidebyside");
 
   const load = useCallback(async () => {
     try {
@@ -114,6 +115,11 @@ export function VersionComparePanel({ contractId, getToken }: Props) {
   }
 
   const changedBlocks = result?.diff.filter(b => b.type !== "unchanged") ?? [];
+
+  const baseVersion = result ? versions.find(v => v.id === result.base_contract_id) : undefined;
+  const comparedVersion = result ? versions.find(v => v.id === result.compared_contract_id) : undefined;
+  const colLabel = (v: VersionItem | undefined, fallback: string) =>
+    v ? `v${v.version_number} · ${v.title || v.filename}` : fallback;
 
   return (
     <div className="shrink-0 border-b bg-white">
@@ -214,23 +220,99 @@ export function VersionComparePanel({ contractId, getToken }: Props) {
                         </ul>
                       )}
 
-                      {/* Full diff */}
-                      <details className="rounded-lg border">
-                        <summary className="px-3 py-2 text-[11px] font-medium text-gray-600 cursor-pointer">Full text diff ({changedBlocks.length} changed blocks)</summary>
-                        <div className="max-h-72 overflow-y-auto px-3 py-2 space-y-1.5 border-t">
-                          {changedBlocks.map((b, i) => (
-                            <div key={i} className="text-[11px] leading-relaxed">
-                              {b.type === "added" && <p className="rounded bg-emerald-50 border-l-2 border-emerald-400 px-2 py-1 text-emerald-900"><span className="font-semibold">+ </span>{b.compared}</p>}
-                              {b.type === "deleted" && <p className="rounded bg-red-50 border-l-2 border-red-400 px-2 py-1 text-red-900 line-through/50"><span className="font-semibold">− </span>{b.base}</p>}
-                              {b.type === "modified" && (
-                                <div className="rounded bg-amber-50 border-l-2 border-amber-400 px-2 py-1">
-                                  <p className="text-red-700"><span className="font-semibold">was: </span>{b.base}</p>
-                                  <p className="text-emerald-800 mt-0.5"><span className="font-semibold">now: </span>{b.compared}</p>
-                                </div>
+                      {/* Full diff — with inline / side-by-side toggle */}
+                      <details className="rounded-lg border" open>
+                        <summary className="px-3 py-2 text-[11px] font-medium text-gray-600 cursor-pointer flex items-center gap-2">
+                          <span>Full text diff ({changedBlocks.length} changed block{changedBlocks.length === 1 ? "" : "s"})</span>
+                          {/* View toggle — stop the click from collapsing the <details> */}
+                          <span
+                            className="ml-auto inline-flex rounded-md border bg-white overflow-hidden"
+                            onClick={e => e.preventDefault()}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => setDiffView("inline")}
+                              className={cn(
+                                "inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium transition-colors",
+                                diffView === "inline" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-50"
                               )}
+                              title="Stacked inline diff"
+                            >
+                              <AlignJustify className="h-3 w-3" />Inline
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDiffView("sidebyside")}
+                              className={cn(
+                                "inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium transition-colors border-l",
+                                diffView === "sidebyside" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-50"
+                              )}
+                              title="Side-by-side comparison"
+                            >
+                              <Columns2 className="h-3 w-3" />Side by side
+                            </button>
+                          </span>
+                        </summary>
+
+                        {changedBlocks.length === 0 ? (
+                          <div className="px-3 py-4 text-[11px] text-gray-400 border-t">No textual changes between these two versions.</div>
+                        ) : diffView === "inline" ? (
+                          /* ── Inline (stacked) ─────────────────────────── */
+                          <div className="max-h-96 overflow-y-auto px-3 py-2 space-y-1.5 border-t">
+                            {changedBlocks.map((b, i) => (
+                              <div key={i} className="text-[11px] leading-relaxed">
+                                {b.type === "added" && <p className="rounded bg-emerald-50 border-l-2 border-emerald-400 px-2 py-1 text-emerald-900"><span className="font-semibold">+ </span>{b.compared}</p>}
+                                {b.type === "deleted" && <p className="rounded bg-red-50 border-l-2 border-red-400 px-2 py-1 text-red-900 line-through/50"><span className="font-semibold">− </span>{b.base}</p>}
+                                {b.type === "modified" && (
+                                  <div className="rounded bg-amber-50 border-l-2 border-amber-400 px-2 py-1">
+                                    <p className="text-red-700"><span className="font-semibold">was: </span>{b.base}</p>
+                                    <p className="text-emerald-800 mt-0.5"><span className="font-semibold">now: </span>{b.compared}</p>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          /* ── Side by side (old left, new right) ────────── */
+                          <div className="border-t">
+                            {/* Column headers */}
+                            <div className="grid grid-cols-2 gap-px bg-gray-200 text-[10px] font-semibold sticky top-0 z-10">
+                              <div className="bg-gray-100 px-3 py-1.5 text-gray-600 flex items-center gap-1.5">
+                                <Minus className="h-3 w-3 text-red-500" />
+                                <span className="truncate">Older — {colLabel(baseVersion, "prior draft")}</span>
+                              </div>
+                              <div className="bg-gray-100 px-3 py-1.5 text-gray-600 flex items-center gap-1.5">
+                                <Plus className="h-3 w-3 text-emerald-500" />
+                                <span className="truncate">Newer — {colLabel(comparedVersion, "new draft")}</span>
+                              </div>
                             </div>
-                          ))}
-                        </div>
+                            {/* Aligned rows */}
+                            <div className="max-h-96 overflow-y-auto divide-y">
+                              {changedBlocks.map((b, i) => (
+                                <div key={i} className="grid grid-cols-2 gap-px bg-gray-100">
+                                  {/* Left: old text */}
+                                  <div className={cn(
+                                    "px-3 py-2 text-[11px] leading-relaxed min-h-[2rem]",
+                                    b.type === "deleted" && "bg-red-50 text-red-900",
+                                    b.type === "modified" && "bg-red-50/70 text-red-800",
+                                    b.type === "added" && "bg-gray-50 text-gray-300 italic",
+                                  )}>
+                                    {b.type === "added" ? "— not present —" : b.base}
+                                  </div>
+                                  {/* Right: new text */}
+                                  <div className={cn(
+                                    "px-3 py-2 text-[11px] leading-relaxed min-h-[2rem]",
+                                    b.type === "added" && "bg-emerald-50 text-emerald-900",
+                                    b.type === "modified" && "bg-emerald-50/70 text-emerald-800",
+                                    b.type === "deleted" && "bg-gray-50 text-gray-300 italic",
+                                  )}>
+                                    {b.type === "deleted" ? "— removed —" : b.compared}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </details>
                     </div>
                   )}

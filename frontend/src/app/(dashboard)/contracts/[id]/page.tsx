@@ -430,6 +430,7 @@ export default function ContractDetailPage() {
               onDownload={handleDownload}
               redlinePlaced={redlineResult?.matched_count}
               redlineTotal={redlineResult?.edits.length}
+              getToken={getToken}
             />
           )}
 
