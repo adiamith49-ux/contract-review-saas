@@ -150,7 +150,9 @@ export function buildContractPrompt(
 - negotiationPoints: the leverage points worth taking into the negotiation, most valuable first. No item limit.
 Also include ambiguityFlags for vague or undefined terms ("reasonable", "material", "best efforts", "promptly", "satisfactory to Customer") that gate an obligation or remedy.
 
-Do not stop after the first several sections. Work through to the end of the document, then re-check the section numbering for gaps before returning.${truncated}
+Do not stop after the first several sections. Work through to the end of the document, then re-check the section numbering for gaps before returning.
+
+COVERAGE FIRST, THEN ECONOMY: catching every material one-sided clause matters more than anything else — never drop a finding to save space. But keep each finding economical so the whole review fits in one response: state the finding in 1-2 sentences, and make suggestedLanguage the necessary operative clause text with its key carve-outs — not exhaustive boilerplate or recitals. Breadth of coverage over length per item.${truncated}
 
 CONTRACT TEXT:
 ${body}`;

@@ -18,6 +18,27 @@ import { buildS3Key, deleteFromS3, downloadFromS3, getPresignedUrl, uploadToS3 }
 import { editOriginalDocx, type DocxEdit } from "../services/docxEdit.service.js";
 import { getUserEmail, isApproverForContract } from "./approvals.js";
 
+// ─── Analysis timing ──────────────────────────────────────────────────────────
+// Keep ANALYSIS_TIMEOUT_MS comfortably BELOW the serverless function maxDuration
+// (backend/vercel.json → 300s). The JS timeout must win the race against the
+// platform's hard kill so the route's catch runs and marks the contract "failed"
+// (retryable) instead of leaving it wedged at "processing". STALE_PROCESSING_MS
+// then lets a wedged contract be re-analyzed. If you raise maxDuration on a
+// Pro/Enterprise plan, raise ANALYSIS_TIMEOUT_MS to match (and see
+// ANALYSIS_MAX_TOKENS in ai.service.ts).
+const ANALYSIS_TIMEOUT_MS = 285_000;              // 285s (< 300s maxDuration)
+const STALE_PROCESSING_MS = ANALYSIS_TIMEOUT_MS + 60_000; // treat as wedged after this
+
+// Reject `p` if it doesn't settle within `ms`. On timeout the underlying work is
+// abandoned (its result ignored); the caller handles the rejection.
+function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer)) as Promise<T>;
+}
+
 // True when the original upload is a Word .docx (only these can be edited in place)
 function isDocxSource(filename: string, mimeType?: string | null): boolean {
   return (mimeType ?? "").includes("wordprocessingml") || /\.docx$/i.test(filename);
@@ -406,14 +427,24 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
   try {
     const { data: contract, error: fetchError } = await db
       .from("contracts")
-      .select("id, user_id, contract_type, extracted_text, status")
+      .select("id, user_id, contract_type, extracted_text, status, updated_at")
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
       .single();
 
     if (fetchError || !contract) { res.status(404).json({ error: "Contract not found" }); return; }
     if (!contract.extracted_text) { res.status(422).json({ error: "Contract text could not be extracted" }); return; }
-    if (contract.status === "processing") { res.status(409).json({ error: "Analysis already in progress for this contract" }); return; }
+    // Block a genuine in-flight analysis, but recover a WEDGED one: if the
+    // serverless function was hard-killed mid-analysis (exceeded maxDuration),
+    // the catch below never ran and status is stuck at "processing" forever.
+    // Treat processing older than the timeout+grace as stale and allow re-run.
+    if (contract.status === "processing") {
+      const startedMs = contract.updated_at ? Date.parse(contract.updated_at) : 0;
+      if (Date.now() - startedMs < STALE_PROCESSING_MS) {
+        res.status(409).json({ error: "Analysis already in progress for this contract" }); return;
+      }
+      // else: previous run wedged — fall through and re-analyze
+    }
 
     const { selectedRuleIds } = z.object({
       selectedRuleIds: z.array(z.string().uuid()).optional(),
@@ -459,15 +490,25 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
       playbookText = playbookParts.join("\n\n---\n\n");
     }
 
-    const { error: processingErr } = await db.from("contracts").update({ status: "processing" }).eq("id", contract.id);
+    // Stamp updated_at so the stale-processing recovery above can measure age.
+    const { error: processingErr } = await db.from("contracts")
+      .update({ status: "processing", updated_at: new Date().toISOString() })
+      .eq("id", contract.id);
     if (processingErr) throw processingErr;
 
-    const analysis = await analyzeContract(
-      contract.extracted_text,
-      contract.contract_type as ContractType,
-      intake,
-      playbookText,
-      clauseLibrary.length > 0 ? clauseLibrary : undefined
+    // Hard timeout so a slow run fails cleanly (→ status "failed", retryable)
+    // rather than being hard-killed by the platform and left stuck "processing".
+    // Fire before maxDuration (see vercel.json) so the catch below still runs.
+    const analysis = await withTimeout(
+      analyzeContract(
+        contract.extracted_text,
+        contract.contract_type as ContractType,
+        intake,
+        playbookText,
+        clauseLibrary.length > 0 ? clauseLibrary : undefined
+      ),
+      ANALYSIS_TIMEOUT_MS,
+      "Analysis timed out — the contract is too large or complex to review in a single pass. Try again, or split the document."
     );
 
     const { data: saved, error: saveError } = await db
