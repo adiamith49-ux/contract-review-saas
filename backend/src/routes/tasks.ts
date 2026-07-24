@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { getPresignedUrl } from "../services/storage.service.js";
 
 export const tasksRouter = Router();
 tasksRouter.use(requireAuth);
@@ -65,6 +66,26 @@ tasksRouter.patch("/:id", async (req, res, next) => {
       .single();
     if (error || !data) { res.status(404).json({ error: "Task not found" }); return; }
     res.json({ task: data });
+  } catch (err) { next(err); }
+});
+
+// GET /api/tasks/:id/attachment-url — presigned download link for the file the
+// admin attached when assigning this task (if any)
+tasksRouter.get("/:id/attachment-url", async (req, res, next) => {
+  try {
+    const { data: task, error } = await db
+      .from("tasks")
+      .select("attachment_s3_key, attachment_filename")
+      .eq("id", req.params.id)
+      .eq("user_id", req.userId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!task || !task.attachment_s3_key) {
+      res.status(404).json({ error: "No attachment on this task" });
+      return;
+    }
+    const url = await getPresignedUrl(task.attachment_s3_key);
+    res.json({ url, filename: task.attachment_filename });
   } catch (err) { next(err); }
 });
 

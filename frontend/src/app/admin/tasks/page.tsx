@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { ClipboardList, Plus, Trash2, Loader2, CheckCircle2, Circle, Calendar } from "lucide-react";
+import { ClipboardList, Plus, Trash2, Loader2, CheckCircle2, Circle, Calendar, Paperclip, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +35,7 @@ export default function AdminTasksPage() {
   const [notes, setNotes]           = useState("");
   const [priority, setPriority]     = useState<"low" | "medium" | "high">("medium");
   const [dueDate, setDueDate]       = useState("");
+  const [file, setFile]             = useState<File | null>(null);
   const [saving, setSaving]         = useState(false);
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -55,6 +56,7 @@ export default function AdminTasksPage() {
     setNotes("");
     setPriority("medium");
     setDueDate("");
+    setFile(null);
     setDialogOpen(true);
   }
 
@@ -68,6 +70,7 @@ export default function AdminTasksPage() {
         notes: notes.trim() || undefined,
         priority,
         due_date: dueDate || null,
+        file: file ?? undefined,
       });
       setTasks(prev => [task, ...prev]);
       setDialogOpen(false);
@@ -181,6 +184,12 @@ export default function AdminTasksPage() {
                         {formatDate(t.due_date)}{overdue && " · Overdue"}
                       </span>
                     )}
+                    {t.attachment_filename && (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-gray-400" title={t.attachment_filename}>
+                        <Paperclip className="h-3 w-3" />
+                        {t.attachment_filename}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <span className="text-[11px] text-gray-300 shrink-0 mt-1">{formatDate(t.created_at)}</span>
@@ -265,6 +274,26 @@ export default function AdminTasksPage() {
                 disabled={saving}
                 maxLength={2000}
               />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1.5 block">Attach contract <span className="text-gray-400 font-normal">(optional — PDF or DOCX, up to 10MB)</span></label>
+              {file ? (
+                <div className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
+                  <Paperclip className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                  <span className="flex-1 truncate">{file.name}</span>
+                  <button type="button" onClick={() => setFile(null)} disabled={saving} className="text-gray-400 hover:text-red-500">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  onChange={e => setFile(e.target.files?.[0] ?? null)}
+                  disabled={saving}
+                  className="w-full text-sm text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-gray-700 hover:file:bg-gray-200"
+                />
+              )}
             </div>
             <div className="flex justify-end gap-3 pt-1">
               <DialogClose asChild>

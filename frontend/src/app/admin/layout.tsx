@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
   LayoutDashboard, Building2, Users, Library, Gavel,
-  Ticket, LogOut, Menu, X, Server, FileText, ClipboardList,
+  Ticket, LogOut, Menu, X, Server, FileText, ClipboardList, Receipt,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { adminMe, clearAdminToken, getAdminToken } from "@/lib/admin-api";
@@ -24,6 +24,7 @@ const nav = [
   { href: "/admin/users",     label: "Users",         icon: Users           },
   { href: "/admin/contracts", label: "Contracts",     icon: FileText        },
   { href: "/admin/tasks",     label: "Tasks",         icon: ClipboardList   },
+  { href: "/admin/billing",   label: "Billing",       icon: Receipt         },
   { href: "/admin/clauses",   label: "Clause Library",icon: Library         },
   { href: "/admin/playbooks", label: "Playbooks",     icon: Gavel           },
   { href: "/admin/tickets",   label: "Tickets",       icon: Ticket          },

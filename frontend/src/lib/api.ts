@@ -558,6 +558,9 @@ export interface Task {
   done: boolean;
   contract_id: string | null;
   assignee: string | null;
+  attachment_filename: string | null;
+  attachment_mime_type: string | null;
+  attachment_size: number | null;
   created_at: string;
 }
 
@@ -585,6 +588,14 @@ export async function deleteTask(token: string | null, id: string): Promise<void
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await fetch(`${API_URL}/api/tasks/${id}`, { method: "DELETE", headers });
   if (!res.ok) throw new Error("Failed to delete task");
+}
+
+// Presigned download link for the document an admin attached to this task
+export async function getTaskAttachmentUrl(
+  token: string | null,
+  id: string,
+): Promise<{ url: string; filename: string }> {
+  return apiFetch(`/api/tasks/${id}/attachment-url`, token);
 }
 
 // ─── Time entries ─────────────────────────────────────────────────────────────
@@ -745,6 +756,9 @@ export interface ApprovalStep {
   status: "pending" | "approved" | "rejected" | "changes_requested" | "skipped";
   comment: string | null;
   decided_at: string | null;
+  submission_note: string | null;
+  attachment_filename: string | null;
+  attachment_url: string | null;
   created_at: string;
 }
 
@@ -784,8 +798,12 @@ export async function deleteApprovalRule(token: string | null, id: string): Prom
 export async function submitForApproval(
   token: string | null,
   contractId: string,
+  data?: { note?: string; file?: File },
 ): Promise<{ round: number; steps: ApprovalStep[] }> {
-  return apiFetch(`/api/approvals/contracts/${contractId}/submit`, token, { method: "POST" });
+  const form = new FormData();
+  if (data?.note) form.append("note", data.note);
+  if (data?.file) form.append("file", data.file);
+  return apiFetch(`/api/approvals/contracts/${contractId}/submit`, token, { method: "POST", body: form });
 }
 
 export async function getApprovals(

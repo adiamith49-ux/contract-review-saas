@@ -9,9 +9,9 @@ import { config } from "../config.js";
 import { requireAdmin } from "../middleware/adminAuth.js";
 import { authLimiter } from "../middleware/rateLimit.js";
 import { extractText } from "../services/document.service.js";
-import { deleteFromS3 } from "../services/storage.service.js";
+import { deleteFromS3, uploadToS3, getPresignedUrl } from "../services/storage.service.js";
 import { isMailerConfigured, sendMail } from "../services/mailer.service.js";
-import { buildDashboardReport, buildContractsReport } from "../services/report.service.js";
+import { buildDashboardReport, buildContractsReport, buildBillingReport } from "../services/report.service.js";
 import { createClerkClient } from "@clerk/backend";
 
 const clerk = createClerkClient({ secretKey: config.CLERK_SECRET_KEY });
@@ -1066,14 +1066,15 @@ adminRouter.get("/tasks", requireAdmin, async (_req, res, next) => {
   }
 });
 
-adminRouter.post("/tasks", requireAdmin, async (req, res, next) => {
+// multipart so admin can optionally attach a contract document to the task
+adminRouter.post("/tasks", requireAdmin, upload.single("file"), async (req, res, next) => {
   try {
     const body = z.object({
       user_id: z.string().min(1),
       title: z.string().min(1).max(500),
       notes: z.string().max(2000).optional().default(""),
       priority: z.enum(["low", "medium", "high"]).default("medium"),
-      due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+      due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().or(z.literal("")),
     }).parse(req.body);
 
     // Assignee must be a registered user — also gives us the email for notification
@@ -1087,6 +1088,18 @@ adminRouter.post("/tasks", requireAdmin, async (req, res, next) => {
       return;
     }
 
+    let attachment: { attachment_s3_key: string; attachment_filename: string; attachment_mime_type: string; attachment_size: number } | null = null;
+    if (req.file) {
+      const key = `task-attachments/${crypto.randomUUID()}/${req.file.originalname}`;
+      await uploadToS3({ buffer: req.file.buffer, key, mimeType: req.file.mimetype });
+      attachment = {
+        attachment_s3_key: key,
+        attachment_filename: req.file.originalname,
+        attachment_mime_type: req.file.mimetype,
+        attachment_size: req.file.size,
+      };
+    }
+
     const { data: task, error } = await db
       .from("tasks")
       .insert({
@@ -1094,8 +1107,9 @@ adminRouter.post("/tasks", requireAdmin, async (req, res, next) => {
         title: body.title,
         notes: body.notes,
         priority: body.priority,
-        due_date: body.due_date ?? null,
+        due_date: body.due_date || null,
         assignee: "Admin", // marks the task as admin-assigned on the user's task list
+        ...attachment,
       })
       .select()
       .single();
@@ -1108,6 +1122,7 @@ adminRouter.post("/tasks", requireAdmin, async (req, res, next) => {
         const due = body.due_date
           ? `\nDue date:  ${new Date(body.due_date + "T00:00:00").toDateString()}`
           : "";
+        const attachmentLine = attachment ? `\nAttached document: ${attachment.attachment_filename} — download it from your Tasks page.` : "";
         await sendMail(
           target.email,
           `New task assigned to you: ${body.title}`,
@@ -1116,7 +1131,7 @@ adminRouter.post("/tasks", requireAdmin, async (req, res, next) => {
 A new task has been assigned to you on Contralyne:
 
 Task:      ${body.title}
-Priority:  ${body.priority}${due}${body.notes ? `\n\nDetails:\n${body.notes}` : ""}
+Priority:  ${body.priority}${due}${attachmentLine}${body.notes ? `\n\nDetails:\n${body.notes}` : ""}
 
 View your tasks: ${config.WEB_URL}/tasks
 
@@ -1137,9 +1152,75 @@ View your tasks: ${config.WEB_URL}/tasks
 adminRouter.delete("/tasks/:id", requireAdmin, async (req, res, next) => {
   try {
     // Admin may only delete tasks the admin assigned — never users' personal tasks
+    const { data: task } = await db
+      .from("tasks")
+      .select("attachment_s3_key")
+      .eq("id", req.params.id)
+      .eq("assignee", "Admin")
+      .maybeSingle();
+
     const { error } = await db.from("tasks").delete().eq("id", req.params.id).eq("assignee", "Admin");
     if (error) throw error;
+    if (task?.attachment_s3_key) await deleteFromS3(task.attachment_s3_key).catch(() => {});
     res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── Billing (billable-work totals + Excel export) ────────────────────────────
+
+adminRouter.get("/billing", requireAdmin, async (_req, res, next) => {
+  try {
+    const [entriesRes, usersRes] = await Promise.all([
+      db.from("time_entries").select("user_id, duration_mins, date").eq("billable", true),
+      db.from("users").select("clerk_user_id, email"),
+    ]);
+    if (entriesRes.error) throw entriesRes.error;
+
+    const entries = entriesRes.data ?? [];
+    const emailByUser = new Map(
+      (usersRes.data ?? []).map((u) => [u.clerk_user_id as string, u.email as string]),
+    );
+
+    const totals = new Map<string, { entries: number; mins: number; last_entry_at: string | null }>();
+    for (const e of entries) {
+      const uid = e.user_id as string;
+      const cur = totals.get(uid) ?? { entries: 0, mins: 0, last_entry_at: null };
+      cur.entries += 1;
+      cur.mins += (e.duration_mins as number) ?? 0;
+      const date = e.date as string;
+      if (!cur.last_entry_at || date > cur.last_entry_at) cur.last_entry_at = date;
+      totals.set(uid, cur);
+    }
+
+    const users = Array.from(totals.entries())
+      .map(([user_id, t]) => ({
+        user_id,
+        user_email: emailByUser.get(user_id) ?? user_id,
+        entries: t.entries,
+        total_mins: t.mins,
+        total_hours: Math.round((t.mins / 60) * 10) / 10,
+        last_entry_at: t.last_entry_at,
+      }))
+      .sort((a, b) => b.total_mins - a.total_mins);
+
+    res.json({ users });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.get("/billing/report", requireAdmin, async (req, res, next) => {
+  try {
+    const userId = typeof req.query.user_id === "string" ? req.query.user_id : undefined;
+    const buffer = await buildBillingReport(userId);
+
+    const suffix = userId ? `-${userId}` : "-all-users";
+    const filename = `contralyne-billing-report${suffix}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(buffer);
   } catch (err) {
     next(err);
   }

@@ -190,6 +190,9 @@ export interface AdminTask {
   priority: "low" | "medium" | "high";
   due_date: string | null; done: boolean;
   contract_id: string | null; assignee: string | null;
+  attachment_filename: string | null;
+  attachment_mime_type: string | null;
+  attachment_size: number | null;
   created_at: string;
 }
 
@@ -198,10 +201,19 @@ export const listAdminTasks = () => adminFetch<{ tasks: AdminTask[] }>("/admin/t
 export const createAdminTask = (data: {
   user_id: string; title: string; notes?: string;
   priority?: "low" | "medium" | "high"; due_date?: string | null;
-}) =>
-  adminFetch<{ task: AdminTask; email_sent: boolean }>("/admin/tasks", {
-    method: "POST", body: JSON.stringify(data),
+  file?: File;
+}) => {
+  const form = new FormData();
+  form.append("user_id", data.user_id);
+  form.append("title", data.title);
+  if (data.notes) form.append("notes", data.notes);
+  form.append("priority", data.priority ?? "medium");
+  if (data.due_date) form.append("due_date", data.due_date);
+  if (data.file) form.append("file", data.file);
+  return adminFetch<{ task: AdminTask; email_sent: boolean }>("/admin/tasks", {
+    method: "POST", body: form,
   });
+};
 
 export const deleteAdminTask = (id: string) =>
   adminFetch<void>(`/admin/tasks/${id}`, { method: "DELETE" });
@@ -212,6 +224,34 @@ export const listAdminContracts = () =>
 
 export const getAdminContractHistory = (id: string) =>
   adminFetch<AdminContractHistory>(`/admin/contracts/${id}/history`);
+
+// Billing (billable-work totals + Excel export)
+export interface AdminBillingUser {
+  user_id: string; user_email: string;
+  entries: number; total_mins: number; total_hours: number;
+  last_entry_at: string | null;
+}
+
+export const listAdminBilling = () => adminFetch<{ users: AdminBillingUser[] }>("/admin/billing");
+
+export async function downloadAdminBillingReport(userId?: string): Promise<void> {
+  const token = getAdminToken();
+  const qs = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
+  const res = await fetch(`${API_URL}/admin/billing/report${qs}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("Billing report download failed");
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const suffix = userId ? `-${userId}` : "-all-users";
+  a.download = `contralyne-billing-report${suffix}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 // Per-tab formatted Excel reports (auth header required, so fetch as blob)
 export async function downloadAdminReport(kind: "dashboard" | "contracts"): Promise<void> {

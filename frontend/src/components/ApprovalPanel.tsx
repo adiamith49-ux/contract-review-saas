@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ChevronDown, ChevronUp, Loader2, CheckCircle2, XCircle, Clock,
-  MessageSquareWarning, MinusCircle, Send, UserCheck, History,
+  MessageSquareWarning, MinusCircle, Send, UserCheck, History, Paperclip, Download, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,8 @@ export function ApprovalPanel({ contractId, contractStatus, getToken, onChanged 
   const [deciding, setDeciding] = useState<string | null>(null); // decision being saved
   const [comment, setComment] = useState("");
   const [showHistory, setShowHistory] = useState(false);
+  const [submissionNote, setSubmissionNote] = useState("");
+  const [submissionFile, setSubmissionFile] = useState<File | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -53,8 +55,13 @@ export function ApprovalPanel({ contractId, contractStatus, getToken, onChanged 
     setSubmitting(true);
     try {
       const token = await getToken();
-      const { steps } = await submitForApproval(token, contractId);
+      const { steps } = await submitForApproval(token, contractId, {
+        note: submissionNote.trim() || undefined,
+        file: submissionFile ?? undefined,
+      });
       toast.success(`Submitted for approval — pending with ${steps[0]?.approver_name}`);
+      setSubmissionNote("");
+      setSubmissionFile(null);
       setOpen(true);
       await load();
       onChanged?.();
@@ -126,23 +133,72 @@ export function ApprovalPanel({ contractId, contractStatus, getToken, onChanged 
         <div className="px-3 md:px-5 pb-4 space-y-3">
           {/* Not yet submitted */}
           {!pendingWith && (
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed bg-gray-50/60 px-4 py-3">
+            <div className="rounded-lg border border-dashed bg-gray-50/60 px-4 py-3 space-y-3">
               <p className="text-xs text-gray-500">
                 {submitted
                   ? "This round is complete. Resubmit to start a new approval round."
                   : <>Route this contract through your firm&apos;s approval chain. Approvers are picked from your <Link href="/approvals" className="text-primary hover:underline font-medium">approval matrix</Link> based on value, risk, department and jurisdiction.</>}
               </p>
-              <Button size="sm" onClick={handleSubmit} disabled={submitting || contractStatus === "pending_approval"}>
-                {submitting
-                  ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Submitting…</>
-                  : <><Send className="h-3.5 w-3.5 mr-1.5" />{submitted ? "Resubmit for Approval" : "Submit for Approval"}</>}
-              </Button>
+
+              <Textarea
+                value={submissionNote}
+                onChange={e => setSubmissionNote(e.target.value)}
+                placeholder="Optional note for the approver(s)…"
+                className="text-xs min-h-[54px] bg-white"
+                disabled={submitting}
+                maxLength={2000}
+              />
+
+              {submissionFile ? (
+                <div className="flex items-center gap-2 rounded-md border bg-white px-3 py-1.5 text-xs">
+                  <Paperclip className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                  <span className="flex-1 truncate text-gray-700">{submissionFile.name}</span>
+                  <button type="button" onClick={() => setSubmissionFile(null)} disabled={submitting} className="text-gray-400 hover:text-red-500">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  onChange={e => setSubmissionFile(e.target.files?.[0] ?? null)}
+                  disabled={submitting}
+                  className="w-full text-xs text-gray-500 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 file:px-2.5 file:py-1 file:text-[11px] file:font-medium file:text-gray-700 hover:file:bg-gray-200"
+                />
+              )}
+
+              <div className="flex justify-end">
+                <Button size="sm" onClick={handleSubmit} disabled={submitting || contractStatus === "pending_approval"}>
+                  {submitting
+                    ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Submitting…</>
+                    : <><Send className="h-3.5 w-3.5 mr-1.5" />{submitted ? "Resubmit for Approval" : "Submit for Approval"}</>}
+                </Button>
+              </div>
             </div>
           )}
 
           {/* Current chain */}
           {submitted && (
-            <ol className="space-y-2">
+            <>
+              {(chain[0]?.submission_note || chain[0]?.attachment_url) && (
+                <div className="rounded-lg border bg-gray-50/60 px-3.5 py-2.5 space-y-1.5">
+                  {chain[0]?.submission_note && (
+                    <p className="text-xs text-gray-600 italic">“{chain[0].submission_note}”</p>
+                  )}
+                  {chain[0]?.attachment_url && (
+                    <a
+                      href={chain[0].attachment_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      {chain[0].attachment_filename ?? "Download attachment"}
+                    </a>
+                  )}
+                </div>
+              )}
+              <ol className="space-y-2">
               {chain.map(step => {
                 const meta = STEP_STATUS[step.status];
                 const actionable = pendingWith?.id === step.id;
@@ -197,7 +253,8 @@ export function ApprovalPanel({ contractId, contractStatus, getToken, onChanged 
                   </li>
                 );
               })}
-            </ol>
+              </ol>
+            </>
           )}
 
           {/* Approval history from earlier rounds */}

@@ -179,6 +179,12 @@ CREATE TABLE IF NOT EXISTS tasks (
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS contract_id uuid REFERENCES contracts(id) ON DELETE SET NULL;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assignee text;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+-- Optional document the admin attaches when assigning a task — the user
+-- downloads it, then re-uploads it through the normal Upload flow to analyze it
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS attachment_s3_key text;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS attachment_filename text;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS attachment_mime_type text;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS attachment_size bigint;
 CREATE INDEX IF NOT EXISTS idx_tasks_contract ON tasks(contract_id);
 
 -- Approval matrix rules (who must approve, and when they are triggered)
@@ -232,6 +238,13 @@ CREATE TABLE IF NOT EXISTS contract_approvals (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_contract_approvals ON contract_approvals(contract_id, round DESC, step_order);
+-- Optional supporting note/document the submitter attaches — copied onto every
+-- step row of the round so any approver viewing any step sees the same context
+ALTER TABLE contract_approvals ADD COLUMN IF NOT EXISTS submission_note text;
+ALTER TABLE contract_approvals ADD COLUMN IF NOT EXISTS attachment_s3_key text;
+ALTER TABLE contract_approvals ADD COLUMN IF NOT EXISTS attachment_filename text;
+ALTER TABLE contract_approvals ADD COLUMN IF NOT EXISTS attachment_mime_type text;
+ALTER TABLE contract_approvals ADD COLUMN IF NOT EXISTS attachment_size bigint;
 
 -- Contract comparisons (version diff + AI change summary, stored under the base contract)
 CREATE TABLE IF NOT EXISTS contract_comparisons (
@@ -249,6 +262,23 @@ CREATE TABLE IF NOT EXISTS contract_comparisons (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_comparisons_base ON contract_comparisons(base_contract_id, created_at DESC);
+
+-- Time entries (billable/internal work log — nav-bar timer + manual log)
+CREATE TABLE IF NOT EXISTS time_entries (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id text NOT NULL,
+  subject text NOT NULL,
+  contract text NOT NULL DEFAULT '',
+  date date NOT NULL,
+  duration text NOT NULL,                         -- display string, e.g. "1h 24m"
+  duration_mins int NOT NULL,
+  billable boolean NOT NULL DEFAULT true,
+  category text NOT NULL,                         -- "Billable Work" | "Internal"
+  description text NOT NULL DEFAULT '',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_time_entries_user ON time_entries(user_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_time_entries_billable ON time_entries(billable, date DESC);
 
 -- Activity logs (audit trail for all key actions)
 CREATE TABLE IF NOT EXISTS activity_logs (

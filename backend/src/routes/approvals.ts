@@ -1,13 +1,29 @@
+import crypto from "node:crypto";
 import { Router } from "express";
+import multer from "multer";
 import { z } from "zod";
 import { db } from "../db.js";
 import { config } from "../config.js";
 import { requireAuth } from "../middleware/auth.js";
 import { logActivity } from "../services/activity.service.js";
 import { isMailerConfigured, sendMail } from "../services/mailer.service.js";
+import { uploadToS3, getPresignedUrl } from "../services/storage.service.js";
 
 export const approvalsRouter = Router();
 approvalsRouter.use(requireAuth);
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = [
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/msword",
+    ];
+    cb(null, allowed.includes(file.mimetype));
+  },
+});
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -222,9 +238,10 @@ approvalsRouter.delete("/rules/:id", async (req, res, next) => {
 // ─── Submit contract for approval ─────────────────────────────────────────────
 
 // POST /api/approvals/contracts/:contractId/submit
-approvalsRouter.post("/contracts/:contractId/submit", async (req, res, next) => {
+approvalsRouter.post("/contracts/:contractId/submit", upload.single("file"), async (req, res, next) => {
   try {
     const contractId = req.params.contractId;
+    const submissionNote = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : "";
 
     const { data: contract, error: cErr } = await db
       .from("contracts")
@@ -272,6 +289,18 @@ approvalsRouter.post("/contracts/:contractId/submit", async (req, res, next) => 
       .limit(1);
     const round = (prev?.[0]?.round ?? 0) + 1;
 
+    let attachment: { attachment_s3_key: string; attachment_filename: string; attachment_mime_type: string; attachment_size: number } | null = null;
+    if (req.file) {
+      const key = `approval-attachments/${contractId}/${round}-${crypto.randomUUID()}-${req.file.originalname}`;
+      await uploadToS3({ buffer: req.file.buffer, key, mimeType: req.file.mimetype });
+      attachment = {
+        attachment_s3_key: key,
+        attachment_filename: req.file.originalname,
+        attachment_mime_type: req.file.mimetype,
+        attachment_size: req.file.size,
+      };
+    }
+
     const rows = chain.map((s, i) => ({
       contract_id: contractId,
       user_id: req.userId,
@@ -282,6 +311,8 @@ approvalsRouter.post("/contracts/:contractId/submit", async (req, res, next) => 
       rule_name: s.rule.name,
       matched_reason: s.reasons.join("; "),
       status: "pending",
+      submission_note: submissionNote || null,
+      ...attachment,
     }));
 
     const { data: steps, error: sErr } = await db.from("contract_approvals").insert(rows).select();
@@ -325,7 +356,16 @@ approvalsRouter.get("/contracts/:contractId", async (req, res, next) => {
       .order("step_order");
     if (error) throw error;
 
-    const all = data ?? [];
+    // Resolve a presigned download link per step that carries an attachment —
+    // steps within the same round share the same attachment, so cache per key
+    const urlCache = new Map<string, string>();
+    const all = await Promise.all((data ?? []).map(async (step) => {
+      if (!step.attachment_s3_key) return { ...step, attachment_url: null };
+      if (!urlCache.has(step.attachment_s3_key)) {
+        urlCache.set(step.attachment_s3_key, await getPresignedUrl(step.attachment_s3_key));
+      }
+      return { ...step, attachment_url: urlCache.get(step.attachment_s3_key)! };
+    }));
     const currentRound = all.length > 0 ? all[0].round : 0;
     const current = all.filter(s => s.round === currentRound);
     const pendingWith = current.find(s => s.status === "pending") ?? null;
@@ -361,15 +401,12 @@ approvalsRouter.post("/steps/:stepId/decide", async (req, res, next) => {
       .single();
     if (sErr || !step) return res.status(404).json({ error: "Approval step not found" });
 
-    // Contract owner can act on any step (paper-trail model — no orgs/RBAC in
-    // V1), or the caller's own account email must match THIS step's named
-    // approver, so e.g. the CFO step can only be decided by whoever's logged
-    // in as the CFO's email, not by clicking around as the contract owner.
-    let authorized = step.user_id === req.userId;
-    if (!authorized) {
-      const email = await getUserEmail(req.userId);
-      authorized = !!email && !!step.approver_email && email.toLowerCase() === step.approver_email.toLowerCase();
-    }
+    // Only the account whose email matches THIS step's named approver may
+    // decide it — the contract owner has no special override, even for their
+    // own submission. A step with no approver_email can never be matched by
+    // email, so it can only be decided by an admin acting directly in Supabase.
+    const email = await getUserEmail(req.userId);
+    const authorized = !!email && !!step.approver_email && email.toLowerCase() === step.approver_email.toLowerCase();
     if (!authorized) return res.status(403).json({ error: "You are not the named approver for this step" });
 
     if (step.status !== "pending") return res.status(409).json({ error: "This step has already been decided" });

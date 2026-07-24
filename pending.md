@@ -7,6 +7,14 @@ Mark tasks as done with `[x]` when complete.
 
 ---
 
+## Ad hoc — requested by Kartik (2026-07-24)
+
+- [x] Admin: download billable work as a formatted Excel export — per user, or all users at once (same visual standard as the existing dashboard/contracts report exports)
+- [x] Admin task assignment: optionally attach a contract document the user must download and re-upload (via the normal Upload flow) to run analysis
+- [x] Contract approval submission: let the submitting user attach a supporting "child" document and/or a text note, visible to every approver in that round
+
+---
+
 ## Module 1 — Dashboard
 
 - [ ] Risk Heatmap — visual grid of contracts by risk tier (High / Medium / Low)
