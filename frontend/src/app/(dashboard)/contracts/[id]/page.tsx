@@ -15,10 +15,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { ReviewPanel } from "@/components/ReviewPanel";
 import { DocumentViewer } from "@/components/DocumentViewer";
 import { RedlineViewer } from "@/components/RedlineViewer";
-import { IntakePanel } from "@/components/IntakePanel";
-import { ApprovalPanel } from "@/components/ApprovalPanel";
-import { MatterWorkspace } from "@/components/MatterWorkspace";
-import { VersionComparePanel } from "@/components/VersionComparePanel";
+import { ContractDetailTabs } from "@/components/ContractDetailTabs";
 import { AIChatFloat } from "@/components/AIChatFloat";
 import {
   getContract, analyzeContract, downloadExport,
@@ -362,17 +359,8 @@ export default function ContractDetailPage() {
         );
       })()}
 
-      {/* ── Legal intake ─────────────────────────────────────────────────── */}
-      <IntakePanel contractId={id} getToken={getToken} />
-
-      {/* ── Approval workflow ────────────────────────────────────────────── */}
-      <ApprovalPanel contractId={id} contractStatus={contract.contract_status} getToken={getToken} onChanged={load} />
-
-      {/* ── Versions & comparison ────────────────────────────────────────── */}
-      <VersionComparePanel contractId={id} getToken={getToken} />
-
-      {/* ── Matter workspace: comments, tasks, activity, team ────────────── */}
-      <MatterWorkspace contractId={id} getToken={getToken} />
+      {/* ── Legal intake / Approval / Versions / Matter workspace ─────────── */}
+      <ContractDetailTabs contractId={id} contractStatus={contract.contract_status} getToken={getToken} onChanged={load} />
 
       {/* ── Body ─────────────────────────────────────────────────────────── */}
       {!isAnalyzed ? (

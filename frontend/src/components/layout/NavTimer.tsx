@@ -30,7 +30,7 @@ function fmtMins(mins: number): string {
   return h > 0 ? `${h}h ${m > 0 ? m + "m" : ""}`.trim() : `${m}m`;
 }
 
-export function NavTimer() {
+export function NavTimer({ collapsed }: { collapsed?: boolean } = {}) {
   const { getToken } = useAuth();
 
   const [startedAt, setStartedAt] = useState<number | null>(null);
@@ -116,32 +116,39 @@ export function NavTimer() {
       {/* Timer chip */}
       <div
         className={cn(
-          "hidden lg:flex items-center gap-1 rounded-md pl-1.5 pr-2.5 py-1 mr-1 transition-colors",
+          "flex items-center rounded-md transition-colors",
+          collapsed ? "justify-center py-1.5" : "gap-1 pl-1.5 pr-2.5 py-1",
           running ? "bg-emerald-500/15 ring-1 ring-emerald-400/40" : "bg-white/10"
         )}
+        title={collapsed ? (running ? `Running — ${fmtElapsed(elapsed)}` : "Start time tracking") : undefined}
       >
         <button
           onClick={running ? stop : start}
           aria-label={running ? "Stop timer" : "Start timer"}
-          title={running ? "Stop and save time entry" : "Start time tracking"}
+          title={collapsed ? undefined : (running ? "Stop and save time entry" : "Start time tracking")}
           className={cn(
-            "flex h-6 w-6 items-center justify-center rounded transition-colors",
+            "flex h-6 w-6 items-center justify-center rounded transition-colors relative",
             running
               ? "text-red-400 hover:text-red-300 hover:bg-white/10"
               : "text-emerald-400 hover:text-emerald-300 hover:bg-white/10"
           )}
         >
           {running ? <Square className="h-3.5 w-3.5 fill-current" /> : <Play className="h-3.5 w-3.5 fill-current" />}
+          {collapsed && running && <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />}
         </button>
-        <span
-          className={cn(
-            "text-sm font-semibold tabular-nums select-none",
-            running ? "text-white" : "text-slate-400"
-          )}
-        >
-          {running ? fmtElapsed(elapsed) : "00:00"}
-        </span>
-        {running && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse ml-0.5" />}
+        {!collapsed && (
+          <>
+            <span
+              className={cn(
+                "text-sm font-semibold tabular-nums select-none",
+                running ? "text-white" : "text-slate-400"
+              )}
+            >
+              {running ? fmtElapsed(elapsed) : "00:00"}
+            </span>
+            {running && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse ml-0.5" />}
+          </>
+        )}
       </div>
 
       {/* Save dialog — shown when the user stops the timer */}

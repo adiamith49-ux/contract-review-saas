@@ -17,6 +17,8 @@ import { CONTRACT_BUSINESS_STATUS_LABELS } from "@/lib/utils";
 interface Props {
   contractId: string;
   getToken: () => Promise<string | null>;
+  /** Render body content only, no collapsible header/border — used when hosted inside a tab strip. */
+  embedded?: boolean;
 }
 
 const IMPACT_CLS: Record<string, string> = {
@@ -25,8 +27,9 @@ const IMPACT_CLS: Record<string, string> = {
   low: "bg-gray-100 text-gray-600",
 };
 
-export function VersionComparePanel({ contractId, getToken }: Props) {
+export function VersionComparePanel({ contractId, getToken, embedded }: Props) {
   const [open, setOpen] = useState(false);
+  const isOpen = embedded || open;
   const [versions, setVersions] = useState<VersionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [baseId, setBaseId] = useState<string>("");
@@ -49,7 +52,7 @@ export function VersionComparePanel({ contractId, getToken }: Props) {
     }
   }, [contractId, getToken]);
 
-  useEffect(() => { if (open && loading) load(); }, [open, loading, load]);
+  useEffect(() => { if (isOpen && loading) load(); }, [isOpen, loading, load]);
 
   async function handleCompare() {
     if (!baseId || !againstId) { toast.error("Pick two versions to compare"); return; }
@@ -116,18 +119,20 @@ export function VersionComparePanel({ contractId, getToken }: Props) {
   const changedBlocks = result?.diff.filter(b => b.type !== "unchanged") ?? [];
 
   return (
-    <div className="shrink-0 border-b bg-white">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full px-3 md:px-5 py-2 flex items-center gap-2.5 text-left hover:bg-gray-50 transition-colors"
-      >
-        <GitCompare className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-        <span className="text-xs font-semibold text-gray-700">Versions & Comparison</span>
-        {!loading && <span className="text-[10px] text-gray-400">{versions.length} version{versions.length === 1 ? "" : "s"}</span>}
-        <span className="ml-auto text-gray-400">{open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}</span>
-      </button>
+    <div className={embedded ? "" : "shrink-0 border-b bg-white"}>
+      {!embedded && (
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="w-full px-3 md:px-5 py-2 flex items-center gap-2.5 text-left hover:bg-gray-50 transition-colors"
+        >
+          <GitCompare className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+          <span className="text-xs font-semibold text-gray-700">Versions & Comparison</span>
+          {!loading && <span className="text-[10px] text-gray-400">{versions.length} version{versions.length === 1 ? "" : "s"}</span>}
+          <span className="ml-auto text-gray-400">{open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}</span>
+        </button>
+      )}
 
-      {open && (
+      {isOpen && (
         <div className="px-3 md:px-5 pb-4 space-y-3">
           {loading ? (
             <div className="py-6 flex justify-center"><Loader2 className="h-5 w-5 animate-spin text-gray-300" /></div>

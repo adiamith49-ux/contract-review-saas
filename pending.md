@@ -12,6 +12,20 @@ Mark tasks as done with `[x]` when complete.
 - [x] Admin: download billable work as a formatted Excel export — per user, or all users at once (same visual standard as the existing dashboard/contracts report exports)
 - [x] Admin task assignment: optionally attach a contract document the user must download and re-upload (via the normal Upload flow) to run analysis
 - [x] Contract approval submission: let the submitting user attach a supporting "child" document and/or a text note, visible to every approver in that round
+- [x] Fix: approval decision could be made by the contract owner on any step, not just the actual named approver's account (self-approval bug)
+
+---
+
+## Ad hoc — requested by Kartik (2026-07-26) — layout/UX
+
+- [x] User app: move primary navigation from the top bar into a standard left-hand sidebar (like the admin panel already has)
+- [x] Contract detail page: the 4 stacked bands (Legal Intake, Approval, Versions, Matter Workspace) take up too much vertical space one after another — consolidate into a compact tab strip
+- [x] Contract detail page: AI Review panel + document viewer should get the freed-up vertical space so they feel full-page, not squeezed
+- [x] Sidebar: use the full wordmark logo at the top instead of icon + typed name
+- [x] Sidebar: remove the app-launcher grid icon (its destinations are already all in the sidebar nav)
+- [x] Sidebar: give the timer widget a better, more visible spot
+- [x] Sidebar: while viewing a contract, swap the main nav for the 4 consolidated panels (Legal Intake / Approval / Versions / Workspace) as the navigator
+- [x] Sidebar: add a "«" collapse toggle next to the logo to shrink it to icon-only rail mode
 
 ---
 

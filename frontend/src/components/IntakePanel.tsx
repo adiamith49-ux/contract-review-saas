@@ -15,6 +15,8 @@ interface Props {
   contractId: string;
   getToken: () => Promise<string | null>;
   onSaved?: () => void;
+  /** Render body content only, no collapsible header/border — used when hosted inside a tab strip. */
+  embedded?: boolean;
 }
 
 // ─── Field helpers ────────────────────────────────────────────────────────────
@@ -58,8 +60,9 @@ const URGENCY_COLORS: Record<string, string> = {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function IntakePanel({ contractId, getToken, onSaved }: Props) {
+export function IntakePanel({ contractId, getToken, onSaved, embedded }: Props) {
   const [open, setOpen] = useState(false);
+  const isOpen = embedded || open;
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [filled, setFilled] = useState(false);
@@ -135,32 +138,34 @@ export function IntakePanel({ contractId, getToken, onSaved }: Props) {
   }
 
   return (
-    <div className="shrink-0 border-b bg-white max-h-[35vh] overflow-y-auto">
+    <div className={embedded ? "max-h-[35vh] overflow-y-auto" : "shrink-0 border-b bg-white max-h-[35vh] overflow-y-auto"}>
       {/* ── Toggle header ─────────────────────────────────────────────── */}
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left"
-      >
-        <ClipboardList className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-        <span className="text-xs font-semibold text-gray-700 flex-1">Legal Intake</span>
-        {loading && <Loader2 className="h-3 w-3 text-gray-400 animate-spin" />}
-        {filled && !loading && (
-          <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
-            Filled
-          </span>
-        )}
-        {!filled && !loading && (
-          <span className="text-[10px] text-gray-400">
-            Provide deal context to improve AI analysis
-          </span>
-        )}
-        {open
-          ? <ChevronUp className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-          : <ChevronDown className="h-3.5 w-3.5 text-gray-400 shrink-0" />}
-      </button>
+      {!embedded && (
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left"
+        >
+          <ClipboardList className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+          <span className="text-xs font-semibold text-gray-700 flex-1">Legal Intake</span>
+          {loading && <Loader2 className="h-3 w-3 text-gray-400 animate-spin" />}
+          {filled && !loading && (
+            <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
+              Filled
+            </span>
+          )}
+          {!filled && !loading && (
+            <span className="text-[10px] text-gray-400">
+              Provide deal context to improve AI analysis
+            </span>
+          )}
+          {open
+            ? <ChevronUp className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+            : <ChevronDown className="h-3.5 w-3.5 text-gray-400 shrink-0" />}
+        </button>
+      )}
 
       {/* ── Form body ──────────────────────────────────────────────────── */}
-      {open && (
+      {isOpen && (
         <div className="px-4 pb-4 pt-1 space-y-3">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {/* Counterparty */}
