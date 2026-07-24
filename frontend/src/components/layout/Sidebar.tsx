@@ -236,9 +236,9 @@ function SidebarBody({
 
   return (
     <>
-      {/* Logo + collapse toggle */}
-      <div className={cn("flex h-14 items-center border-b border-white/10 shrink-0", collapsed ? "justify-center px-2" : "gap-2 px-4")}>
-        <Link href="/dashboard" onClick={onNavigate} className={cn("flex items-center min-w-0", !collapsed && "flex-1")}>
+      {/* Logo */}
+      <div className={cn("relative flex h-14 items-center border-b border-white/10 shrink-0", collapsed ? "justify-center px-2" : "px-4")}>
+        <Link href="/dashboard" onClick={onNavigate} className="flex items-center min-w-0">
           {collapsed ? (
             <ContralyneLogoMark className="h-7 w-7" onDark />
           ) : (
@@ -246,14 +246,16 @@ function SidebarBody({
             <img src="/name-logo.png" alt="Contralyne" className="h-6 w-auto" />
           )}
         </Link>
+
+        {/* Collapse toggle — sits centered right on the divider line below the logo */}
         {onToggleCollapse && (
           <button
             onClick={onToggleCollapse}
-            className="hidden lg:flex items-center justify-center h-6 w-6 rounded text-white/40 hover:text-white hover:bg-white/10 transition-colors shrink-0"
+            className="hidden lg:flex absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 z-10 items-center justify-center h-6 w-6 rounded-full bg-[#0F2A2A] border border-white/20 text-white/50 hover:text-white hover:border-white/40 transition-colors shadow-sm"
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            {collapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
+            {collapsed ? <ChevronsRight className="h-3.5 w-3.5" /> : <ChevronsLeft className="h-3.5 w-3.5" />}
           </button>
         )}
       </div>
