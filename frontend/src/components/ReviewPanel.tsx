@@ -1,15 +1,16 @@
 
 "use client";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   X, ChevronDown, ChevronUp, ShieldAlert, FileWarning,
   Handshake, HelpCircle, Check, FileDown, ListChecks,
   FileText, AlertCircle, Users, Calendar, Scale, BookOpen,
-  XCircle, Pencil,
+  XCircle, Pencil, Copy, Search, Loader2, Send,
 } from "lucide-react";
+import { toast } from "sonner";
 import { RiskBadge } from "@/components/RiskBadge";
 import { Button } from "@/components/ui/button";
-import type { AnalysisOut } from "@/lib/api";
+import { listClauses, submitTicket, type AnalysisOut, type Clause } from "@/lib/api";
 import type { RiskLevel, AmbiguityFlag, ExtractedClause, MissingClause, ContractMetadata } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -29,11 +30,12 @@ interface Props {
   redlinePlaced?: number;
   redlineTotal?: number;
   onScrollToText?: (text: string) => void;
+  getToken: () => Promise<string | null>;
 }
 
 // ─── Tabs ────────────────────────────────────────────────────────────────────
 
-type Tab = "overview" | "clauses" | "risks" | "negotiate";
+type Tab = "overview" | "clauses" | "risks" | "negotiate" | "library";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -439,9 +441,168 @@ function NegotiationItem({
   );
 }
 
+// ─── Clause Library tab (read-only quick-access while reviewing) ───────────────
+
+const CLAUSE_TYPE_CLS: Record<string, string> = {
+  approved: "bg-emerald-100 text-emerald-700",
+  fallback: "bg-amber-100 text-amber-700",
+  unacceptable: "bg-red-100 text-red-700",
+};
+// Match the labels used on the /clauses page (approved is shown as "Preferred")
+const CLAUSE_TYPE_LABEL: Record<string, string> = {
+  approved: "Preferred",
+  fallback: "Fallback",
+  unacceptable: "Walk-away",
+};
+
+function ClauseLibraryTab({ getToken }: { getToken: () => Promise<string | null> }) {
+  const [clauses, setClauses] = useState<Clause[] | null>(null);
+  const [error, setError] = useState(false);
+  const [search, setSearch] = useState("");
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [requestFor, setRequestFor] = useState<Clause | null>(null);
+  const [requestText, setRequestText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const token = await getToken();
+      const { clauses } = await listClauses(token);
+      setClauses(clauses);
+    } catch {
+      setError(true);
+    }
+  }, [getToken]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function copy(c: Clause) {
+    try {
+      await navigator.clipboard.writeText(c.content);
+      setCopiedId(c.id);
+      setTimeout(() => setCopiedId(null), 1500);
+      toast.success("Clause copied — paste into a suggestion or redline");
+    } catch {
+      toast.error("Couldn't copy to clipboard");
+    }
+  }
+
+  async function sendRequest() {
+    if (!requestFor || !requestText.trim()) return;
+    setSubmitting(true);
+    try {
+      const token = await getToken();
+      await submitTicket(token, {
+        type: "clause_change",
+        reference_id: requestFor.id,
+        reference_name: requestFor.title,
+        description: requestText.trim(),
+      });
+      toast.success("Change request sent to your admin");
+      setRequestFor(null);
+      setRequestText("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't send request");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (error) {
+    return <div className="px-4 py-6 text-[11px] text-gray-400 italic">Couldn't load the clause library.</div>;
+  }
+  if (clauses === null) {
+    return <div className="py-8 flex justify-center"><Loader2 className="h-5 w-5 animate-spin text-gray-300" /></div>;
+  }
+
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? clauses.filter(c => c.title.toLowerCase().includes(q) || c.content.toLowerCase().includes(q))
+    : clauses;
+
+  return (
+    <div className="p-3 space-y-2.5">
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search approved / fallback language…"
+          className="w-full rounded-md border pl-8 pr-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
+      </div>
+
+      {clauses.length === 0 ? (
+        <p className="px-1 py-4 text-[11px] text-gray-400 italic">Your firm&apos;s clause library is empty. An admin can add approved and fallback language.</p>
+      ) : filtered.length === 0 ? (
+        <p className="px-1 py-4 text-[11px] text-gray-400 italic">No clauses match &ldquo;{search}&rdquo;.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {filtered.map(c => {
+            const isOpen = openId === c.id;
+            return (
+              <div key={c.id} className="rounded-lg border">
+                <button
+                  onClick={() => setOpenId(isOpen ? null : c.id)}
+                  className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-gray-50 transition-colors"
+                >
+                  <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold", CLAUSE_TYPE_CLS[c.clause_type])}>
+                    {CLAUSE_TYPE_LABEL[c.clause_type] ?? c.clause_type}
+                  </span>
+                  <span className="text-xs font-medium text-gray-800 truncate flex-1">{c.title}</span>
+                  {c.jurisdiction && <span className="text-[9px] text-gray-400 uppercase shrink-0">{c.jurisdiction}</span>}
+                  {isOpen ? <ChevronUp className="h-3.5 w-3.5 text-gray-400 shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 text-gray-400 shrink-0" />}
+                </button>
+
+                {isOpen && (
+                  <div className="border-t px-2.5 py-2 space-y-2">
+                    <pre className="text-[11px] text-gray-700 font-sans whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto">{c.content}</pre>
+                    <div className="flex items-center gap-1.5">
+                      <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => copy(c)}>
+                        {copiedId === c.id ? <><Check className="h-3 w-3 mr-1 text-emerald-600" />Copied</> : <><Copy className="h-3 w-3 mr-1" />Copy</>}
+                      </Button>
+                      <Button
+                        size="sm" variant="ghost" className="h-7 text-[11px] text-gray-500"
+                        onClick={() => { setRequestFor(c); setRequestText(""); }}
+                      >
+                        <Send className="h-3 w-3 mr-1" />Request change
+                      </Button>
+                    </div>
+
+                    {requestFor?.id === c.id && (
+                      <div className="rounded-md border bg-gray-50 p-2 space-y-1.5">
+                        <textarea
+                          value={requestText}
+                          onChange={e => setRequestText(e.target.value)}
+                          placeholder="Describe the change you'd like an admin to make to this clause…"
+                          rows={3}
+                          className="w-full rounded border px-2 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                        <div className="flex items-center gap-1.5">
+                          <Button size="sm" className="h-6 text-[11px]" disabled={submitting || !requestText.trim()} onClick={sendRequest}>
+                            {submitting ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Send className="h-3 w-3 mr-1" />}Send to admin
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-6 text-[11px]" onClick={() => setRequestFor(null)}>Cancel</Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <p className="text-[9px] text-gray-400 text-center pt-1">Firm library is admin-curated · request changes via ticket</p>
+    </div>
+  );
+}
+
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
-export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, onApply, onApplyAll, onClose, onDownload, redlinePlaced, redlineTotal, onScrollToText }: Props) {
+export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, onApply, onApplyAll, onClose, onDownload, redlinePlaced, redlineTotal, onScrollToText, getToken }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
   const [openClauseIdx, setOpenClauseIdx] = useState<number | null>(null);
   const [openMissingIdx, setOpenMissingIdx] = useState<number | null>(null);
@@ -480,6 +641,7 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
     { key: "clauses", label: "Clauses", count: extractedClauses.length + analysis.clause_analysis.length },
     { key: "risks", label: "Risks", count: analysis.risk_summary.length },
     { key: "negotiate", label: "Negotiate", count: analysis.negotiation_points.length },
+    { key: "library", label: "Library" },
   ];
 
   return (
@@ -706,6 +868,9 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
             )}
           </>
         )}
+
+        {/* ════════ LIBRARY TAB ════════ */}
+        {tab === "library" && <ClauseLibraryTab getToken={getToken} />}
 
         <div className="h-4" />
       </div>

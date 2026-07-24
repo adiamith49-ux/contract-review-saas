@@ -144,18 +144,32 @@ export async function analyzeContract(
 ): Promise<AnalysisResult & { model: string }> {
   // Use streaming to reduce wall-clock time — tokens arrive incrementally
   // instead of waiting for the full response to be computed.
+  //
+  // config.ANALYSIS_MAX_TOKENS is the biggest single knob on wall-clock time: at
+  // ~70-90 output tok/s, generation time ≈ max_tokens / speed. It MUST fit the
+  // serverless function's max duration or the function is killed mid-run and the
+  // contract wedges at "processing". Default 8000 (~60-90s function). Raise the
+  // Vercel function Max Duration to 300s+, then set ANALYSIS_MAX_TOKENS=20000
+  // for full uncapped recall (~25-30 findings). The prompt scales its output
+  // ambition to this budget (see buildContractPrompt) so it finishes cleanly
+  // rather than truncating the tool-call JSON.
   const stream = anthropic.messages.stream({
     model: config.AI_MODEL,
-    // 30-40 clause findings, each with a fully drafted replacement clause, does
-    // not fit in 8k. Streaming keeps the request under the SDK HTTP timeout.
-    max_tokens: 32000,
+    max_tokens: config.ANALYSIS_MAX_TOKENS,
     system: [{ type: "text", text: legalSystemPrompt }],
     tools: [analysisTool],
     tool_choice: { type: "tool", name: "analyze_contract" },
-    messages: [{ role: "user", content: buildContractPrompt(text, contractType, intake, playbookText, clauseLibrary) }],
+    messages: [{ role: "user", content: buildContractPrompt(text, contractType, intake, playbookText, clauseLibrary, config.ANALYSIS_MAX_TOKENS) }],
   });
 
   const response = await stream.finalMessage();
+
+  // If the model hit the token ceiling, the tool-call JSON is truncated and its
+  // parsed input is partial/garbage. Fail loudly (retryable) instead of saving a
+  // broken analysis — the caller marks the contract "failed", not stuck.
+  if (response.stop_reason === "max_tokens") {
+    throw new Error("Analysis output exceeded the token limit (contract too large/complex for a single pass). Try again, or split the document.");
+  }
 
   const toolUse = response.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
   if (!toolUse) throw new Error("AI did not return structured analysis");
