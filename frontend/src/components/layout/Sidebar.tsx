@@ -8,7 +8,7 @@ import {
   LayoutDashboard, FileSearch, Upload, ClipboardList, Clock, CalendarDays,
   Library, Gavel, UserCheck, LineChart, Settings, User, Lock, CreditCard,
   LifeBuoy, LogOut, ChevronDown, ChevronsLeft, ChevronsRight, Menu, X,
-  GitCompare, MessagesSquare, ArrowLeft,
+  GitCompare, MessagesSquare, ArrowLeft, PenTool,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ContralyneLogoMark } from "@/components/ContralyneLogoMark";
@@ -41,6 +41,7 @@ const CONTRACT_TABS = [
   { key: "approval",  label: "Approval",     icon: UserCheck },
   { key: "versions",  label: "Versions",     icon: GitCompare },
   { key: "workspace", label: "Workspace",    icon: MessagesSquare },
+  { key: "signature", label: "Signature",    icon: PenTool },
 ] as const;
 
 function useIsActive(href: string) {

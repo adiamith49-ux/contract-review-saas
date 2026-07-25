@@ -825,6 +825,45 @@ export async function decideApproval(
   });
 }
 
+// ─── DocuSign e-signature ─────────────────────────────────────────────────────
+
+export interface SignatureParty {
+  name: string;
+  email: string;
+  routing_order: number;
+  status: string; // created | sent | delivered | signed | declined | autoresponded
+  signed_at: string | null;
+}
+
+export interface SignatureRequest {
+  id: string;
+  contract_id: string;
+  status: string; // created | sent | delivered | completed | declined | voided | error
+  docusign_envelope_id: string | null;
+  parties: SignatureParty[];
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getSignatureRequest(
+  token: string | null,
+  contractId: string,
+): Promise<{ request: SignatureRequest | null }> {
+  return apiFetch(`/api/contracts/${contractId}/signature`, token);
+}
+
+export async function submitForSignature(
+  token: string | null,
+  contractId: string,
+  parties: { name: string; email: string }[],
+): Promise<{ request: SignatureRequest }> {
+  return apiFetch(`/api/contracts/${contractId}/signature`, token, {
+    method: "POST",
+    body: JSON.stringify({ parties }),
+  });
+}
+
 // ─── Matter collaboration ─────────────────────────────────────────────────────
 
 export interface ContractComment {

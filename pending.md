@@ -29,6 +29,31 @@ Mark tasks as done with `[x]` when complete.
 
 ---
 
+## Ad hoc — requested by Kartik (2026-07-28) — DocuSign e-signature
+
+Note: `CLAUDE.md` lists "Bulk export, DocuSign/e-signature" under out-of-scope V1. Building anyway
+as a goodwill beyond-scope item, same as approval routing / task assignment / calendar / etc.
+Real envelope-sending needs a DocuSign developer account's credentials in `backend/.env`
+(`DOCUSIGN_INTEGRATION_KEY`, `DOCUSIGN_USER_ID`, `DOCUSIGN_ACCOUNT_ID`, `DOCUSIGN_PRIVATE_KEY`) —
+the feature degrades to a clear "not configured" error until those are supplied, same pattern as SMTP.
+
+- [x] `signature_requests` table (contract_id, parties jsonb, envelope id, status) — migrated to live Supabase
+- [x] `backend/src/services/docusign.service.ts` — JWT auth grant + create/send envelope + status fetch
+- [x] `POST /api/contracts/:id/signature` — gated on `contract_status === "approved"`, accepts 2+ parties (name+email), sends real DocuSign envelope
+- [x] `GET /api/contracts/:id/signature` — latest request + live per-party status
+- [x] `POST /api/webhooks/docusign` — DocuSign Connect callback to reconcile envelope/recipient status
+- [x] Frontend: "Submit for Signature" action → dialog to add 2+ signer name/email rows → send
+- [x] Frontend: Signature status panel (5th contract-context sidebar tab), shows each party's status, refreshable
+- [x] `docusign-esign` npm dependency + config/env wiring
+
+**Still needed from Kartik before this goes live:** a DocuSign developer (sandbox) account —
+Integration Key, RSA private key, API User ID, Account ID — added to `backend/.env` (see the
+comment block above `DOCUSIGN_*` in `config.ts`), plus a DocuSign Connect webhook pointed at
+`/api/webhooks/docusign` once deployed. Until then `POST /api/contracts/:id/signature` returns
+a clean 503 "not configured" instead of erroring.
+
+---
+
 ## Module 1 — Dashboard
 
 - [ ] Risk Heatmap — visual grid of contracts by risk tier (High / Medium / Low)

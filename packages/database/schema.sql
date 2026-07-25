@@ -246,6 +246,25 @@ ALTER TABLE contract_approvals ADD COLUMN IF NOT EXISTS attachment_filename text
 ALTER TABLE contract_approvals ADD COLUMN IF NOT EXISTS attachment_mime_type text;
 ALTER TABLE contract_approvals ADD COLUMN IF NOT EXISTS attachment_size bigint;
 
+-- Signature requests (DocuSign e-signature — submitted after the approval chain completes)
+-- One row per "Submit for Signature" click; `parties` holds every signer's
+-- name/email/routing order/status so the whole envelope can be rendered without
+-- a join. Real-time per-recipient status is refreshed from DocuSign on demand
+-- and reconciled by the Connect webhook when envelopes complete.
+CREATE TABLE IF NOT EXISTS signature_requests (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  contract_id uuid NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+  user_id text NOT NULL,
+  status text NOT NULL DEFAULT 'created',         -- created | sent | delivered | completed | declined | voided | error
+  docusign_envelope_id text,
+  parties jsonb NOT NULL DEFAULT '[]',            -- [{ name, email, routing_order, status, signed_at }]
+  error_message text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_signature_requests_contract ON signature_requests(contract_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_signature_requests_envelope ON signature_requests(docusign_envelope_id);
+
 -- Contract comparisons (version diff + AI change summary, stored under the base contract)
 CREATE TABLE IF NOT EXISTS contract_comparisons (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

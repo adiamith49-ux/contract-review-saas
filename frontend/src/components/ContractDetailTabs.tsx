@@ -4,6 +4,7 @@ import { IntakePanel } from "@/components/IntakePanel";
 import { ApprovalPanel } from "@/components/ApprovalPanel";
 import { VersionComparePanel } from "@/components/VersionComparePanel";
 import { MatterWorkspace } from "@/components/MatterWorkspace";
+import { SignaturePanel } from "@/components/SignaturePanel";
 
 interface Props {
   contractId: string;
@@ -34,6 +35,9 @@ export function ContractDetailTabs({ contractId, contractStatus, getToken, onCha
       )}
       {active === "workspace" && (
         <MatterWorkspace embedded contractId={contractId} getToken={getToken} />
+      )}
+      {active === "signature" && (
+        <SignaturePanel embedded contractId={contractId} contractStatus={contractStatus} getToken={getToken} />
       )}
     </div>
   );

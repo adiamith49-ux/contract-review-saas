@@ -10,6 +10,7 @@
 //   Events: user.created, user.updated, user.deleted
 //   Copy the Signing Secret → set as CLERK_WEBHOOK_SECRET env var in Vercel
 
+import crypto from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import { Webhook } from "svix";
 import { db } from "../db.js";
@@ -110,6 +111,70 @@ webhooksRouter.post(
       res.status(200).json({ received: true });
     } catch (err) {
       console.error("[webhook/clerk] error:", err);
+      res.status(500).json({ error: "Internal error" });
+    }
+  },
+);
+
+// DocuSign Connect webhook — reconciles envelope/recipient status as signers
+// act, so the app doesn't rely solely on-demand polling in GET .../signature.
+// Setup in DocuSign Admin → Connect → Add Configuration:
+//   URL: https://api.contralyne.com/api/webhooks/docusign
+//   Events: Envelope Sent, Delivered, Completed, Declined, Voided
+//   Include HMAC signature, secret → DOCUSIGN_WEBHOOK_SECRET env var
+webhooksRouter.post(
+  "/docusign",
+  (req, res, next) => {
+    let data = "";
+    req.setEncoding("utf8");
+    req.on("data", chunk => { data += chunk; });
+    req.on("end", () => { (req as any).rawBody = data; next(); });
+  },
+  async (req: Request, res: Response) => {
+    const secret = config.DOCUSIGN_WEBHOOK_SECRET;
+
+    if (secret) {
+      const signature = req.headers["x-docusign-signature-1"] as string | undefined;
+      const expected = crypto.createHmac("sha256", secret).update((req as any).rawBody).digest("base64");
+      if (!signature || signature !== expected) {
+        res.status(400).json({ error: "Invalid webhook signature" });
+        return;
+      }
+    } else if (config.NODE_ENV === "production") {
+      res.status(500).json({ error: "DOCUSIGN_WEBHOOK_SECRET not configured" });
+      return;
+    }
+
+    let payload: any;
+    try {
+      payload = JSON.parse((req as any).rawBody);
+    } catch {
+      res.status(400).json({ error: "Invalid JSON" });
+      return;
+    }
+
+    try {
+      const envelopeId: string | undefined = payload?.data?.envelopeId ?? payload?.envelopeId;
+      const status: string | undefined = payload?.data?.envelopeSummary?.status ?? payload?.status;
+      if (!envelopeId || !status) {
+        res.status(200).json({ skipped: "missing envelopeId or status" });
+        return;
+      }
+
+      const recipients = payload?.data?.envelopeSummary?.recipients?.signers as any[] | undefined;
+      const updates: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
+      if (recipients) {
+        updates.parties = recipients.map(r => ({
+          name: r.name, email: r.email, routing_order: Number(r.routingOrder ?? 1),
+          status: r.status, signed_at: r.signedDateTime ?? null,
+        }));
+      }
+
+      await db.from("signature_requests").update(updates).eq("docusign_envelope_id", envelopeId);
+
+      res.status(200).json({ received: true });
+    } catch (err) {
+      console.error("[webhook/docusign] error:", err);
       res.status(500).json({ error: "Internal error" });
     }
   },

@@ -17,6 +17,7 @@ import { contactRouter } from "./routes/contact.js";
 import { commentsRouter } from "./routes/comments.js";
 import { contractsRouter } from "./routes/contracts.js";
 import { rulesRouter } from "./routes/rules.js";
+import { signatureRouter } from "./routes/signature.js";
 import { tasksRouter } from "./routes/tasks.js";
 import { timeRouter } from "./routes/time.js";
 import { webhooksRouter } from "./routes/webhooks.js";
@@ -41,6 +42,7 @@ app.use("/admin", adminRouter);
 app.use("/api/clients", clientsRouter);
 app.use("/api/tickets", ticketsRouter);
 app.use("/api/contracts", commentsRouter); // comments/team paths — must not overlap contractsRouter
+app.use("/api/contracts", signatureRouter); // signature paths — must not overlap contractsRouter
 app.use("/api/contracts", contractsRouter);
 app.use("/api/clauses", clausesRouter);
 app.use("/api/rules", rulesRouter);
