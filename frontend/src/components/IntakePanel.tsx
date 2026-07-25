@@ -138,7 +138,7 @@ export function IntakePanel({ contractId, getToken, onSaved, embedded }: Props) 
   }
 
   return (
-    <div className={embedded ? "max-h-[35vh] overflow-y-auto" : "shrink-0 border-b bg-white max-h-[35vh] overflow-y-auto"}>
+    <div className={embedded ? "" : "shrink-0 border-b bg-white max-h-[35vh] overflow-y-auto"}>
       {/* ── Toggle header ─────────────────────────────────────────────── */}
       {!embedded && (
         <button
