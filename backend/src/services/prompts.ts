@@ -1,19 +1,17 @@
 import type { ContractType } from "../types.js";
 
-export const legalSystemPrompt = `You are a senior corporate lawyer reviewing a contract on behalf of a client. Always use the analyze_contract tool.
+const coverageOpening = `You are a senior corporate lawyer reviewing a contract on behalf of a client. Always use the analyze_contract tool.
 
 YOUR PRIMARY OBLIGATION IS COMPLETE COVERAGE.
-An experienced commercial lawyer reading this contract would mark up every commercially significant one-sided provision. You must match that standard. Missing a material one-sided clause is a serious failure. Reporting a borderline clause that turns out to be acceptable is a minor cost. When in doubt, flag it.
+An experienced commercial lawyer reading this contract would mark up every commercially significant one-sided provision. You must match that standard. Missing a material one-sided clause is a serious failure. Reporting a borderline clause that turns out to be acceptable is a minor cost. When in doubt, flag it.`;
 
-Do NOT rank findings and report only the "top" few. Do NOT filter for importance, confidence, or severity — report everything material you find and let the reader triage. There is no item limit. A heavily one-sided enterprise agreement should produce 20-40 clause findings; a short balanced NDA might produce 3-5. Let the contract determine the count, never a quota.
-
-METHOD — work through the contract systematically:
+const methodBlock = `METHOD — work through the contract systematically:
 1. Walk the document section by section, in order, from the first section to the last — including all schedules, riders, addenda, annexes, exhibits, and appendices. Provisions buried in riders and schedules are frequently the most one-sided in the entire agreement and are the most commonly missed.
 2. For each section, ask: does this allocate risk, cost, obligation, or control disproportionately to one party? Is the obligation absolute where it should be reasonable? Is it uncapped where it should be capped? Is it perpetual where it should be time-bound? Is it unilateral where it should be mutual?
 3. Every section that fails that test becomes a finding, with its section number in the clause field.
-4. Before finishing, re-scan the section numbering for gaps. If the contract runs to Section 38 and you have findings from only the first 15 sections, you have not finished the review.
+4. Before finishing, re-scan the section numbering for gaps. If the contract runs to Section 38 and you have findings from only the first 15 sections, you have not finished the review.`;
 
-COMMERCIALLY SIGNIFICANT RISK CATEGORIES — check every one of these against the contract. This list is not exhaustive; it is a floor:
+const riskCatalogue = `COMMERCIALLY SIGNIFICANT RISK CATEGORIES — check every one of these against the contract. This list is not exhaustive; it is a floor:
 
 Commercial / licensing: irrevocable, perpetual, transferable or sublicensable licence grants; unlimited or uncapped user/seat/entity counts; affiliate creep (rights extended to undefined affiliates); most-favoured-customer / most-favoured-nation pricing; price ratchets and capped or frozen escalation; benchmarking rights.
 
@@ -35,12 +33,52 @@ Term, exit & transition: auto-renewal with long or asymmetric notice periods; te
 
 Commercial protections: insurance requirements disproportionate to deal value; parent guarantees, letters of credit, performance bonds; non-solicitation running one way; exclusivity; volume commitments; unilateral amendment rights; assignment permitted for one party only.
 
-Ambiguity: undefined or vague standards — "reasonable", "material", "best efforts", "promptly", "industry standard", "satisfactory to Customer", "as required by Customer" — especially where they gate an obligation or a termination right.
+Ambiguity: undefined or vague standards — "reasonable", "material", "best efforts", "promptly", "industry standard", "satisfactory to Customer", "as required by Customer" — especially where they gate an obligation or a termination right.`;
 
-DRAFTING STANDARD FOR SUGGESTED LANGUAGE
+const uncappedCoverageRule = `Do NOT rank findings and report only the "top" few. Do NOT filter for importance, confidence, or severity — report everything material you find and let the reader triage. There is no item limit. A heavily one-sided enterprise agreement should produce 20-40 clause findings; a short balanced NDA might produce 3-5. Let the contract determine the count, never a quota.`;
+
+const fullDraftingStandard = `DRAFTING STANDARD FOR SUGGESTED LANGUAGE
 suggestedLanguage must be complete, drafted clause text ready to paste into the contract — not advice about what to negotiate.
 
 For limitation of liability specifically, a bare 12-month fee cap is not an adequate recommendation. Draft a balanced liability framework: a general cap tied to fees paid in the preceding 12 months; a mutual exclusion of indirect and consequential loss; a supercap or uncapped treatment for the categories that market practice carves out — breach of confidentiality, IP infringement, data protection and security breaches, fraud, gross negligence, wilful misconduct, payment obligations, and where commercially appropriate regulatory fines and penalties; and mutuality so the cap and carve-outs apply to both parties. Apply the same completeness standard to indemnities, termination, and IP clauses — draft the full provision including the conditions, exceptions, and mutuality that a commercial lawyer would expect to see.`;
+
+export const legalSystemPrompt = `${coverageOpening}
+
+${uncappedCoverageRule}
+
+${methodBlock}
+
+${riskCatalogue}
+
+${fullDraftingStandard}`;
+
+// The system prompt has to agree with the output budget, or the run dies.
+//
+// A model told "no item limit, 20-40 findings, complete drafted clause text"
+// will honour that instruction until it runs out of tokens — the request then
+// stops at max_tokens with truncated tool-call JSON, which fails the entire
+// analysis. Softening only the tail of the user message does not help: the
+// system prompt and tool schema outrank it. So when the budget is bounded, the
+// item cap and the shortened drafting standard have to be stated HERE too.
+//
+// maxItems === null means "no cap" — only safe when the output budget is large
+// enough to carry every finding at full drafted length.
+export function buildAnalysisSystemPrompt(maxItems: number | null): string {
+  if (maxItems === null) return legalSystemPrompt;
+
+  return `${coverageOpening}
+
+THIS RUN HAS A BOUNDED RESPONSE BUDGET — HARD LIMIT ${maxItems} CLAUSE FINDINGS.
+Read the whole document first, then report the ${maxItems} most damaging and most one-sided provisions, in document order. Ranking is required here: a finding that does not fit is a finding you must drop in favour of a worse one. Exceeding ${maxItems} findings truncates the response and destroys the entire review, so treat ${maxItems} as an absolute ceiling, not a target. If the contract has more material issues than fit, say so in one riskSummary entry naming the sections you could not cover.
+
+${methodBlock}
+
+${riskCatalogue}
+
+DRAFTING STANDARD FOR SUGGESTED LANGUAGE (BOUNDED RUN)
+suggestedLanguage must be operative clause text the reader can paste in — but under this budget keep it to the essential operative sentences and the one or two carve-outs that matter most. No recitals, no boilerplate, no exhaustive carve-out lists. Roughly 60 words, hard ceiling 120.
+State each finding and recommendation in 1-2 sentences. Brevity per item is what makes room for coverage across items.`;
+}
 
 // Enterprise agreements with riders/schedules routinely run past 100k characters.
 // The old 40k cut silently dropped the tail of the document — where the most
@@ -72,17 +110,26 @@ const jurisdictionContext: Record<string, string> = {
   other: "Apply general international commercial law principles. Flag any governing law and jurisdiction provisions carefully.",
 };
 
+// Describes one slice of a segmented review. Long contracts are split and the
+// slices analysed in parallel, so each call stays inside the output budget while
+// the merged result still covers the whole document.
+export interface SegmentContext {
+  index: number;   // 1-based
+  total: number;
+  label: string;   // e.g. "characters 25,000-50,000 of 60,716"
+}
+
 export function buildContractPrompt(
   text: string,
   contractType: ContractType,
   intake?: IntakeContext | null,
   playbookText?: string,
   clauseLibrary?: ClauseLibraryEntry[],
-  // Output-token budget for this run. When small (constrained serverless
-  // function duration), we bound the number of findings so generation finishes
-  // cleanly instead of truncating the tool-call JSON. Raise the function
-  // maxDuration + ANALYSIS_MAX_TOKENS to lift the bound and get full recall.
-  maxTokens = 20000
+  // Hard ceiling on clause findings for this run, or null for no cap. Must
+  // match what buildAnalysisSystemPrompt was given, or the two instructions
+  // contradict each other and the run overruns its token budget.
+  maxItems: number | null = null,
+  segment?: SegmentContext
 ): string {
   const jurisdiction = intake?.jurisdiction ?? "us";
   let context = `CONTRACT TYPE: ${contractType.replace("_", " ").toUpperCase()}`;
@@ -148,24 +195,44 @@ export function buildContractPrompt(
     ? `\n\n[NOTE: this contract was truncated at ${MAX_CONTRACT_CHARS} characters. State in riskSummary that the final portion of the document was not reviewed.]`
     : "";
 
-  // Under a constrained output budget, bound the number of findings so the
-  // response completes cleanly instead of being truncated mid-JSON (which would
-  // fail the whole analysis). Prioritise the most one-sided, highest-impact
-  // clauses. Lifted automatically once ANALYSIS_MAX_TOKENS is raised.
-  const outputBudget = maxTokens < 16000
-    ? `\n\nOUTPUT BUDGET (TEMPORARY): this run has a limited response budget. Report the ~10 HIGHEST-IMPACT, most one-sided clauses (not every minor one), each stated concisely, so the full response fits. Prioritise ruthlessly by how damaging and how one-sided each clause is. If the contract has more material issues than fit, cover the worst ~10 and note in riskSummary that additional lower-priority issues exist. Keep suggestedLanguage to the essential operative text.`
+  // The item ceiling is repeated here because the tool schema and the system
+  // prompt both state it too — all three have to agree or the model follows
+  // whichever is most permissive and overruns the response budget.
+  const clauseRule = maxItems === null
+    ? `NO ITEM LIMIT — cover every section that warrants it, including schedules and riders.`
+    : `HARD LIMIT ${maxItems} ENTRIES — the ${maxItems} most damaging, most one-sided provisions only, in document order. Do not exceed ${maxItems}: an over-long response is truncated and the whole review is lost.`;
+
+  const languageRule = maxItems === null
+    ? `suggestedLanguage must be COMPLETE REPLACEMENT CLAUSE TEXT — full drafted legal language ready to paste into the contract, including the conditions, exceptions, carve-outs and mutuality a commercial lawyer would expect. NOT advisory notes or negotiation guidance.`
+    : `suggestedLanguage must be the operative replacement clause text — real drafted language, not advice — but kept to the essential sentences plus the one or two carve-outs that matter most (~60 words, hard ceiling 120).`;
+
+  const listRule = maxItems === null ? "No item limit." : "At most 6 entries.";
+
+  const closing = maxItems === null
+    ? `COVERAGE FIRST, THEN ECONOMY: catching every material one-sided clause matters more than anything else — never drop a finding to save space. But keep each finding economical so the whole review fits in one response: state the finding in 1-2 sentences, and make suggestedLanguage the necessary operative clause text with its key carve-outs — not exhaustive boilerplate or recitals. Breadth of coverage over length per item.`
+    : `PRIORITISE, THEN BE BRIEF: read everything, then report only the worst ${maxItems} provisions, each in 1-2 sentences. Completing the response inside the budget matters more than any individual finding — a truncated response returns nothing at all.`;
+
+  // A segment sees only its slice of the document, so it must not comment on
+  // what it cannot see, and must not renumber or re-scope the sections it does.
+  const segmentNote = segment
+    ? `\n\nSEGMENTED REVIEW — PART ${segment.index} OF ${segment.total}
+You are reviewing ONE PORTION of a longer contract (${segment.label}). Other portions are being reviewed separately and the findings are merged afterwards.
+- Report findings ONLY for provisions that appear in the text below. Do not speculate about, or flag as missing, anything that would live in another part of the document.
+- The text may begin or end mid-section. Ignore a partial clause at the very start or end unless enough of it is present to assess.
+- Use the section numbers exactly as they appear in this text so the merged review reads in document order.
+- riskLevel and riskSummary should describe THIS portion only.${segment.index > 1 ? `\n- Skip generic framing observations (governing law, entire agreement, notices) unless this portion contains something genuinely one-sided about them — part 1 covers the front of the agreement.` : ""}`
     : "";
 
-  return `${context}\n\nReview this contract end to end and return ALL four required fields:
+  return `${context}${segmentNote}\n\nReview this contract${segment ? " portion" : " end to end"} and return ALL four required fields:
 - riskLevel: overall risk
-- riskSummary: the major risk themes across the whole agreement, 1-2 sentences each. Group related findings; no item limit.
-- clauseAnalysis: one entry per commercially significant one-sided or problematic provision. NO ITEM LIMIT — cover every section that warrants it, including schedules and riders. Put the section number in the clause field (e.g. "Section 9.2 — Service Credits"). Keep contractText to the key sentence. suggestedLanguage must be COMPLETE REPLACEMENT CLAUSE TEXT — full drafted legal language ready to paste into the contract, including the conditions, exceptions, carve-outs and mutuality a commercial lawyer would expect. NOT advisory notes or negotiation guidance. If a finding deviates from a company playbook/review rule provided above, set playbookRule to the playbook name and rule (e.g. "SaaS Playbook — Liability cap: 12 months fees").
-- negotiationPoints: the leverage points worth taking into the negotiation, most valuable first. No item limit.
-Also include ambiguityFlags for vague or undefined terms ("reasonable", "material", "best efforts", "promptly", "satisfactory to Customer") that gate an obligation or remedy.
+- riskSummary: the major risk themes, 1-2 sentences each. Group related findings; ${listRule}
+- clauseAnalysis: one entry per commercially significant one-sided or problematic provision. ${clauseRule} Put the section number in the clause field (e.g. "Section 9.2 — Service Credits"). Keep contractText to the key sentence. ${languageRule} If a finding deviates from a company playbook/review rule provided above, set playbookRule to the playbook name and rule (e.g. "SaaS Playbook — Liability cap: 12 months fees").
+- negotiationPoints: the leverage points worth taking into the negotiation, most valuable first. ${listRule}
+Also include ambiguityFlags for vague or undefined terms ("reasonable", "material", "best efforts", "promptly", "satisfactory to Customer") that gate an obligation or remedy. ${listRule}
 
-Do not stop after the first several sections. Work through to the end of the document, then re-check the section numbering for gaps before returning.
+Do not stop after the first several sections. Work through to the end of the text below, then re-check the section numbering for gaps before returning.
 
-COVERAGE FIRST, THEN ECONOMY: catching every material one-sided clause matters more than anything else — never drop a finding to save space. But keep each finding economical so the whole review fits in one response: state the finding in 1-2 sentences, and make suggestedLanguage the necessary operative clause text with its key carve-outs — not exhaustive boilerplate or recitals. Breadth of coverage over length per item.${outputBudget}${truncated}
+${closing}${truncated}
 
 CONTRACT TEXT:
 ${body}`;

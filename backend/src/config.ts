@@ -19,12 +19,17 @@ const EnvSchema = z.object({
   S3_BUCKET_NAME: str("contralyn-contracts"),
   ANTHROPIC_API_KEY: str("dev-placeholder"),
   AI_MODEL: str("claude-sonnet-4-6"),
-  // Ceiling on analysis output tokens = the dominant term in analysis wall-clock
-  // time. MUST fit the serverless function's max duration or the function is
-  // killed mid-run and the contract wedges at "processing". Default 8000 fits a
-  // ~60-90s function (bounded ~8-10 findings). Once you raise the Vercel function
-  // Max Duration to 300s+ (project Settings → Functions), set this env var to
-  // 20000 for full uncapped recall — no code change needed. See ai.service.ts.
+  // Per-CALL ceiling on analysis output tokens, and the dominant term in how long
+  // one call runs (~60-90 output tok/s). MUST fit the serverless function's max
+  // duration or the function is killed mid-run and the contract wedges at
+  // "processing". Default 8000 ≈ 11 findings per call.
+  //
+  // Do NOT raise this for better coverage — that was tried and disproven (20000
+  // overran both max_tokens and the function limit). Coverage now comes from
+  // reviewing long contracts as parallel segments, each with this budget, so
+  // findings scale with document length at roughly constant wall-clock. Raising
+  // this past 16000 switches analysis back to a single uncapped pass, which only
+  // works with a 300s+ function limit. See ai.service.ts.
   ANALYSIS_MAX_TOKENS: z.coerce.number().default(8000),
   ADMIN_JWT_SECRET: str("change-me-admin-secret"),
   CLERK_WEBHOOK_SECRET: str(""),
