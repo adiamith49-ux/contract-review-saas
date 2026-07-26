@@ -309,9 +309,35 @@ The cause was **our own hard caps**, not model capability:
 A capable model *obeys* "top 5": it reads everything, ranks, and reports 5 — which looks
 identical to a recall failure from the outside.
 
-**Never reintroduce an item cap on analysis or redline output.** Coverage is the product.
-Current settings: no item limits, 200k char contract limit, `max_tokens` 32k (analysis) /
-16k (redline, streamed — a truncated tool-use JSON parses to *zero* results).
+**Never reintroduce a fixed item cap on analysis or redline output.** Coverage is the product.
+
+### Segmented analysis (2026-07-26) — how coverage and the token budget coexist
+
+Removing the caps traded a recall bug for a hard failure: from 2026-07-16 to 2026-07-26
+**every analysis of a real contract failed**. "No item limit" plus "COMPLETE REPLACEMENT
+CLAUSE TEXT" has no stopping point, so every run ran to `max_tokens`, and a truncated
+tool-use JSON parses to *zero* results — the whole review was lost.
+
+Two rules came out of it:
+
+1. **The item ceiling must be stated in all three places or it does not exist.** The system
+   prompt, the tool schema descriptions, and the user message all instruct the model, and
+   the model follows the most permissive one. A bounded instruction in only the user message
+   is silently overridden by a schema that still says "20-40 entries".
+2. **Coverage comes from more calls, not a bigger `max_tokens`.** Long contracts are split
+   into ~28k-char slices reviewed **in parallel**, each with the full per-call budget; the
+   results are merged and deduped. Findings scale with document length while wall-clock
+   stays at roughly one call. Raising `ANALYSIS_MAX_TOKENS` was tried and **disproven** —
+   20k overran both the token ceiling and the function duration.
+
+Current settings: `ANALYSIS_MAX_TOKENS` 8000 per call (≈11 findings, derived not hardcoded),
+200k char contract limit, redline `max_tokens` 16k streamed. A run that still overruns is
+salvaged by trimming the partial JSON back to the last complete finding; a failed slice
+degrades coverage and says so in `riskSummary` instead of passing silently as "nothing found".
+
+Measured live 2026-07-26: 60,716-char stress-test agreement → **33 findings in 134s**
+(previously failed at 165s), covering through Section 39 and Exhibits D–K. 10,882-char
+agreement → 11 findings in 117s.
 
 Also fixed: `ambiguityFlags` was wired through DB, exports and UI but never declared in the
 tool schema, so the panel was always empty in production.
@@ -320,8 +346,10 @@ tool schema, so the panel was always empty in production.
 and types exist, but the schema field and the `analyses.missing_clauses` column do not.
 Needs an `ALTER TABLE` before it can ship.
 
-⚠️ **Recall is not yet measured.** The caps are gone; the hit rate against Amith's 20-item
-list has not been scored. Do not claim enterprise-grade coverage until that test is run.
+⚠️ **Recall is still not scored.** Analysis now completes and returns 33 findings on the
+stress-test agreement, including the back-loaded exhibits that were being missed — but the
+hit rate against Amith's specific 20-item list has not been checked item by item. Do not
+claim enterprise-grade coverage until that comparison is run.
 
 ### Remaining limitations (V1.5+)
 
@@ -483,14 +511,25 @@ npm run dev:web
       draft comparison, calendar, time tracking, tickets, admin panel (beyond original scope)
 - [x] Risk-coverage caps removed (2026-07-21) — see Coverage fix
 - [x] Fail-closed secret validation in `config.ts` (2026-07-21)
-- [ ] **Score recall against Amith's 20-item stress-test list** — the caps are gone but the
-      hit rate is unmeasured; this is the gate on any "enterprise-grade coverage" claim
+- [x] Analysis fixed (2026-07-26) — segmented parallel review; every run had failed since
+      2026-07-16. Verified live: 33 findings in 134s on the stress-test agreement
+- [x] Analysis runs fire-and-poll (202 + `GET /:id/analysis-status`) instead of holding the
+      request open for minutes
+- [x] Sign-in: Clerk email-code verification, Google OAuth, already-signed-in redirect
+- [x] Error boundaries — a render error no longer shows a bare "Application error" screen
+- [ ] **Score recall against Amith's 20-item stress-test list** — analysis now completes and
+      covers the back-loaded exhibits, but the hit rate has not been checked item by item;
+      this is the gate on any "enterprise-grade coverage" claim
+- [ ] **Migrate Clerk to a production instance** — prod runs on a `pk_test_…` dev instance,
+      which is what triggers the aggressive email-code prompts on sign-in
 - [ ] Rotate `ADMIN_JWT_SECRET` to 32+ random bytes (currently 27 chars, human-chosen)
 - [ ] `missingClauses` — needs schema field + `analyses.missing_clauses` column
 - [ ] Prompt caching — CLAUDE.md previously claimed this; SDK is pinned at `0.30.0` where
       `cache_control` is beta-only. Needs an SDK upgrade first
-- [ ] Set `maxDuration` in `backend/vercel.json` — 32k-token analyses run for minutes and
-      inherit the plan default; confirm the Vercel plan ceiling before setting
+- [ ] Confirm the API project's function Max Duration in the Vercel dashboard. Segmented
+      analysis measured 134s on a 60k-char contract; a failed run at 165s proves the ceiling
+      is at least that, but it has never been read directly. `maxDuration` is a project
+      setting, not settable from this legacy-builds `vercel.json`
 - [x] Frontend (Kartik) — done, live at contralyne.com
 - [x] Vercel deployment (auto-deploy on git push to main)
 - [x] Supabase + S3 + Clerk provisioned and live
