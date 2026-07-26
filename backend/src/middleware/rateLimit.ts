@@ -1,11 +1,28 @@
 import rateLimit from "express-rate-limit";
 
+// Polling endpoints a client hits on a timer while waiting for background work.
+// These must be exempt from generalLimiter: a single multi-minute analysis would
+// otherwise consume the entire 100-request budget and lock the user out of the
+// whole API. They get their own, much larger budget below.
+const POLLING_PATHS = /\/analysis-status$/;
+
 export const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests, please try again later." },
+  skip: req => POLLING_PATHS.test(req.path),
+});
+
+// Sized for polling: a long analysis polls on a 3-10s backoff, so a user running
+// several reviews in a window can legitimately make a few hundred cheap reads.
+export const statusLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many status checks, please try again later." },
 });
 
 export const uploadLimiter = rateLimit({

@@ -7,7 +7,7 @@ import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { createClerkClient } from "@clerk/backend";
 import { config } from "../config.js";
-import { analyzeLimiter, chatLimiter, uploadLimiter } from "../middleware/rateLimit.js";
+import { analyzeLimiter, chatLimiter, statusLimiter, uploadLimiter } from "../middleware/rateLimit.js";
 import { analyzeContract, extractContractMeta, redlineContract, summarizeContract, summarizeChanges } from "../services/ai.service.js";
 import { exportRedlineDocx, processEdits, type ProcessedEdit } from "../services/redline.service.js";
 import { logActivity } from "../services/activity.service.js";
@@ -18,10 +18,31 @@ import { buildS3Key, deleteFromS3, downloadFromS3, getPresignedUrl, uploadToS3 }
 import { editOriginalDocx, type DocxEdit } from "../services/docxEdit.service.js";
 import { getUserEmail, isApproverForContract } from "./approvals.js";
 
+// Vercel exposes per-invocation request context on a well-known global symbol;
+// `waitUntil` from @vercel/functions reads it. We read it directly because we
+// need to know whether background work is actually supported: @vercel/functions
+// SILENTLY no-ops when the context is absent, which would freeze the function
+// right after our 202 and wedge the contract at "processing" forever. When it's
+// missing (local dev, or a runtime that doesn't provide it) we fall back to
+// finishing the work inline — slower to respond, but never lost.
+const SYMBOL_FOR_REQ_CONTEXT = Symbol.for("@vercel/request-context");
+function getWaitUntil(): ((p: Promise<unknown>) => void) | null {
+  const ctx = (globalThis as any)[SYMBOL_FOR_REQ_CONTEXT]?.get?.();
+  return typeof ctx?.waitUntil === "function" ? ctx.waitUntil.bind(ctx) : null;
+}
+
 // ─── Analysis timing ──────────────────────────────────────────────────────────
+// Analysis is FIRE-AND-POLL, not request/response: POST /analyze validates,
+// marks the contract "processing", hands the AI work to waitUntil() and returns
+// 202 in well under a second. The client then polls GET /:id/analysis-status.
+// Holding the HTTP connection open for the whole generation (60-285s) is what
+// made the UI look like it was buffering forever — and any proxy/browser that
+// cut the idle connection first left the user with no result at all, even
+// though the backend had finished.
+//
 // Keep ANALYSIS_TIMEOUT_MS comfortably BELOW the serverless function maxDuration
 // (backend/vercel.json → 300s). The JS timeout must win the race against the
-// platform's hard kill so the route's catch runs and marks the contract "failed"
+// platform's hard kill so the catch runs and marks the contract "failed"
 // (retryable) instead of leaving it wedged at "processing". STALE_PROCESSING_MS
 // then lets a wedged contract be re-analyzed. If you raise maxDuration on a
 // Pro/Enterprise plan, raise ANALYSIS_TIMEOUT_MS to match (and see
@@ -342,7 +363,7 @@ contractsRouter.get("/", async (req, res, next) => {
 // GET /api/contracts/:id
 contractsRouter.get("/:id", async (req, res, next) => {
   try {
-    const selectCols = "id, filename, title, counterparty, contract_type, contract_status, status, file_size, s3_key, summary, extracted_text, start_date, end_date, renewal_date, owner_name, contract_value, version_number, parent_contract_id, created_at, analyses(*), legal_intake(*)";
+    const selectCols = "id, filename, title, counterparty, contract_type, contract_status, status, error_message, file_size, s3_key, summary, extracted_text, start_date, end_date, renewal_date, owner_name, contract_value, version_number, parent_contract_id, created_at, analyses(*), legal_intake(*)";
 
     let { data, error } = await db
       .from("contracts")
@@ -421,8 +442,110 @@ contractsRouter.get("/:id/intake", async (req, res, next) => {
   }
 });
 
+// GET /api/contracts/:id/analysis-status
+// Cheap polling target for a running analysis. Deliberately does NOT select
+// extracted_text or the analysis payload — the client polls this every few
+// seconds and only needs to know when to re-fetch the full contract.
+contractsRouter.get("/:id/analysis-status", statusLimiter, async (req, res, next) => {
+  try {
+    const { data, error } = await db
+      .from("contracts")
+      .select("id, status, error_message, updated_at")
+      .eq("id", req.params.id)
+      .eq("user_id", req.userId)
+      .single();
+
+    if (error || !data) { res.status(404).json({ error: "Contract not found" }); return; }
+
+    // A "processing" row older than the wedge threshold means the function was
+    // hard-killed mid-run and no catch ever fired. Report it as failed so the
+    // client stops polling and offers a retry instead of spinning forever.
+    let status = data.status as string;
+    let errorMessage = data.error_message as string | null;
+    if (status === "processing") {
+      const startedMs = data.updated_at ? Date.parse(data.updated_at) : 0;
+      if (Date.now() - startedMs >= STALE_PROCESSING_MS) {
+        status = "failed";
+        errorMessage = errorMessage ?? "Analysis stopped unexpectedly. Please try again.";
+      }
+    }
+
+    res.json({ status, errorMessage, startedAt: data.updated_at });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Runs the AI analysis and writes the result. Called in the background via
+// waitUntil() — it owns the contract's terminal status, so every path must end
+// with the row at "analyzed" or "failed", never left at "processing".
+async function runAnalysis(opts: {
+  userId: string;
+  contractId: string;
+  text: string;
+  contractType: ContractType;
+  intake: any;
+  playbookText?: string;
+  clauseLibrary: Array<{ title: string; clause_type: "approved" | "fallback" | "unacceptable"; content: string }>;
+  playbooksUsed: string[];
+}): Promise<void> {
+  try {
+    // Hard timeout so a slow run fails cleanly (→ status "failed", retryable)
+    // rather than being hard-killed by the platform and left stuck "processing".
+    // Fire before maxDuration (see vercel.json) so this catch still runs.
+    const analysis = await withTimeout(
+      analyzeContract(
+        opts.text,
+        opts.contractType,
+        opts.intake,
+        opts.playbookText,
+        opts.clauseLibrary.length > 0 ? opts.clauseLibrary : undefined
+      ),
+      ANALYSIS_TIMEOUT_MS,
+      "Analysis timed out — the contract is too large or complex to review in a single pass. Try again, or split the document."
+    );
+
+    const { data: saved, error: saveError } = await db
+      .from("analyses")
+      .upsert({
+        contract_id: opts.contractId,
+        user_id: opts.userId,
+        risk_level: analysis.riskLevel,
+        risk_summary: analysis.riskSummary,
+        clause_analysis: analysis.clauseAnalysis,
+        negotiation_points: analysis.negotiationPoints,
+        ambiguity_flags: analysis.ambiguityFlags ?? [],
+        model: analysis.model,
+        playbooks_used: opts.playbooksUsed,
+      }, { onConflict: "contract_id" })
+      .select("id")
+      .single();
+
+    if (saveError) throw saveError;
+
+    const { error: analyzedErr } = await db.from("contracts")
+      .update({ status: "analyzed", error_message: null })
+      .eq("id", opts.contractId);
+    if (analyzedErr) throw analyzedErr;
+
+    await logActivity(opts.userId, "contract.analyzed", opts.contractId, {
+      risk_level: analysis.riskLevel,
+      analysis_id: saved.id,
+    });
+  } catch (err) {
+    // Nobody is holding the response any more, so the only way the user learns
+    // this failed is the row itself — record the reason for the status poll.
+    const message = err instanceof Error ? err.message : "Analysis failed";
+    console.error(`[analyze] contract ${opts.contractId} failed:`, err);
+    await db.from("contracts")
+      .update({ status: "failed", error_message: message })
+      .eq("id", opts.contractId);
+  }
+}
+
 // POST /api/contracts/:id/analyze
-// Synchronous — uses Anthropic streaming to complete within 60s.
+// Returns 202 immediately; the AI run continues in the background (waitUntil).
+// Poll GET /:id/analysis-status for completion.
 contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
   try {
     const { data: contract, error: fetchError } = await db
@@ -491,55 +614,43 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
     }
 
     // Stamp updated_at so the stale-processing recovery above can measure age.
+    // Clear any error from a previous failed run so the poll can't read it as
+    // the outcome of this one.
     const { error: processingErr } = await db.from("contracts")
-      .update({ status: "processing", updated_at: new Date().toISOString() })
+      .update({ status: "processing", error_message: null, updated_at: new Date().toISOString() })
       .eq("id", contract.id);
     if (processingErr) throw processingErr;
 
-    // Hard timeout so a slow run fails cleanly (→ status "failed", retryable)
-    // rather than being hard-killed by the platform and left stuck "processing".
-    // Fire before maxDuration (see vercel.json) so the catch below still runs.
-    const analysis = await withTimeout(
-      analyzeContract(
-        contract.extracted_text,
-        contract.contract_type as ContractType,
-        intake,
-        playbookText,
-        clauseLibrary.length > 0 ? clauseLibrary : undefined
-      ),
-      ANALYSIS_TIMEOUT_MS,
-      "Analysis timed out — the contract is too large or complex to review in a single pass. Try again, or split the document."
-    );
-
-    const { data: saved, error: saveError } = await db
-      .from("analyses")
-      .upsert({
-        contract_id: contract.id,
-        user_id: req.userId,
-        risk_level: analysis.riskLevel,
-        risk_summary: analysis.riskSummary,
-        clause_analysis: analysis.clauseAnalysis,
-        negotiation_points: analysis.negotiationPoints,
-        ambiguity_flags: analysis.ambiguityFlags ?? [],
-        model: analysis.model,
-        playbooks_used: ruleRows.map((r: any) => r.title).filter(Boolean),
-      }, { onConflict: "contract_id" })
-      .select("id")
-      .single();
-
-    if (saveError) throw saveError;
-
-    const { error: analyzedErr } = await db.from("contracts").update({ status: "analyzed" }).eq("id", contract.id);
-    if (analyzedErr) throw analyzedErr;
-
-    await logActivity(req.userId, "contract.analyzed", contract.id, {
-      risk_level: analysis.riskLevel,
-      analysis_id: saved.id,
+    // Detach the AI run from this request where the platform supports it: the
+    // instance stays alive until the promise settles (up to maxDuration) with no
+    // client connection held open. runAnalysis never rejects — it records its
+    // own terminal status, which the client reads via /analysis-status.
+    const job = runAnalysis({
+      userId: req.userId!,
+      contractId: contract.id,
+      text: contract.extracted_text,
+      contractType: contract.contract_type as ContractType,
+      intake,
+      playbookText,
+      clauseLibrary,
+      playbooksUsed: ruleRows.map((r: any) => r.title).filter(Boolean),
     });
 
-    res.json({ analysisId: saved.id, status: "analyzed", riskLevel: analysis.riskLevel });
+    const waitUntil = getWaitUntil();
+    if (waitUntil) {
+      waitUntil(job);
+    } else {
+      // No background support — finish before responding, or the process may be
+      // torn down mid-analysis. The client polls either way, so the only
+      // difference it sees is how long this call takes to return.
+      await job;
+    }
+
+    res.status(202).json({ status: "processing" });
   } catch (err) {
-    await db.from("contracts").update({ status: "failed" }).eq("id", req.params.id);
+    await db.from("contracts")
+      .update({ status: "failed", error_message: err instanceof Error ? err.message : "Analysis failed" })
+      .eq("id", req.params.id);
     next(err);
   }
 });

@@ -143,6 +143,7 @@ export interface ContractDetail {
   contract_type: ContractType;
   contract_status: string;
   status: ContractStatus;
+  error_message: string | null;
   file_size: number;
   s3_key: string;
   created_at: string;
@@ -268,15 +269,89 @@ export async function updateContractMetadata(
   });
 }
 
+export interface AnalysisStatus {
+  status: ContractStatus;
+  errorMessage: string | null;
+  startedAt: string | null;
+}
+
+export async function getAnalysisStatus(
+  token: string | null,
+  id: string
+): Promise<AnalysisStatus> {
+  return apiFetch(`/api/contracts/${id}/analysis-status`, token);
+}
+
+/**
+ * Kicks off analysis. The API returns 202 as soon as the job is queued — it does
+ * NOT wait for the AI, so this resolves in well under a second. Use
+ * `waitForAnalysis` to follow it to completion.
+ *
+ * A 409 means a run is already in flight; that is not an error for the caller,
+ * so it resolves normally and the poll picks up the existing run.
+ */
 export async function analyzeContract(
   token: string | null,
   id: string,
   selectedRuleIds?: string[]
-): Promise<{ analysisId: string; status: string }> {
-  return apiFetch(`/api/contracts/${id}/analyze`, token, {
-    method: "POST",
-    body: JSON.stringify(selectedRuleIds !== undefined ? { selectedRuleIds } : {}),
-  });
+): Promise<{ status: string }> {
+  try {
+    return await apiFetch(`/api/contracts/${id}/analyze`, token, {
+      method: "POST",
+      body: JSON.stringify(selectedRuleIds !== undefined ? { selectedRuleIds } : {}),
+    });
+  } catch (err) {
+    if (err instanceof Error && /already in progress/i.test(err.message)) {
+      return { status: "processing" };
+    }
+    throw err;
+  }
+}
+
+/**
+ * Polls until the analysis reaches a terminal state. Resolves on "analyzed",
+ * throws with the server-recorded reason on "failed". `onTick` receives seconds
+ * elapsed so the UI can show real progress instead of an indefinite spinner.
+ */
+export async function waitForAnalysis(
+  getFreshToken: () => Promise<string | null>,
+  id: string,
+  opts: { onTick?: (secondsElapsed: number) => void; intervalMs?: number; timeoutMs?: number } = {}
+): Promise<void> {
+  const firstIntervalMs = opts.intervalMs ?? 3000;
+  // Slightly beyond the server's own analysis timeout (285s) so the server's
+  // "failed" status is what the user sees, not a client-side giving-up message.
+  const timeoutMs = opts.timeoutMs ?? 330_000;
+  const startedAt = Date.now();
+  let intervalMs = firstIntervalMs;
+
+  for (;;) {
+    await new Promise(r => setTimeout(r, intervalMs));
+    // Back off from 3s to 10s: responsive if the analysis finishes fast, and
+    // ~45 requests rather than ~110 over a full-length run.
+    intervalMs = Math.min(intervalMs * 1.25, 10_000);
+    const elapsed = Date.now() - startedAt;
+    opts.onTick?.(Math.round(elapsed / 1000));
+
+    let status: AnalysisStatus;
+    try {
+      // Token is re-fetched each poll: Clerk JWTs are short-lived and a long
+      // analysis can outlive the one we started with.
+      status = await getAnalysisStatus(await getFreshToken(), id);
+    } catch {
+      // A transient network/API blip shouldn't abort a run that's still going.
+      if (elapsed > timeoutMs) throw new Error("Lost contact with the server while analyzing.");
+      continue;
+    }
+
+    if (status.status === "analyzed") return;
+    if (status.status === "failed") {
+      throw new Error(status.errorMessage ?? "Analysis failed. Please try again.");
+    }
+    if (elapsed > timeoutMs) {
+      throw new Error("Analysis is taking longer than expected. It may still finish — reload the contract in a minute.");
+    }
+  }
 }
 
 export async function listContracts(

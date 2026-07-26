@@ -21,7 +21,7 @@ import { MatterWorkspace } from "@/components/MatterWorkspace";
 import { VersionComparePanel } from "@/components/VersionComparePanel";
 import { AIChatFloat } from "@/components/AIChatFloat";
 import {
-  getContract, analyzeContract, downloadExport,
+  getContract, analyzeContract, waitForAnalysis, downloadExport,
   runRedline, downloadRedlineDocx, summarizeContract, updateContractMetadata,
   type ContractDetail, type RedlineResult,
 } from "@/lib/api";
@@ -39,6 +39,7 @@ export default function ContractDetailPage() {
   const [contract, setContract] = useState<ContractDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeElapsed, setAnalyzeElapsed] = useState(0);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
@@ -100,6 +101,27 @@ export default function ContractDetailPage() {
 
   useEffect(() => { load(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Resume watching a run that was started elsewhere — e.g. the upload wizard
+  // kicks off analysis and routes here, or the user reloaded mid-run. Without
+  // this the page would sit on "Processing…" until manually refreshed.
+  useEffect(() => {
+    if (contract?.status !== "processing" || analyzing) return;
+    let cancelled = false;
+    setAnalyzing(true);
+    setAnalyzeElapsed(0);
+    waitForAnalysis(() => getToken(), id, {
+      onTick: s => { if (!cancelled) setAnalyzeElapsed(s); },
+    })
+      .then(() => { if (!cancelled) { toast.success("Analysis complete!"); return load(); } })
+      .catch(err => {
+        if (cancelled) return;
+        toast.error(err instanceof Error ? err.message : "Analysis failed");
+        return load();
+      })
+      .finally(() => { if (!cancelled) { setAnalyzing(false); setAnalyzeElapsed(0); } });
+    return () => { cancelled = true; };
+  }, [contract?.status, id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function handleSaveMetadata(data: Parameters<typeof updateContractMetadata>[2]) {
     setMetaSaving(true);
     try {
@@ -118,15 +140,20 @@ export default function ContractDetailPage() {
   async function handleAnalyze() {
     if (!contract) return;
     setAnalyzing(true);
+    setAnalyzeElapsed(0);
     try {
       const token = await getToken();
+      // Returns as soon as the job is queued — the AI runs server-side.
       await analyzeContract(token, id);
+      await waitForAnalysis(() => getToken(), id, { onTick: setAnalyzeElapsed });
       toast.success("Analysis complete!");
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Analysis failed");
+      await load(); // refresh so a failed contract shows its real status
     } finally {
       setAnalyzing(false);
+      setAnalyzeElapsed(0);
     }
   }
 
@@ -381,6 +408,8 @@ export default function ContractDetailPage() {
             status={contract.status}
             onAnalyze={handleAnalyze}
             analyzing={analyzing}
+            elapsed={analyzeElapsed}
+            errorMessage={contract.error_message}
           />
         </div>
       ) : view === "redline" ? (
@@ -497,19 +526,32 @@ export default function ContractDetailPage() {
 
 // ─── Not-analyzed state ───────────────────────────────────────────────────────
 
+function formatElapsed(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
+}
+
 function NotAnalyzedState({
-  status, onAnalyze, analyzing,
+  status, onAnalyze, analyzing, elapsed = 0, errorMessage = null,
 }: {
   status: string;
   onAnalyze: () => void;
   analyzing: boolean;
+  elapsed?: number;
+  errorMessage?: string | null;
 }) {
   if (status === "processing") {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
         <Loader2 className="h-10 w-10 text-primary animate-spin mb-4" />
         <p className="font-medium text-gray-700">AI is analyzing your contract…</p>
-        <p className="text-sm text-gray-400 mt-1">A thorough review can take a few minutes for a long contract.</p>
+        <p className="text-sm text-gray-400 mt-1">
+          A thorough review can take a few minutes for a long contract.
+          {elapsed > 0 && ` (${formatElapsed(elapsed)} elapsed)`}
+        </p>
+        <p className="text-xs text-gray-400 mt-1">
+          You can leave this page — the review keeps running and will be here when you come back.
+        </p>
         {/* Escape hatch: if a prior run got interrupted the status can stay stuck
             here. Re-running is safe — the server rejects a genuinely in-flight
             analysis and only re-runs a stale one. */}
@@ -528,7 +570,9 @@ function NotAnalyzedState({
       <div className="flex flex-col items-center justify-center py-24 text-center">
         <AlertTriangle className="h-10 w-10 text-red-400 mb-4" />
         <p className="font-medium text-gray-700">Analysis failed</p>
-        <p className="text-sm text-gray-400 mt-1">Something went wrong. Try running the analysis again.</p>
+        <p className="text-sm text-gray-400 mt-1 max-w-md">
+          {errorMessage ?? "Something went wrong. Try running the analysis again."}
+        </p>
         <Button onClick={onAnalyze} disabled={analyzing} className="mt-6">
           {analyzing
             ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Retrying…</>

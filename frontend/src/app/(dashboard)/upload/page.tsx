@@ -204,15 +204,16 @@ export default function UploadPage() {
       });
       setProgress(80);
       setStage("analyzing");
-      toast.info("Analyzing contract with AI…");
       try {
+        // Only queues the job (202) — the AI runs server-side. Don't wait here;
+        // route straight to the contract page, which watches it to completion.
         await analyzeContract(token, contract.id, ruleIds);
-        setProgress(100);
-        setStage("done");
-        toast.success("Contract uploaded and analyzed!");
+        toast.info("Analysis started — this takes a couple of minutes.");
       } catch {
         toast.success("Contract uploaded! Click 'Analyze' on the contract page to run AI review.");
       }
+      setProgress(100);
+      setStage("done");
       router.push(`/contracts/${contract.id}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
