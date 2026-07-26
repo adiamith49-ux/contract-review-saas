@@ -4,14 +4,14 @@ import { useAuth, useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import {
   ClipboardList, Plus, Trash2, CheckCircle2, Circle,
-  Calendar, Loader2, UserCheck, FileSearch,
+  Calendar, Loader2, UserCheck, FileSearch, Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { listTasks, createTask, updateTask, deleteTask, type Task } from "@/lib/api";
+import { listTasks, createTask, updateTask, deleteTask, getTaskAttachmentUrl, type Task } from "@/lib/api";
 
 type Priority = "low" | "medium" | "high";
 
@@ -41,6 +41,7 @@ export default function TasksPage() {
 
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -87,6 +88,19 @@ export default function TasksPage() {
       toast.error("Failed to update task");
     } finally {
       setTogglingId(null);
+    }
+  }
+
+  async function handleDownloadAttachment(task: Task) {
+    setDownloadingId(task.id);
+    try {
+      const token = await getToken();
+      const { url } = await getTaskAttachmentUrl(token, task.id);
+      window.open(url, "_blank");
+    } catch {
+      toast.error("Failed to get attachment link");
+    } finally {
+      setDownloadingId(null);
     }
   }
 
@@ -294,6 +308,19 @@ export default function TasksPage() {
                             <FileSearch className="h-3 w-3" />
                             Open contract
                           </Link>
+                        )}
+                        {task.attachment_filename && (
+                          <button
+                            onClick={() => handleDownloadAttachment(task)}
+                            disabled={downloadingId === task.id}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline disabled:opacity-50"
+                            title={task.attachment_filename}
+                          >
+                            {downloadingId === task.id
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : <Download className="h-3 w-3" />}
+                            Download attachment
+                          </button>
                         )}
                         {task.due_date && (
                           <span className={cn("inline-flex items-center gap-1 text-[11px]", overdue ? "text-red-500 font-medium" : "text-gray-400")}>

@@ -39,6 +39,25 @@ const EnvSchema = z.object({
   // Marketing/landing origin (contact form posts from here). Leave empty when
   // the landing page and app share one domain (e.g. local dev).
   LANDING_URL: str(""),
+  // DocuSign — e-signature after approval. Optional: /api/contracts/:id/signature
+  // returns 503 "not configured" until all four are set. JWT Grant (server-to-server),
+  // not per-user OAuth. Get these from a DocuSign Developer account (sandbox):
+  //   1. Create an Integration Key (Apps & Keys) → DOCUSIGN_INTEGRATION_KEY
+  //   2. Generate an RSA keypair on that app → DOCUSIGN_PRIVATE_KEY (the private key PEM)
+  //   3. API Username (under the app's "Service Integration") → DOCUSIGN_USER_ID
+  //   4. Account ID shown on the same page → DOCUSIGN_ACCOUNT_ID
+  //   5. One-time consent: visit the JWT consent URL for this integration key while
+  //      logged in as DOCUSIGN_USER_ID, or docusign.service.ts logs the consent URL
+  //      to the console the first time a token request is denied for missing consent.
+  DOCUSIGN_INTEGRATION_KEY: str(""),
+  DOCUSIGN_USER_ID: str(""),
+  DOCUSIGN_ACCOUNT_ID: str(""),
+  DOCUSIGN_PRIVATE_KEY: str(""),
+  // demo.docusign.net / account-d.docusign.com = sandbox; drop the "-d" for production
+  DOCUSIGN_BASE_PATH: str("https://demo.docusign.net/restapi"),
+  DOCUSIGN_OAUTH_BASE_PATH: str("account-d.docusign.com"),
+  // Shared secret configured on the DocuSign Connect webhook (HMAC signature check)
+  DOCUSIGN_WEBHOOK_SECRET: str(""),
 });
 
 export const config = EnvSchema.parse(process.env);

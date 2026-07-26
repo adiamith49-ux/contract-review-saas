@@ -182,6 +182,99 @@ export async function buildDashboardReport(): Promise<Buffer> {
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
+// ─── Billing report (billable work) ───────────────────────────────────────────
+// One user → a single-sheet timesheet. Omitted userId → every user's billable
+// entries, with a per-user summary sheet added first.
+
+function fmtHours(mins: number): string {
+  return (mins / 60).toFixed(1);
+}
+
+export async function buildBillingReport(userId?: string): Promise<Buffer> {
+  let query = db
+    .from("time_entries")
+    .select("user_id, subject, contract, date, duration, duration_mins, category, description, created_at")
+    .eq("billable", true)
+    .order("date", { ascending: false });
+  if (userId) query = query.eq("user_id", userId);
+
+  const [entriesRes, usersRes] = await Promise.all([
+    query,
+    db.from("users").select("clerk_user_id, email"),
+  ]);
+  if (entriesRes.error) throw entriesRes.error;
+
+  const entries = entriesRes.data ?? [];
+  const emailByUser = new Map(
+    (usersRes.data ?? []).map((u) => [u.clerk_user_id as string, u.email as string]),
+  );
+  const emailFor = (uid: string) => emailByUser.get(uid) ?? uid;
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Contralyne";
+  wb.created = new Date();
+
+  const singleUser = !!userId;
+  const title = singleUser
+    ? `Contralyne — Billable Hours (${emailFor(userId!)})`
+    : "Contralyne — Billable Hours (All Users)";
+
+  // Per-user summary sheet (all-users export only)
+  if (!singleUser) {
+    const totalsByUser = new Map<string, { entries: number; mins: number }>();
+    for (const e of entries) {
+      const uid = e.user_id as string;
+      const cur = totalsByUser.get(uid) ?? { entries: 0, mins: 0 };
+      cur.entries += 1;
+      cur.mins += (e.duration_mins as number) ?? 0;
+      totalsByUser.set(uid, cur);
+    }
+    const summaryRows = Array.from(totalsByUser.entries())
+      .sort((a, b) => b[1].mins - a[1].mins)
+      .map(([uid, t]) => [emailFor(uid), t.entries, fmtHours(t.mins)]);
+
+    const summary = wb.addWorksheet("Summary");
+    addSheetTitle(summary, title, 3);
+    addTable(summary, ["User", "Billable Entries", "Total Hours"], [34, 18, 14], summaryRows);
+  }
+
+  // Detail sheet — every billable entry
+  const ws = wb.addWorksheet("Billable Entries", { views: [{ state: "frozen", ySplit: 4 }] });
+  addSheetTitle(ws, title, singleUser ? 6 : 7);
+
+  const headers = singleUser
+    ? ["Date", "Subject", "Contract", "Duration", "Category", "Description"]
+    : ["User", "Date", "Subject", "Contract", "Duration", "Category", "Description"];
+  const widths = singleUser
+    ? [13, 34, 26, 12, 16, 44]
+    : [30, 13, 34, 26, 12, 16, 44];
+  const rows = entries.map((e) => {
+    const base = [
+      (e.date as string).slice(0, 10),
+      e.subject as string,
+      (e.contract as string) || "—",
+      e.duration as string,
+      e.category as string,
+      (e.description as string) || "—",
+    ];
+    return (singleUser ? base : [emailFor(e.user_id as string), ...base]) as (string | number)[];
+  });
+  addTable(ws, headers, widths, rows);
+  ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4 + rows.length, column: headers.length } };
+
+  // Totals sheet
+  const totalMins = entries.reduce((sum, e) => sum + ((e.duration_mins as number) ?? 0), 0);
+  const totals = wb.addWorksheet("Totals");
+  addSheetTitle(totals, "Billing Summary", 2);
+  addTable(totals, ["Metric", "Value"], [30, 14], [
+    ["Billable entries", entries.length],
+    ["Total hours", fmtHours(totalMins)],
+    ...(singleUser ? [] : [["Users with billable work", new Set(entries.map((e) => e.user_id)).size]]),
+  ]);
+
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
 // ─── Contracts report ─────────────────────────────────────────────────────────
 // Full register of every contract with client, owner, status, and AI risk.
 

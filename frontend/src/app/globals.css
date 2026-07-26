@@ -4,7 +4,7 @@
 
 @layer base {
   /* Brand palette: main = Teal Wave #00BFA6 · side accent = Deep Lagoon #0F2A2A
-     · background = Aqua Silk #D9FAF4 (+ logo red accent) */
+     · background = Aqua Silk #D9FAF4 (+ blood-red used only where red already was) */
   :root {
     --background: 169 70% 92%;
     --foreground: 180 47% 11%;

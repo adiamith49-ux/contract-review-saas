@@ -7,6 +7,53 @@ Mark tasks as done with `[x]` when complete.
 
 ---
 
+## Ad hoc — requested by Kartik (2026-07-24)
+
+- [x] Admin: download billable work as a formatted Excel export — per user, or all users at once (same visual standard as the existing dashboard/contracts report exports)
+- [x] Admin task assignment: optionally attach a contract document the user must download and re-upload (via the normal Upload flow) to run analysis
+- [x] Contract approval submission: let the submitting user attach a supporting "child" document and/or a text note, visible to every approver in that round
+- [x] Fix: approval decision could be made by the contract owner on any step, not just the actual named approver's account (self-approval bug)
+
+---
+
+## Ad hoc — requested by Kartik (2026-07-26) — layout/UX
+
+- [x] User app: move primary navigation from the top bar into a standard left-hand sidebar (like the admin panel already has)
+- [x] Contract detail page: the 4 stacked bands (Legal Intake, Approval, Versions, Matter Workspace) take up too much vertical space one after another — consolidate into a compact tab strip
+- [x] Contract detail page: AI Review panel + document viewer should get the freed-up vertical space so they feel full-page, not squeezed
+- [x] Sidebar: use the full wordmark logo at the top instead of icon + typed name
+- [x] Sidebar: remove the app-launcher grid icon (its destinations are already all in the sidebar nav)
+- [x] Sidebar: give the timer widget a better, more visible spot
+- [x] Sidebar: while viewing a contract, swap the main nav for the 4 consolidated panels (Legal Intake / Approval / Versions / Workspace) as the navigator
+- [x] Sidebar: add a "«" collapse toggle next to the logo to shrink it to icon-only rail mode
+
+---
+
+## Ad hoc — requested by Kartik (2026-07-28) — DocuSign e-signature
+
+Note: `CLAUDE.md` lists "Bulk export, DocuSign/e-signature" under out-of-scope V1. Building anyway
+as a goodwill beyond-scope item, same as approval routing / task assignment / calendar / etc.
+Real envelope-sending needs a DocuSign developer account's credentials in `backend/.env`
+(`DOCUSIGN_INTEGRATION_KEY`, `DOCUSIGN_USER_ID`, `DOCUSIGN_ACCOUNT_ID`, `DOCUSIGN_PRIVATE_KEY`) —
+the feature degrades to a clear "not configured" error until those are supplied, same pattern as SMTP.
+
+- [x] `signature_requests` table (contract_id, parties jsonb, envelope id, status) — migrated to live Supabase
+- [x] `backend/src/services/docusign.service.ts` — JWT auth grant + create/send envelope + status fetch
+- [x] `POST /api/contracts/:id/signature` — gated on `contract_status === "approved"`, accepts 2+ parties (name+email), sends real DocuSign envelope
+- [x] `GET /api/contracts/:id/signature` — latest request + live per-party status
+- [x] `POST /api/webhooks/docusign` — DocuSign Connect callback to reconcile envelope/recipient status
+- [x] Frontend: "Submit for Signature" action → dialog to add 2+ signer name/email rows → send
+- [x] Frontend: Signature status panel (5th contract-context sidebar tab), shows each party's status, refreshable
+- [x] `docusign-esign` npm dependency + config/env wiring
+
+**Still needed from Kartik before this goes live:** a DocuSign developer (sandbox) account —
+Integration Key, RSA private key, API User ID, Account ID — added to `backend/.env` (see the
+comment block above `DOCUSIGN_*` in `config.ts`), plus a DocuSign Connect webhook pointed at
+`/api/webhooks/docusign` once deployed. Until then `POST /api/contracts/:id/signature` returns
+a clean 503 "not configured" instead of erroring.
+
+---
+
 ## Module 1 — Dashboard
 
 - [ ] Risk Heatmap — visual grid of contracts by risk tier (High / Medium / Low)

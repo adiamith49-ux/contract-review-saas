@@ -29,14 +29,15 @@ import { ContralyneLogoMark } from "@/components/ContralyneLogoMark";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 // ─── Brand palette ─────────────────────────────────────────────────────────────
-// Teal Wave #00BFA6 · Aqua Silk #D9FAF4 · Deep Lagoon #0F2A2A (+ logo red accent)
+// Teal Wave #00BFA6 (main) · Aqua Silk #D9FAF4 (bg) · Deep Lagoon #0F2A2A (dark surfaces)
+// · Blood Red #8B0000 used only where red already was (Red Line, risk/redline accents)
 const btnPrimary =
   "rounded-full bg-[#00BFA6] text-white hover:bg-[#019485] shadow-none";
 // Nav link: black text + red underline that grows outward from the center on
 // hover and shrinks back to the center on leave.
 const navLink =
   "relative text-sm font-semibold text-black transition-colors " +
-  "after:absolute after:left-0 after:right-0 after:-bottom-1.5 after:h-[2px] after:bg-red-600 " +
+  "after:absolute after:left-0 after:right-0 after:-bottom-1.5 after:h-[2px] after:bg-[#8B0000] " +
   "after:origin-center after:scale-x-0 after:transition-transform after:duration-300 hover:after:scale-x-100";
 const btnOutline =
   "rounded-full border border-[#0F2A2A]/25 bg-transparent text-[#0F2A2A] hover:bg-[#0F2A2A]/5 hover:text-[#0F2A2A] shadow-none";
@@ -52,9 +53,9 @@ function LandingNav() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 shrink-0">
-            <ContralyneLogoMark className="h-8 w-8" />
-            <span className="text-lg font-bold tracking-tight text-black">Contralyne</span>
+          <Link href="/" className="flex items-center shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/name-logo.png" alt="Contralyne — review, negotiate, red line, close" className="h-8 w-auto" />
           </Link>
 
           {/* Desktop nav */}
@@ -140,7 +141,7 @@ function Hero() {
         {/* Badge */}
         <div className="inline-flex items-center gap-2 border border-[#00BFA6]/30 bg-[#00BFA6]/10 text-[#00BFA6] rounded-full px-4 py-1.5 text-sm font-semibold mb-8">
           Review , Negotiate ,{" "}
-          <span className="text-red-500">Red Line</span>
+          <span className="text-[#c41e3a]">Red Line</span>
           {" "}, Close.
         </div>
 
@@ -272,7 +273,7 @@ function StatCards() {
       tag: "Speed",
       value: "5 min",
       label: "from upload to clause-by-clause analysis",
-      bg: "bg-red-600",
+      bg: "bg-[#8B0000]",
     },
     {
       tag: "Simplicity",
@@ -315,7 +316,7 @@ function Features() {
   const features = [
     {
       icon: AlertTriangle,
-      tile: "bg-red-600/10 text-red-600",
+      tile: "bg-[#8B0000]/10 text-[#8B0000]",
       title: "Clause-Level Risk Flags",
       description: "Every clause scored critical, high, medium, or low with plain-English explanations. Know exactly which provisions need attention before the negotiation call.",
     },
@@ -345,7 +346,7 @@ function Features() {
     },
     {
       icon: Download,
-      tile: "bg-red-600/10 text-red-600",
+      tile: "bg-[#8B0000]/10 text-[#8B0000]",
       title: "Export with Redlines",
       description: "Download DOCX with Word tracked changes and inline comments, or PDF with a two-column redlines layout. Ready to send to the other side.",
     },
@@ -532,7 +533,7 @@ function WhyContralyne() {
           {comparisons.map((c, i) => (
             <div key={i} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="rounded-xl bg-white px-4 py-3 flex items-start gap-2.5 shadow-sm">
-                <X className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
+                <X className="h-4 w-4 text-[#8B0000] mt-0.5 shrink-0" />
                 <p className="text-sm text-[#0F2A2A]/60">{c.them}</p>
               </div>
               <div className="rounded-xl bg-white border-l-4 border-[#00BFA6] px-4 py-3 flex items-start gap-2.5 shadow-sm">
