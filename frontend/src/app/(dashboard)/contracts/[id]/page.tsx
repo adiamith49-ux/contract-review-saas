@@ -58,14 +58,20 @@ export default function ContractDetailPage() {
     });
   }
 
-  function handleApplyAll(analysis: { risk_summary: unknown[]; clause_analysis: unknown[]; negotiation_points: unknown[]; ambiguity_flags?: unknown[] }) {
-    const ids = [
-      ...analysis.risk_summary.map((_, i) => `r-${i}`),
-      ...analysis.clause_analysis.map((_, i) => `c-${i}`),
-      ...analysis.negotiation_points.map((_, i) => `n-${i}`),
-      ...(analysis.ambiguity_flags ?? []).map((_, i) => `a-${i}`),
-    ];
-    setAppliedIds(new Set(ids));
+  // The list fields are JSONB, so a partially-written analysis row can hand back
+  // null where the type promises an array. Coerce rather than throw — this runs
+  // on a click, and an exception here takes the whole page down.
+  function handleApplyAll(analysis: { risk_summary?: unknown; clause_analysis?: unknown; negotiation_points?: unknown; ambiguity_flags?: unknown } | null) {
+    if (!analysis) return;
+    const idsFor = (value: unknown, prefix: string) =>
+      Array.isArray(value) ? value.map((_, i) => `${prefix}-${i}`) : [];
+
+    setAppliedIds(new Set([
+      ...idsFor(analysis.risk_summary, "r"),
+      ...idsFor(analysis.clause_analysis, "c"),
+      ...idsFor(analysis.negotiation_points, "n"),
+      ...idsFor(analysis.ambiguity_flags, "a"),
+    ]));
   }
 
   async function load() {
