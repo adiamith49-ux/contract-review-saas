@@ -24,25 +24,37 @@ interface Props {
   embedded?: boolean;
 }
 
-const PARTY_STATUS: Record<string, { label: string; icon: React.ReactNode; cls: string }> = {
-  created:       { label: "Created",   icon: <Clock className="h-3.5 w-3.5" />,        cls: "bg-gray-100 text-gray-500 border-gray-200" },
-  sent:          { label: "Sent",      icon: <Mail className="h-3.5 w-3.5" />,          cls: "bg-blue-100 text-blue-700 border-blue-200" },
-  delivered:     { label: "Delivered", icon: <Mail className="h-3.5 w-3.5" />,          cls: "bg-blue-100 text-blue-700 border-blue-200" },
+const PARTY_STATUS: Record<string, { label: string; icon: React.ReactNode; cls: string; pending?: boolean }> = {
+  created:       { label: "Pending",   icon: <Clock className="h-3.5 w-3.5" />,        cls: "bg-amber-100 text-amber-700 border-amber-200", pending: true },
+  sent:          { label: "Pending",   icon: <Clock className="h-3.5 w-3.5" />,        cls: "bg-amber-100 text-amber-700 border-amber-200", pending: true },
+  delivered:     { label: "Delivered", icon: <Mail className="h-3.5 w-3.5" />,          cls: "bg-blue-100 text-blue-700 border-blue-200",    pending: true },
   completed:     { label: "Signed",    icon: <CheckCircle2 className="h-3.5 w-3.5" />,  cls: "bg-emerald-100 text-emerald-700 border-emerald-200" },
   signed:        { label: "Signed",    icon: <CheckCircle2 className="h-3.5 w-3.5" />,  cls: "bg-emerald-100 text-emerald-700 border-emerald-200" },
   declined:      { label: "Declined",  icon: <XCircle className="h-3.5 w-3.5" />,       cls: "bg-red-100 text-red-700 border-red-200" },
-  autoresponded: { label: "Auto-responded", icon: <AlertTriangle className="h-3.5 w-3.5" />, cls: "bg-amber-100 text-amber-700 border-amber-200" },
+  autoresponded: { label: "Auto-responded", icon: <AlertTriangle className="h-3.5 w-3.5" />, cls: "bg-amber-100 text-amber-700 border-amber-200", pending: true },
 };
 
 const ENVELOPE_STATUS: Record<string, { label: string; cls: string }> = {
-  created:   { label: "Created",   cls: "bg-gray-100 text-gray-600 border-gray-200" },
-  sent:      { label: "Sent — awaiting signatures", cls: "bg-blue-100 text-blue-700 border-blue-200" },
+  created:   { label: "Pending",   cls: "bg-amber-100 text-amber-700 border-amber-200" },
+  sent:      { label: "Pending — awaiting signatures", cls: "bg-amber-100 text-amber-700 border-amber-200" },
   delivered: { label: "Opened",    cls: "bg-blue-100 text-blue-700 border-blue-200" },
   completed: { label: "Fully signed", cls: "bg-emerald-100 text-emerald-700 border-emerald-200" },
   declined:  { label: "Declined",  cls: "bg-red-100 text-red-700 border-red-200" },
   voided:    { label: "Voided",    cls: "bg-gray-100 text-gray-500 border-gray-200" },
   error:     { label: "Error",     cls: "bg-red-100 text-red-700 border-red-200" },
 };
+
+// How long a party's signature has been outstanding — measured from when the
+// envelope was sent, since DocuSign doesn't give us a distinct per-recipient send time.
+function timeAgo(iso: string): string {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
 
 interface PartyRow { name: string; email: string }
 
@@ -162,7 +174,7 @@ export function SignaturePanel({ contractId, contractStatus, getToken, embedded 
 
               <ol className="space-y-2">
                 {request.parties.map((p, i) => {
-                  const meta = PARTY_STATUS[p.status] ?? { label: p.status, icon: <Clock className="h-3.5 w-3.5" />, cls: "bg-gray-100 text-gray-500 border-gray-200" };
+                  const meta = PARTY_STATUS[p.status] ?? { label: p.status, icon: <Clock className="h-3.5 w-3.5" />, cls: "bg-gray-100 text-gray-500 border-gray-200", pending: true };
                   return (
                     <li key={i} className="rounded-lg border bg-white px-3.5 py-2.5 flex items-center gap-2.5 flex-wrap">
                       <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-100 text-[10px] font-bold text-gray-500 shrink-0">
@@ -170,10 +182,16 @@ export function SignaturePanel({ contractId, contractStatus, getToken, embedded 
                       </span>
                       <span className="text-xs font-semibold text-gray-800">{p.name}</span>
                       <span className="text-[11px] text-gray-400">{p.email}</span>
-                      <span className={cn("ml-auto inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium", meta.cls)}>
-                        {meta.icon}{meta.label}
-                      </span>
-                      {p.signed_at && <span className="text-[10px] text-gray-400 w-full">{formatDateTime(p.signed_at)}</span>}
+                      <div className="ml-auto flex flex-col items-end gap-0.5">
+                        <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium", meta.cls)}>
+                          {meta.icon}{meta.label}
+                        </span>
+                        {p.signed_at ? (
+                          <span className="text-[10px] text-gray-400">{formatDateTime(p.signed_at)}</span>
+                        ) : meta.pending ? (
+                          <span className="text-[10px] text-gray-400">{timeAgo(request.created_at)}</span>
+                        ) : null}
+                      </div>
                     </li>
                   );
                 })}
