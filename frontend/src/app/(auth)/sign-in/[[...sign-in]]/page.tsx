@@ -15,7 +15,7 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong. Please try again.";
 }
 
-type View = "signin" | "forgot" | "reset";
+type View = "signin" | "verify" | "forgot" | "reset";
 
 export default function SignInPage() {
   const router = useRouter();
@@ -27,6 +27,8 @@ export default function SignInPage() {
   const [showPw, setShowPw] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
   const [code, setCode] = useState("");
+  const [verifyCode, setVerifyCode] = useState("");
+  const [verifyEmail, setVerifyEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [showNewPw, setShowNewPw] = useState(false);
   const [error, setError] = useState("");
@@ -42,8 +44,54 @@ export default function SignInPage() {
       if (result.status === "complete") {
         await setActive({ session: result.createdSessionId });
         router.push("/dashboard");
+        return;
+      }
+      // Password was accepted but Clerk wants a second confirmation step. The
+      // common case is an emailed one-time code (new device / "verify it's
+      // you"). Prepare it and collect the code instead of dead-ending.
+      if (result.status === "needs_first_factor" || result.status === "needs_second_factor") {
+        const emailFactor = [
+          ...(result.supportedFirstFactors ?? []),
+          ...(result.supportedSecondFactors ?? []),
+        ].find(f => f.strategy === "email_code");
+        if (emailFactor && "emailAddressId" in emailFactor) {
+          await signIn.prepareFirstFactor({
+            strategy: "email_code",
+            emailAddressId: emailFactor.emailAddressId,
+          });
+          setVerifyEmail(
+            "safeIdentifier" in emailFactor && emailFactor.safeIdentifier
+              ? String(emailFactor.safeIdentifier)
+              : identifier.trim()
+          );
+          setVerifyCode("");
+          setView("verify");
+          return;
+        }
+      }
+      setError("Additional verification is required for this account. Please contact support.");
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleVerifyCode(e: React.FormEvent) {
+    e.preventDefault();
+    if (!isLoaded) return;
+    setError("");
+    setLoading(true);
+    try {
+      const result = await signIn.attemptFirstFactor({
+        strategy: "email_code",
+        code: verifyCode.trim(),
+      });
+      if (result.status === "complete") {
+        await setActive({ session: result.createdSessionId });
+        router.push("/dashboard");
       } else {
-        setError("Additional verification is required for this account. Please contact support.");
+        setError("Couldn't verify that code. Please request a new one.");
       }
     } catch (err) {
       setError(errorMessage(err));
@@ -164,6 +212,53 @@ export default function SignInPage() {
           <p className="mt-6 text-center text-sm text-gray-500">
             Don&apos;t have an account? Ask your administrator to create one for you.
           </p>
+        </div>
+      )}
+
+      {view === "verify" && (
+        <div className={card}>
+          <div className="mb-6 text-center">
+            <h1 className="text-lg font-semibold text-gray-900">Verify it&apos;s you</h1>
+            <p className="mt-1 text-sm text-gray-500">
+              For security, we sent a 6-digit code to{" "}
+              <span className="font-medium text-gray-700">{verifyEmail}</span>
+            </p>
+          </div>
+
+          <form onSubmit={handleVerifyCode} className="space-y-4">
+            <div>
+              <label htmlFor="verify-code" className={label}>Verification code</label>
+              <Input
+                id="verify-code"
+                type="text"
+                inputMode="numeric"
+                placeholder="123456"
+                value={verifyCode}
+                onChange={e => setVerifyCode(e.target.value)}
+                autoComplete="one-time-code"
+                required
+                autoFocus
+                className="tracking-widest"
+              />
+            </div>
+
+            {error && (
+              <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>
+            )}
+
+            <Button type="submit" className="w-full" disabled={loading || !isLoaded}>
+              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {loading ? "Verifying…" : "Verify & sign in"}
+            </Button>
+          </form>
+
+          <button
+            type="button"
+            onClick={() => { setError(""); setVerifyCode(""); setView("signin"); }}
+            className="mt-6 flex w-full items-center justify-center gap-1.5 text-sm text-gray-500 hover:text-gray-700"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" /> Back to sign in
+          </button>
         </div>
       )}
 
