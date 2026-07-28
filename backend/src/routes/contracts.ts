@@ -230,9 +230,30 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
     const fileId = randomUUID();
     const s3Key = buildS3Key(req.userId, fileId, req.file.originalname);
 
+    // Extraction and storage are the two steps that fail on a *specific file* rather
+    // than on a bug. Tag each failure so the user is told which one broke and what to
+    // do about it — an anonymous 500 here is indistinguishable from the app being down,
+    // and gives support nothing to act on.
     const [extractedText] = await Promise.all([
-      extractText(req.file.buffer, req.file.mimetype),
-      uploadToS3({ buffer: req.file.buffer, key: s3Key, mimeType: req.file.mimetype }),
+      extractText(req.file.buffer, req.file.mimetype).catch((err: unknown) => {
+        const cause = err instanceof Error ? err.message : String(err);
+        console.error(`upload: text extraction failed for ${req.file?.originalname} (${req.file?.mimetype}): ${cause}`);
+        throw Object.assign(
+          new Error(
+            "Could not read text from this file. It may be password-protected, corrupted, " +
+            "or saved in an unsupported format. Try re-saving it as a standard PDF or DOCX.",
+          ),
+          { status: 422 },
+        );
+      }),
+      uploadToS3({ buffer: req.file.buffer, key: s3Key, mimeType: req.file.mimetype }).catch((err: unknown) => {
+        const cause = err instanceof Error ? err.message : String(err);
+        console.error(`upload: S3 put failed for key ${s3Key}: ${cause}`);
+        throw Object.assign(
+          new Error("File storage is unavailable. Please try again in a moment."),
+          { status: 502, expose: true },
+        );
+      }),
     ]);
 
     const { data, error } = await db
