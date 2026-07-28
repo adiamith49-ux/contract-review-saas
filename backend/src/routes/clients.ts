@@ -1,15 +1,16 @@
 import { Router } from "express";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireActiveOrg } from "../middleware/org.js";
 import { getUserClientIds, userHasClientAccess } from "../services/membership.service.js";
 
 export const clientsRouter = Router();
-clientsRouter.use(requireAuth);
+clientsRouter.use(requireAuth, requireActiveOrg);
 
-// GET /api/clients — only active clients the user is assigned to (via client_memberships)
+// GET /api/clients — only active clients the user is assigned to (via client_memberships), within their org
 clientsRouter.get("/", async (req, res, next) => {
   try {
-    const memberIds = await getUserClientIds(req.userId!);
+    const memberIds = await getUserClientIds(req.userId!, req.orgId!);
     if (memberIds.length === 0) {
       res.json({ clients: [] });
       return;
@@ -19,6 +20,7 @@ clientsRouter.get("/", async (req, res, next) => {
       .from("clients")
       .select("id, name, industry, notes, status, created_at, updated_at")
       .eq("status", "active")
+      .eq("org_id", req.orgId!)
       .in("id", memberIds)
       .order("name");
 
@@ -51,7 +53,7 @@ clientsRouter.get("/", async (req, res, next) => {
 // GET /api/clients/:id — client detail (members only)
 clientsRouter.get("/:id", async (req, res, next) => {
   try {
-    if (!(await userHasClientAccess(req.userId!, req.params.id))) {
+    if (!(await userHasClientAccess(req.userId!, req.params.id, req.orgId!))) {
       res.status(404).json({ error: "Client not found" });
       return;
     }
@@ -60,6 +62,7 @@ clientsRouter.get("/:id", async (req, res, next) => {
       .from("clients")
       .select("id, name, industry, notes, status, created_at, updated_at")
       .eq("id", req.params.id)
+      .eq("org_id", req.orgId!)
       .single();
 
     if (error || !data) { res.status(404).json({ error: "Client not found" }); return; }
@@ -68,6 +71,7 @@ clientsRouter.get("/:id", async (req, res, next) => {
       .from("contracts")
       .select("id, filename, contract_type, status, file_size, created_at, analyses(id, risk_level)")
       .eq("client_id", req.params.id)
+      .eq("org_id", req.orgId!)
       .order("created_at", { ascending: false });
 
     const contracts = (contractRows ?? []).map((c: any) => ({

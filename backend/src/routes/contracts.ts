@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { ContractType } from "../types.js";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireActiveOrg } from "../middleware/org.js";
 import { createClerkClient } from "@clerk/backend";
 import { config } from "../config.js";
 import { analyzeLimiter, chatLimiter, statusLimiter, uploadLimiter } from "../middleware/rateLimit.js";
@@ -124,7 +125,7 @@ const intakeSchema = z.object({
 });
 
 export const contractsRouter = Router();
-contractsRouter.use(requireAuth);
+contractsRouter.use(requireAuth, requireActiveOrg);
 
 const businessStatusEnum = z.enum(["draft", "submitted", "under_review", "waiting_for_business", "sent_to_counterparty", "in_negotiation", "pending_approval", "approved", "executed", "expired", "on_hold", "terminated"]);
 
@@ -218,11 +219,12 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
         .from("contracts")
         .select("version_number")
         .eq("parent_contract_id", meta.parent_contract_id)
+        .eq("org_id", req.orgId!)
         .order("version_number", { ascending: false })
         .limit(1)
         .single();
       // Also check the parent itself
-      const { data: parent } = await db.from("contracts").select("version_number").eq("id", meta.parent_contract_id).single();
+      const { data: parent } = await db.from("contracts").select("version_number").eq("id", meta.parent_contract_id).eq("org_id", req.orgId!).single();
       const maxVersion = Math.max(existing?.version_number ?? 1, parent?.version_number ?? 1);
       versionNumber = maxVersion + 1;
     }
@@ -266,6 +268,7 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
       .insert({
         id: fileId,
         user_id: req.userId,
+        org_id: req.orgId,
         filename: req.file.originalname,
         s3_key: s3Key,
         file_size: req.file.size,
@@ -294,6 +297,7 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
       await db.from("legal_intake").upsert({
         contract_id: fileId,
         user_id: req.userId,
+        org_id: req.orgId,
         counterparty_name: meta.counterparty ?? null,
         renewal_date: meta.renewal_date ?? null,
         deal_value: meta.contract_value ?? null,
@@ -324,6 +328,7 @@ contractsRouter.get("/", async (req, res, next) => {
       .from("contracts")
       .select("id, filename, title, counterparty, contract_type, contract_status, status, file_size, start_date, end_date, renewal_date, owner_name, contract_value, version_number, parent_contract_id, created_at, analyses(id, risk_level), legal_intake(jurisdiction)")
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .order("created_at", { ascending: false });
 
     if (status) query = query.eq("status", String(status));
@@ -396,15 +401,17 @@ contractsRouter.get("/:id", async (req, res, next) => {
       .select(selectCols)
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .single();
 
     if (error || !data) {
       // Not the owner — allow read access if this user is a named approver
-      // on the contract's approval chain (V1 has no orgs/RBAC, so this is
-      // matched by email rather than a membership table).
+      // on the contract's approval chain (matched by email, not a membership
+      // table), but still scoped to the caller's own organization — an
+      // approver can never read a contract belonging to a different org.
       const email = await getUserEmail(req.userId);
       if (email && await isApproverForContract(email, req.params.id)) {
-        ({ data, error } = await db.from("contracts").select(selectCols).eq("id", req.params.id).single());
+        ({ data, error } = await db.from("contracts").select(selectCols).eq("id", req.params.id).eq("org_id", req.orgId!).single());
       }
     }
 
@@ -432,13 +439,14 @@ contractsRouter.post("/:id/intake", async (req, res, next) => {
       .select("id")
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .single();
 
     if (!contract) { res.status(404).json({ error: "Contract not found" }); return; }
 
     const { data, error } = await db
       .from("legal_intake")
-      .upsert({ ...body, contract_id: req.params.id, user_id: req.userId }, { onConflict: "contract_id" })
+      .upsert({ ...body, contract_id: req.params.id, user_id: req.userId, org_id: req.orgId }, { onConflict: "contract_id" })
       .select()
       .single();
 
@@ -459,6 +467,7 @@ contractsRouter.get("/:id/intake", async (req, res, next) => {
       .select("*")
       .eq("contract_id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .single();
 
     if (error) { res.json({ intake: null }); return; }
@@ -479,6 +488,7 @@ contractsRouter.get("/:id/analysis-status", statusLimiter, async (req, res, next
       .select("id, status, error_message, updated_at")
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .single();
 
     if (error || !data) { res.status(404).json({ error: "Contract not found" }); return; }
@@ -507,6 +517,7 @@ contractsRouter.get("/:id/analysis-status", statusLimiter, async (req, res, next
 // with the row at "analyzed" or "failed", never left at "processing".
 async function runAnalysis(opts: {
   userId: string;
+  orgId: string;
   contractId: string;
   text: string;
   contractType: ContractType;
@@ -536,6 +547,7 @@ async function runAnalysis(opts: {
       .upsert({
         contract_id: opts.contractId,
         user_id: opts.userId,
+        org_id: opts.orgId,
         risk_level: analysis.riskLevel,
         risk_summary: analysis.riskSummary,
         clause_analysis: analysis.clauseAnalysis,
@@ -579,6 +591,7 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
       .select("id, user_id, contract_type, extracted_text, status, updated_at")
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .single();
 
     if (fetchError || !contract) { res.status(404).json({ error: "Contract not found" }); return; }
@@ -600,28 +613,28 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
     }).parse(req.body ?? {});
 
     const [intakeResult, clauseResult] = await Promise.all([
-      db.from("legal_intake").select("*").eq("contract_id", contract.id).single(),
-      db.from("clause_library").select("title, clause_type, content").eq("status", "approved").or(`user_id.eq.${req.userId},is_admin_managed.eq.true`),
+      db.from("legal_intake").select("*").eq("contract_id", contract.id).eq("org_id", req.orgId!).single(),
+      db.from("clause_library").select("title, clause_type, content").eq("status", "approved").eq("org_id", req.orgId!).or(`user_id.eq.${req.userId},is_admin_managed.eq.true`),
     ]);
     const intake = intakeResult.data ?? null;
     const clauseLibrary = (clauseResult.data ?? []) as Array<{ title: string; clause_type: "approved" | "fallback" | "unacceptable"; content: string }>;
 
     let playbookText: string | undefined;
     const selectFields = "title, playbook_text, rules, jurisdiction";
-    // Playbooks are admin-managed (user_id = "admin") but selectable by any user
+    // Playbooks are admin-managed within the org (user_id = "admin") but selectable by any org member
     const ownerFilter = `user_id.eq.${req.userId},is_admin_managed.eq.true`;
     let ruleRows: any[] = [];
 
     if (selectedRuleIds === undefined) {
       // Auto-select: only playbooks matching the contract's jurisdiction (or jurisdiction-agnostic ones)
       const contractJurisdiction = intake?.jurisdiction ?? null;
-      const r = await db.from("review_rules").select(selectFields).or(ownerFilter).eq("is_active", true);
+      const r = await db.from("review_rules").select(selectFields).eq("org_id", req.orgId!).or(ownerFilter).eq("is_active", true);
       ruleRows = (r.data ?? []).filter((row: any) =>
         !row.jurisdiction || (contractJurisdiction && row.jurisdiction === contractJurisdiction)
       );
     } else if (selectedRuleIds.length > 0) {
       // Explicit selection is honoured as-is (user deliberately chose these playbooks)
-      const r = await db.from("review_rules").select(selectFields).or(ownerFilter).eq("is_active", true).in("id", selectedRuleIds);
+      const r = await db.from("review_rules").select(selectFields).eq("org_id", req.orgId!).or(ownerFilter).eq("is_active", true).in("id", selectedRuleIds);
       ruleRows = r.data ?? [];
     }
 
@@ -653,6 +666,7 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
     // own terminal status, which the client reads via /analysis-status.
     const job = runAnalysis({
       userId: req.userId!,
+      orgId: req.orgId!,
       contractId: contract.id,
       text: contract.extracted_text,
       contractType: contract.contract_type as ContractType,
@@ -689,6 +703,7 @@ contractsRouter.post("/:id/summarize", async (req, res, next) => {
       .select("id, contract_type, extracted_text, summary")
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .single();
 
     if (error || !contract) { res.status(404).json({ error: "Contract not found" }); return; }
@@ -720,11 +735,13 @@ contractsRouter.get("/:id/export/docx", async (req, res, next) => {
         .select("filename, contract_type, summary, created_at, extracted_text, s3_key, mime_type, analyses(*)")
         .eq("id", req.params.id)
         .eq("user_id", req.userId)
+        .eq("org_id", req.orgId!)
         .single(),
       db.from("redlines")
         .select("edits")
         .eq("contract_id", req.params.id)
         .eq("user_id", req.userId)
+        .eq("org_id", req.orgId!)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
@@ -784,6 +801,7 @@ contractsRouter.get("/:id/export/pdf", async (req, res, next) => {
       .select("filename, contract_type, summary, created_at, extracted_text, analyses(*)")
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .single();
 
     const a = Array.isArray(data?.analyses) ? data.analyses[0] : data?.analyses;
@@ -820,6 +838,7 @@ contractsRouter.post("/:id/chat", chatLimiter, async (req, res, next) => {
       .select("extracted_text, contract_type, analyses(*)")
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .single();
 
     if (contractError || !contract) { res.status(404).json({ error: "Contract not found" }); return; }
@@ -830,6 +849,7 @@ contractsRouter.post("/:id/chat", chatLimiter, async (req, res, next) => {
       .select("role, content")
       .eq("contract_id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .order("created_at", { ascending: true })
       .limit(20);
 
@@ -849,8 +869,8 @@ contractsRouter.post("/:id/chat", chatLimiter, async (req, res, next) => {
     });
 
     await db.from("chat_messages").insert([
-      { contract_id: req.params.id, user_id: req.userId, role: "user", content: question },
-      { contract_id: req.params.id, user_id: req.userId, role: "assistant", content: answer },
+      { contract_id: req.params.id, user_id: req.userId, org_id: req.orgId, role: "user", content: question },
+      { contract_id: req.params.id, user_id: req.userId, org_id: req.orgId, role: "assistant", content: answer },
     ]);
 
     res.json({ answer });
@@ -867,6 +887,7 @@ contractsRouter.get("/:id/chat", async (req, res, next) => {
       .select("id, role, content, created_at")
       .eq("contract_id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .order("created_at", { ascending: true });
 
     if (error) throw error;
@@ -883,7 +904,8 @@ contractsRouter.delete("/:id/chat", async (req, res, next) => {
       .from("chat_messages")
       .delete()
       .eq("contract_id", req.params.id)
-      .eq("user_id", req.userId);
+      .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!);
 
     if (error) throw error;
     res.status(204).send();
@@ -918,6 +940,7 @@ contractsRouter.patch("/:id", async (req, res, next) => {
       .update({ ...body, updated_at: new Date().toISOString() })
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .select("id, filename, title, counterparty, contract_type, contract_status, status, start_date, end_date, renewal_date, owner_name, contract_value, updated_at")
       .single();
 
@@ -951,6 +974,7 @@ contractsRouter.post("/:id/redline", analyzeLimiter, async (req, res, next) => {
       .select("extracted_text, contract_type, legal_intake(*)")
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .single();
 
     if (error || !contract) { res.status(404).json({ error: "Contract not found" }); return; }
@@ -967,8 +991,8 @@ contractsRouter.post("/:id/redline", analyzeLimiter, async (req, res, next) => {
     } else {
       // Fetch active playbook rules + clause library in parallel
       const [{ data: ruleRows }, { data: clauseRows }] = await Promise.all([
-        db.from("review_rules").select("title, playbook_text, rules").or(`user_id.eq.${req.userId},is_admin_managed.eq.true`).eq("is_active", true),
-        db.from("clause_library").select("title, clause_type, content").eq("status", "approved").or(`user_id.eq.${req.userId},is_admin_managed.eq.true`),
+        db.from("review_rules").select("title, playbook_text, rules").eq("org_id", req.orgId!).or(`user_id.eq.${req.userId},is_admin_managed.eq.true`).eq("is_active", true),
+        db.from("clause_library").select("title, clause_type, content").eq("status", "approved").eq("org_id", req.orgId!).or(`user_id.eq.${req.userId},is_admin_managed.eq.true`),
       ]);
 
       const playbookParts = (ruleRows ?? []).map((row: any) => {
@@ -1015,10 +1039,12 @@ contractsRouter.post("/:id/redline", analyzeLimiter, async (req, res, next) => {
       await db.from("redlines")
         .delete()
         .eq("contract_id", req.params.id)
-        .eq("user_id", req.userId);
+        .eq("user_id", req.userId)
+        .eq("org_id", req.orgId!);
       await db.from("redlines").insert({
         contract_id: req.params.id,
         user_id: req.userId,
+        org_id: req.orgId,
         edits: processedEdits,
         matched_count,
         unmatched_count,
@@ -1043,6 +1069,7 @@ contractsRouter.get("/:id/redline", async (req, res, next) => {
       .select("edits, matched_count, unmatched_count, model, created_at")
       .eq("contract_id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .order("created_at", { ascending: false })
       .limit(1)
       .single();
@@ -1066,6 +1093,7 @@ contractsRouter.post("/:id/redline/export/docx", async (req, res, next) => {
       .select("filename, extracted_text, s3_key, mime_type")
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .single();
 
     if (error || !contract) {
@@ -1117,6 +1145,7 @@ contractsRouter.get("/:id/versions", async (req, res, next) => {
       .select("id, parent_contract_id")
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .single();
     if (sErr || !self) { res.status(404).json({ error: "Contract not found" }); return; }
 
@@ -1126,6 +1155,7 @@ contractsRouter.get("/:id/versions", async (req, res, next) => {
       .from("contracts")
       .select("id, filename, title, version_number, contract_status, status, owner_name, created_at, parent_contract_id")
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .or(`id.eq.${rootId},parent_contract_id.eq.${rootId}`)
       .order("version_number", { ascending: true });
     if (error) throw error;
@@ -1147,6 +1177,7 @@ contractsRouter.post("/:id/compare", async (req, res, next) => {
       .from("contracts")
       .select("id, filename, title, contract_type, version_number, extracted_text")
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .in("id", [req.params.id, against]);
     if (error) throw error;
 
@@ -1190,6 +1221,7 @@ contractsRouter.post("/:id/compare", async (req, res, next) => {
       .from("contract_comparisons")
       .insert({
         user_id: req.userId,
+        org_id: req.orgId,
         base_contract_id: base.id,
         compared_contract_id: compared.id,
         diff: diff.blocks,
@@ -1222,6 +1254,7 @@ contractsRouter.get("/:id/comparisons", async (req, res, next) => {
       .from("contract_comparisons")
       .select("*")
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .or(`base_contract_id.eq.${req.params.id},compared_contract_id.eq.${req.params.id}`)
       .order("created_at", { ascending: false });
     if (error) throw error;
@@ -1239,13 +1272,14 @@ contractsRouter.delete("/:id", async (req, res, next) => {
       .select("s3_key")
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .single();
 
     if (error || !data) { res.status(404).json({ error: "Contract not found" }); return; }
 
     await Promise.all([
       deleteFromS3(data.s3_key),
-      db.from("contracts").delete().eq("id", req.params.id),
+      db.from("contracts").delete().eq("id", req.params.id).eq("org_id", req.orgId!),
     ]);
 
     await logActivity(req.userId, "contract.deleted", null, { contract_id: req.params.id });

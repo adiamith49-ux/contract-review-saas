@@ -2,9 +2,10 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireActiveOrg } from "../middleware/org.js";
 
 export const calendarRouter = Router();
-calendarRouter.use(requireAuth);
+calendarRouter.use(requireAuth, requireActiveOrg);
 
 const eventSchema = z.object({
   title:      z.string().min(1).max(500),
@@ -21,6 +22,7 @@ calendarRouter.get("/", async (req, res, next) => {
       .from("calendar_events")
       .select("*")
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .order("date", { ascending: true })
       .order("start_hour", { ascending: true });
     if (error) throw error;
@@ -34,7 +36,7 @@ calendarRouter.post("/", async (req, res, next) => {
     const body = eventSchema.parse(req.body);
     const { data, error } = await db
       .from("calendar_events")
-      .insert({ ...body, user_id: req.userId })
+      .insert({ ...body, user_id: req.userId, org_id: req.orgId })
       .select()
       .single();
     if (error) throw error;
@@ -51,6 +53,7 @@ calendarRouter.patch("/:id", async (req, res, next) => {
       .update(body)
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .select()
       .single();
     if (error || !data) { res.status(404).json({ error: "Event not found" }); return; }
@@ -65,7 +68,8 @@ calendarRouter.delete("/:id", async (req, res, next) => {
       .from("calendar_events")
       .delete()
       .eq("id", req.params.id)
-      .eq("user_id", req.userId);
+      .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!);
     if (error) throw error;
     res.status(204).send();
   } catch (err) { next(err); }

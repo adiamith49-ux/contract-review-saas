@@ -5,12 +5,13 @@ import { z } from "zod";
 import { db } from "../db.js";
 import { config } from "../config.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireActiveOrg } from "../middleware/org.js";
 import { logActivity } from "../services/activity.service.js";
 import { isMailerConfigured, sendMail } from "../services/mailer.service.js";
 import { uploadToS3, getPresignedUrl } from "../services/storage.service.js";
 
 export const approvalsRouter = Router();
-approvalsRouter.use(requireAuth);
+approvalsRouter.use(requireAuth, requireActiveOrg);
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -151,7 +152,7 @@ function notifyApprover(step: { approver_name: string; approver_email: string | 
 
 // If the approver is a registered user, drop the approval on their task list too.
 // Best-effort: an unknown email (external approver) or a DB hiccup must not block the flow.
-async function assignApproverTask(step: { approver_name: string; approver_email: string | null }, contractName: string, contractId: string) {
+async function assignApproverTask(step: { approver_name: string; approver_email: string | null }, contractName: string, contractId: string, orgId: string | null) {
   try {
     if (!step.approver_email) return;
     const { data: approver } = await db
@@ -162,6 +163,7 @@ async function assignApproverTask(step: { approver_name: string; approver_email:
     if (!approver) return;
     await db.from("tasks").insert({
       user_id: approver.clerk_user_id,
+      org_id: orgId,
       title: `Approve contract: ${contractName}`,
       notes: `Your approval is requested for "${contractName}". Open the contract to approve, reject, or request changes.`,
       priority: "high",
@@ -182,6 +184,7 @@ approvalsRouter.get("/rules", async (req, res, next) => {
       .from("approval_rules")
       .select("*")
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .order("step_order")
       .order("created_at");
     if (error) throw error;
@@ -195,7 +198,7 @@ approvalsRouter.post("/rules", async (req, res, next) => {
     const body = ruleSchema.parse(req.body);
     const { data, error } = await db
       .from("approval_rules")
-      .insert({ ...body, user_id: req.userId })
+      .insert({ ...body, user_id: req.userId, org_id: req.orgId })
       .select()
       .single();
     if (error) throw error;
@@ -213,6 +216,7 @@ approvalsRouter.patch("/rules/:id", async (req, res, next) => {
       .update({ ...body, updated_at: new Date().toISOString() })
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .select()
       .single();
     if (error) throw error;
@@ -228,7 +232,8 @@ approvalsRouter.delete("/rules/:id", async (req, res, next) => {
       .from("approval_rules")
       .delete()
       .eq("id", req.params.id)
-      .eq("user_id", req.userId);
+      .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!);
     if (error) throw error;
     await logActivity(req.userId, "approval.rule_deleted", null, { rule_id: req.params.id });
     res.status(204).end();
@@ -248,6 +253,7 @@ approvalsRouter.post("/contracts/:contractId/submit", upload.single("file"), asy
       .select("id, filename, title, contract_type, contract_value, contract_status, analyses(risk_level), legal_intake(department, jurisdiction, deal_value)")
       .eq("id", contractId)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .single();
     if (cErr || !contract) return res.status(404).json({ error: "Contract not found" });
     if (contract.contract_status === "pending_approval") {
@@ -258,6 +264,7 @@ approvalsRouter.post("/contracts/:contractId/submit", upload.single("file"), asy
       .from("approval_rules")
       .select("*")
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .eq("is_active", true);
     if (rErr) throw rErr;
     const rules = (ruleRows ?? []) as ApprovalRule[];
@@ -285,6 +292,7 @@ approvalsRouter.post("/contracts/:contractId/submit", upload.single("file"), asy
       .from("contract_approvals")
       .select("round")
       .eq("contract_id", contractId)
+      .eq("org_id", req.orgId!)
       .order("round", { ascending: false })
       .limit(1);
     const round = (prev?.[0]?.round ?? 0) + 1;
@@ -304,6 +312,7 @@ approvalsRouter.post("/contracts/:contractId/submit", upload.single("file"), asy
     const rows = chain.map((s, i) => ({
       contract_id: contractId,
       user_id: req.userId,
+      org_id: req.orgId,
       round,
       step_order: i + 1,
       approver_name: s.rule.approver_name,
@@ -318,7 +327,7 @@ approvalsRouter.post("/contracts/:contractId/submit", upload.single("file"), asy
     const { data: steps, error: sErr } = await db.from("contract_approvals").insert(rows).select();
     if (sErr) throw sErr;
 
-    await db.from("contracts").update({ contract_status: "pending_approval", updated_at: new Date().toISOString() }).eq("id", contractId).eq("user_id", req.userId);
+    await db.from("contracts").update({ contract_status: "pending_approval", updated_at: new Date().toISOString() }).eq("id", contractId).eq("user_id", req.userId).eq("org_id", req.orgId!);
 
     await logActivity(req.userId, "approval.submitted", contractId, {
       round,
@@ -326,7 +335,7 @@ approvalsRouter.post("/contracts/:contractId/submit", upload.single("file"), asy
     });
 
     notifyApprover(chain[0].rule, contract.title || contract.filename, contractId);
-    await assignApproverTask(chain[0].rule, contract.title || contract.filename, contractId);
+    await assignApproverTask(chain[0].rule, contract.title || contract.filename, contractId, req.orgId!);
 
     res.status(201).json({ round, steps: steps ?? [] });
   } catch (err) { next(err); }
@@ -338,7 +347,11 @@ approvalsRouter.post("/contracts/:contractId/submit", upload.single("file"), asy
 approvalsRouter.get("/contracts/:contractId", async (req, res, next) => {
   try {
     const contractId = req.params.contractId;
-    const { data: contract } = await db.from("contracts").select("user_id").eq("id", contractId).maybeSingle();
+    // Scoped to the caller's own org up front — an approver whose email
+    // happens to match a step on a contract in a DIFFERENT org must never
+    // reach the isApproverForContract fallback below (see cross-org leak
+    // note on isApproverForContract's usage in contracts.ts).
+    const { data: contract } = await db.from("contracts").select("user_id").eq("id", contractId).eq("org_id", req.orgId!).maybeSingle();
     if (!contract) return res.status(404).json({ error: "Contract not found" });
 
     let authorized = contract.user_id === req.userId;
@@ -352,6 +365,7 @@ approvalsRouter.get("/contracts/:contractId", async (req, res, next) => {
       .from("contract_approvals")
       .select("*")
       .eq("contract_id", contractId)
+      .eq("org_id", req.orgId!)
       .order("round", { ascending: false })
       .order("step_order");
     if (error) throw error;
@@ -398,6 +412,7 @@ approvalsRouter.post("/steps/:stepId/decide", async (req, res, next) => {
       .from("contract_approvals")
       .select("*")
       .eq("id", req.params.stepId)
+      .eq("org_id", req.orgId!)
       .single();
     if (sErr || !step) return res.status(404).json({ error: "Approval step not found" });
 
@@ -405,6 +420,9 @@ approvalsRouter.post("/steps/:stepId/decide", async (req, res, next) => {
     // decide it — the contract owner has no special override, even for their
     // own submission. A step with no approver_email can never be matched by
     // email, so it can only be decided by an admin acting directly in Supabase.
+    // The org_id filter above is what actually stops a cross-org email match:
+    // without it, a user in a different org sharing the approver's email
+    // could reach and decide a step that isn't theirs to decide.
     const email = await getUserEmail(req.userId);
     const authorized = !!email && !!step.approver_email && email.toLowerCase() === step.approver_email.toLowerCase();
     if (!authorized) return res.status(403).json({ error: "You are not the named approver for this step" });
@@ -417,6 +435,7 @@ approvalsRouter.post("/steps/:stepId/decide", async (req, res, next) => {
       .select("*")
       .eq("contract_id", step.contract_id)
       .eq("round", step.round)
+      .eq("org_id", req.orgId!)
       .order("step_order");
     if (cErr) throw cErr;
     const firstPending = (chain ?? []).find(s => s.status === "pending");
@@ -427,7 +446,8 @@ approvalsRouter.post("/steps/:stepId/decide", async (req, res, next) => {
     const { error: uErr } = await db
       .from("contract_approvals")
       .update({ status: decision, comment: comment.trim() || null, decided_at: new Date().toISOString() })
-      .eq("id", step.id);
+      .eq("id", step.id)
+      .eq("org_id", req.orgId!);
     if (uErr) throw uErr;
 
     const remaining = (chain ?? []).filter(s => s.status === "pending" && s.id !== step.id);
@@ -438,14 +458,14 @@ approvalsRouter.post("/steps/:stepId/decide", async (req, res, next) => {
         newContractStatus = "approved"; // chain complete → signature ready
       } else {
         const next = remaining[0];
-        const { data: c } = await db.from("contracts").select("filename, title").eq("id", step.contract_id).single();
+        const { data: c } = await db.from("contracts").select("filename, title").eq("id", step.contract_id).eq("org_id", req.orgId!).single();
         notifyApprover(next, c?.title || c?.filename || "a contract", step.contract_id);
-        await assignApproverTask(next, c?.title || c?.filename || "a contract", step.contract_id);
+        await assignApproverTask(next, c?.title || c?.filename || "a contract", step.contract_id, req.orgId!);
       }
     } else {
       // Reject / changes requested: void the rest of the chain
       if (remaining.length > 0) {
-        await db.from("contract_approvals").update({ status: "skipped" }).in("id", remaining.map(s => s.id));
+        await db.from("contract_approvals").update({ status: "skipped" }).in("id", remaining.map(s => s.id)).eq("org_id", req.orgId!);
       }
       newContractStatus = decision === "rejected" ? "on_hold" : "in_negotiation";
     }
@@ -453,7 +473,7 @@ approvalsRouter.post("/steps/:stepId/decide", async (req, res, next) => {
     if (newContractStatus) {
       // step.user_id is the CONTRACT OWNER (set when the chain was created) —
       // req.userId may be a different account when a named approver decided.
-      await db.from("contracts").update({ contract_status: newContractStatus, updated_at: new Date().toISOString() }).eq("id", step.contract_id).eq("user_id", step.user_id);
+      await db.from("contracts").update({ contract_status: newContractStatus, updated_at: new Date().toISOString() }).eq("id", step.contract_id).eq("user_id", step.user_id).eq("org_id", req.orgId!);
     }
 
     await logActivity(req.userId, `approval.${decision}`, step.contract_id, {

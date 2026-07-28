@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 const isPublicRoute = createRouteMatcher([
   "/",
   "/sign-in(.*)",
-  "/admin(.*)",   // admin has its own separate auth
+  "/superadmin(.*)",   // superadmin has its own separate bcrypt/JWT auth, not Clerk
 ]);
 
 // ─── Domain split ──────────────────────────────────────────────────────────────

@@ -2,9 +2,10 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireActiveOrg } from "../middleware/org.js";
 
 export const timeRouter = Router();
-timeRouter.use(requireAuth);
+timeRouter.use(requireAuth, requireActiveOrg);
 
 const entrySchema = z.object({
   subject:       z.string().min(1).max(200),
@@ -24,6 +25,7 @@ timeRouter.get("/", async (req, res, next) => {
       .from("time_entries")
       .select("*")
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .order("created_at", { ascending: false });
     if (error) throw error;
     res.json({ entries: data ?? [] });
@@ -36,7 +38,7 @@ timeRouter.post("/", async (req, res, next) => {
     const body = entrySchema.parse(req.body);
     const { data, error } = await db
       .from("time_entries")
-      .insert({ ...body, user_id: req.userId })
+      .insert({ ...body, user_id: req.userId, org_id: req.orgId })
       .select()
       .single();
     if (error) throw error;
@@ -51,7 +53,8 @@ timeRouter.delete("/:id", async (req, res, next) => {
       .from("time_entries")
       .delete()
       .eq("id", req.params.id)
-      .eq("user_id", req.userId);
+      .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!);
     if (error) throw error;
     res.status(204).send();
   } catch (err) { next(err); }

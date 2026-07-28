@@ -1,13 +1,21 @@
-// Clerk webhook handler — keeps the users table in sync with Clerk.
+// Clerk webhook handler — keeps the users + organizations tables in sync with Clerk.
 //
 // Events handled:
-//   user.created  → upsert row in users table
-//   user.updated  → update email if changed
-//   user.deleted  → delete user data (mirrors the GDPR hard-delete in account.ts)
+//   user.created         → upsert row in users table
+//   user.updated         → update email if changed
+//   user.deleted         → delete user data (mirrors the GDPR hard-delete in account.ts)
+//   organization.created → upsert row in organizations table (pending unless
+//                          sales-assisted — see the onboarding_type metadata note below)
+//   organization.updated → sync name
+//   organization.deleted → safety-net cascade delete of every org-scoped row
+//                          (mirrors user.deleted), for the case an org is
+//                          removed directly from the Clerk Dashboard rather
+//                          than through POST /admin/organizations/:id
 //
 // Setup in Clerk Dashboard → Webhooks → Add Endpoint:
 //   URL: https://api.contralyne.com/api/webhooks/clerk
-//   Events: user.created, user.updated, user.deleted
+//   Events: user.created, user.updated, user.deleted,
+//           organization.created, organization.updated, organization.deleted
 //   Copy the Signing Secret → set as CLERK_WEBHOOK_SECRET env var in Vercel
 
 import crypto from "node:crypto";
@@ -16,6 +24,7 @@ import { Webhook } from "svix";
 import { db } from "../db.js";
 import { config } from "../config.js";
 import { deleteFromS3 } from "../services/storage.service.js";
+import { cascadeDeleteOrganizationData } from "../services/organization.service.js";
 
 export const webhooksRouter = Router();
 
@@ -106,6 +115,63 @@ webhooksRouter.post(
           db.from("chat_messages").delete().eq("user_id", clerkUserId),
           db.from("users").delete().eq("clerk_user_id", clerkUserId),
         ]);
+
+      } else if (type === "organization.created") {
+        const clerkOrgId: string = data?.id;
+        const name: string = data?.name ?? "";
+        if (!clerkOrgId || !name) {
+          res.status(200).json({ skipped: "missing id or name" });
+          return;
+        }
+
+        // The metadata flag IS the entire approval-gate mechanism: only
+        // POST /admin/organizations sets onboarding_type: "sales_assisted"
+        // (pre-vetted by the super admin, goes live immediately). An org
+        // created client-side via <CreateOrganization/> never sets it, so
+        // it defaults to self_serve → pending until approved.
+        const onboardingType = data?.public_metadata?.onboarding_type === "sales_assisted"
+          ? "sales_assisted" : "self_serve";
+        const status = onboardingType === "sales_assisted" ? "active" : "pending";
+
+        await db.from("organizations").upsert(
+          {
+            clerk_org_id: clerkOrgId,
+            name,
+            status,
+            onboarding_type: onboardingType,
+            ...(status === "active"
+              ? { approved_at: new Date().toISOString(), approved_by: "system:sales-assisted" }
+              : {}),
+          },
+          { onConflict: "clerk_org_id", ignoreDuplicates: true },
+        );
+
+      } else if (type === "organization.updated") {
+        const clerkOrgId: string = data?.id;
+        const name: string = data?.name ?? "";
+        if (!clerkOrgId || !name) {
+          res.status(200).json({ skipped: "missing id or name" });
+          return;
+        }
+        await db.from("organizations").update({ name, updated_at: new Date().toISOString() }).eq("clerk_org_id", clerkOrgId);
+
+      } else if (type === "organization.deleted") {
+        const clerkOrgId: string = data?.id;
+        if (!clerkOrgId) {
+          res.status(200).json({ skipped: "missing id" });
+          return;
+        }
+
+        // Idempotent safety net: if POST /admin/organizations/:id/delete already
+        // ran this cascade, this re-runs against already-empty tables — harmless.
+        await cascadeDeleteOrganizationData(clerkOrgId);
+
+        // Keep the organizations row itself (marked, not removed) — a minimal
+        // audit trail of "this firm existed and was deleted", holding zero
+        // contract content or PII beyond a name.
+        await db.from("organizations")
+          .update({ status: "deleted", deleted_at: new Date().toISOString() })
+          .eq("clerk_org_id", clerkOrgId);
       }
 
       res.status(200).json({ received: true });

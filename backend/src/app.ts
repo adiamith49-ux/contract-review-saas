@@ -7,6 +7,7 @@ import { generalLimiter } from "./middleware/rateLimit.js";
 import { accountRouter } from "./routes/account.js";
 import { activityRouter } from "./routes/activity.js";
 import { adminRouter } from "./routes/admin.js";
+import { adminOrganizationsRouter } from "./routes/admin-organizations.js";
 import { approvalsRouter } from "./routes/approvals.js";
 import { clientsRouter } from "./routes/clients.js";
 import { ticketsRouter } from "./routes/tickets.js";
@@ -16,6 +17,7 @@ import { clausesRouter } from "./routes/clauses.js";
 import { contactRouter } from "./routes/contact.js";
 import { commentsRouter } from "./routes/comments.js";
 import { contractsRouter } from "./routes/contracts.js";
+import { orgRouter } from "./routes/org.js";
 import { rulesRouter } from "./routes/rules.js";
 import { signatureRouter } from "./routes/signature.js";
 import { tasksRouter } from "./routes/tasks.js";
@@ -38,7 +40,8 @@ app.use(generalLimiter);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
-app.use("/admin", adminRouter);
+app.use("/superadmin", adminRouter);
+app.use("/superadmin/organizations", adminOrganizationsRouter);
 app.use("/api/clients", clientsRouter);
 app.use("/api/tickets", ticketsRouter);
 app.use("/api/contracts", commentsRouter); // comments/team paths — must not overlap contractsRouter
@@ -54,6 +57,7 @@ app.use("/api/tasks", tasksRouter);
 app.use("/api/time", timeRouter);
 app.use("/api/calendar", calendarRouter);
 app.use("/api/approvals", approvalsRouter);
+app.use("/api/org", orgRouter);
 
 app.use(errorHandler);
 

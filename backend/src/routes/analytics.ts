@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireActiveOrg } from "../middleware/org.js";
 
 export const analyticsRouter = Router();
-analyticsRouter.use(requireAuth);
+analyticsRouter.use(requireAuth, requireActiveOrg);
 
 // GET /api/analytics — dashboard stats for the current user
 analyticsRouter.get("/", async (req, res, next) => {
@@ -14,17 +15,20 @@ analyticsRouter.get("/", async (req, res, next) => {
       db
         .from("contracts")
         .select("id, contract_type, status, contract_status, end_date, created_at")
-        .eq("user_id", userId),
+        .eq("user_id", userId)
+        .eq("org_id", req.orgId!),
 
       db
         .from("analyses")
         .select("risk_level, created_at")
-        .eq("user_id", userId),
+        .eq("user_id", userId)
+        .eq("org_id", req.orgId!),
 
       db
         .from("activity_logs")
         .select("id, action, contract_id, created_at")
         .eq("user_id", userId)
+        .eq("org_id", req.orgId!)
         .order("created_at", { ascending: false })
         .limit(20),
     ]);

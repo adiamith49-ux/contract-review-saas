@@ -4,12 +4,12 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { setAdminToken } from "@/lib/admin-api";
+import { setSuperAdminToken } from "@/lib/superadmin-api";
 import { ContralyneLogoMark } from "@/components/ContralyneLogoMark";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
-export default function AdminSetupPage() {
+export default function SuperAdminSetupPage() {
   const router = useRouter();
   const [form, setForm]       = useState({ email: "", name: "", password: "", confirm: "" });
   const [loading, setLoading] = useState(false);
@@ -22,16 +22,16 @@ export default function AdminSetupPage() {
     }
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/admin/create-first-admin`, {
+      const res = await fetch(`${API_URL}/superadmin/create-first-admin`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: form.email, name: form.name, password: form.password }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Setup failed");
-      setAdminToken(data.token);
-      toast.success("Admin account created");
-      router.push("/admin/dashboard");
+      setSuperAdminToken(data.token);
+      toast.success("Super admin account created");
+      router.push("/superadmin/dashboard");
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -46,15 +46,15 @@ export default function AdminSetupPage() {
           <div className="h-14 w-14 rounded-2xl bg-white p-1.5 flex items-center justify-center mb-4 shadow-xl">
             <ContralyneLogoMark className="h-full w-full" />
           </div>
-          <h1 className="text-xl font-bold text-white">Create Admin Account</h1>
-          <p className="text-sm text-slate-400 mt-0.5">One-time setup — only if no admin exists</p>
+          <h1 className="text-xl font-bold text-white">Create Super Admin Account</h1>
+          <p className="text-sm text-slate-400 mt-0.5">One-time setup — only if no super admin exists</p>
         </div>
 
         <div className="bg-[#0F2A2A] rounded-2xl border border-slate-700/60 p-6 shadow-2xl">
           <form onSubmit={handleSetup} className="space-y-4">
             {[
               { label: "Full name",   key: "name",     type: "text",     placeholder: "Amith" },
-              { label: "Email",       key: "email",    type: "email",    placeholder: "admin@contralyne.com" },
+              { label: "Email",       key: "email",    type: "email",    placeholder: "amith@contralyne.com" },
               { label: "Password",    key: "password", type: "password", placeholder: "Min 8 characters" },
               { label: "Confirm",     key: "confirm",  type: "password", placeholder: "Repeat password" },
             ].map(({ label, key, type, placeholder }) => (
@@ -72,7 +72,7 @@ export default function AdminSetupPage() {
               </div>
             ))}
             <Button type="submit" className="w-full mt-2" disabled={loading}>
-              {loading ? "Creating…" : "Create admin account"}
+              {loading ? "Creating…" : "Create super admin account"}
             </Button>
           </form>
         </div>

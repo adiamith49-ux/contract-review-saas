@@ -2,9 +2,10 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireActiveOrg } from "../middleware/org.js";
 
 export const ticketsRouter = Router();
-ticketsRouter.use(requireAuth);
+ticketsRouter.use(requireAuth, requireActiveOrg);
 
 const createSchema = z.object({
   type: z.enum(["clause_change", "playbook_change", "other"]),
@@ -20,6 +21,7 @@ ticketsRouter.get("/", async (req, res, next) => {
       .from("tickets")
       .select("id, type, reference_id, reference_name, description, status, admin_notes, created_at, updated_at")
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .order("created_at", { ascending: false });
 
     if (error) throw error;
@@ -36,7 +38,7 @@ ticketsRouter.post("/", async (req, res, next) => {
 
     const { data, error } = await db
       .from("tickets")
-      .insert({ ...body, user_id: req.userId })
+      .insert({ ...body, user_id: req.userId, org_id: req.orgId })
       .select()
       .single();
 

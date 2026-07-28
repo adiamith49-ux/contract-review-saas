@@ -33,6 +33,13 @@ const EnvSchema = z.object({
   ANALYSIS_MAX_TOKENS: z.coerce.number().default(8000),
   ADMIN_JWT_SECRET: str("change-me-admin-secret"),
   CLERK_WEBHOOK_SECRET: str(""),
+  // Clerk's Organizations API requires an existing Clerk user id as the
+  // "createdBy"/"inviterUserId" actor for backend-created orgs and invitations
+  // (Clerk has no service-account concept). Set this to the platform founder's
+  // own Clerk user id so POST /admin/organizations (sales-assisted onboarding)
+  // can create orgs + send invitations on their behalf. Find it via Clerk
+  // Dashboard → Users → (the founder's account) → the "usr_..." id in the URL.
+  PLATFORM_OWNER_CLERK_USER_ID: str(""),
   // SMTP — used for admin password-reset emails; reset is disabled when unset
   SMTP_HOST: str(""),
   SMTP_PORT: z.coerce.number().default(587),

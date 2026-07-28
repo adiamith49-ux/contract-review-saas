@@ -2,10 +2,11 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireActiveOrg } from "../middleware/org.js";
 import { getPresignedUrl } from "../services/storage.service.js";
 
 export const tasksRouter = Router();
-tasksRouter.use(requireAuth);
+tasksRouter.use(requireAuth, requireActiveOrg);
 
 // "Admin" and "Approval Workflow" are reserved markers for system-assigned tasks —
 // users cannot create or relabel tasks with them
@@ -31,6 +32,7 @@ tasksRouter.get("/", async (req, res, next) => {
       .from("tasks")
       .select("*")
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .order("created_at", { ascending: false });
     if (req.query.contract_id) query = query.eq("contract_id", String(req.query.contract_id));
     const { data, error } = await query;
@@ -45,7 +47,7 @@ tasksRouter.post("/", async (req, res, next) => {
     const body = taskSchema.parse(req.body);
     const { data, error } = await db
       .from("tasks")
-      .insert({ ...body, user_id: req.userId })
+      .insert({ ...body, user_id: req.userId, org_id: req.orgId })
       .select()
       .single();
     if (error) throw error;
@@ -62,6 +64,7 @@ tasksRouter.patch("/:id", async (req, res, next) => {
       .update({ ...body, updated_at: new Date().toISOString() })
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .select()
       .single();
     if (error || !data) { res.status(404).json({ error: "Task not found" }); return; }
@@ -78,6 +81,7 @@ tasksRouter.get("/:id/attachment-url", async (req, res, next) => {
       .select("attachment_s3_key, attachment_filename")
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .maybeSingle();
     if (error) throw error;
     if (!task || !task.attachment_s3_key) {
@@ -97,6 +101,7 @@ tasksRouter.delete("/:id", async (req, res, next) => {
       .select("assignee")
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .maybeSingle();
     if (!task) { res.status(404).json({ error: "Task not found" }); return; }
     if (task.assignee === "Admin" || task.assignee === "Approval Workflow") {
@@ -108,7 +113,8 @@ tasksRouter.delete("/:id", async (req, res, next) => {
       .from("tasks")
       .delete()
       .eq("id", req.params.id)
-      .eq("user_id", req.userId);
+      .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!);
     if (error) throw error;
     res.status(204).send();
   } catch (err) { next(err); }

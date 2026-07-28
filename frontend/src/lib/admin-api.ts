@@ -1,6 +1,22 @@
+// Client for /api/org/* — the per-organization admin panel (frontend/src/app/admin/**).
+// Every firm gets this same panel, scoped to its own org via Clerk's org_id
+// claim on the session token. Auth is Clerk (not the separate superadmin
+// bcrypt/JWT system) — token is read imperatively from window.Clerk so this
+// module can keep the same plain-function shape used throughout the app,
+// without every call site needing to thread a token through React hooks.
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
-export interface AdminUser { email: string; name: string }
+declare global {
+  interface Window {
+    Clerk?: { session?: { getToken: () => Promise<string | null> } | null };
+  }
+}
+
+async function getClerkToken(): Promise<string | null> {
+  if (typeof window === "undefined") return null;
+  return (await window.Clerk?.session?.getToken()) ?? null;
+}
 
 export interface AdminClient {
   id: string; name: string; industry: string | null;
@@ -63,31 +79,15 @@ export interface AdminContractHistory {
   chat_count: number;
 }
 
-export function getAdminToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("admin_token") ?? sessionStorage.getItem("admin_token");
-}
-
-// remember=true persists across browser restarts; false lasts for the tab session only
-export function setAdminToken(token: string, remember = true) {
-  clearAdminToken();
-  (remember ? localStorage : sessionStorage).setItem("admin_token", token);
-}
-
-export function clearAdminToken() {
-  localStorage.removeItem("admin_token");
-  sessionStorage.removeItem("admin_token");
-}
-
 async function adminFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = getAdminToken();
+  const token = await getClerkToken();
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string>),
   };
   if (token) headers["Authorization"] = `Bearer ${token}`;
   if (!(options.body instanceof FormData)) headers["Content-Type"] = "application/json";
 
-  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
+  const res = await fetch(`${API_URL}/api/org${path}`, { ...options, headers });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: "Request failed" }));
     throw new Error(err.error ?? `HTTP ${res.status}`);
@@ -96,76 +96,58 @@ async function adminFetch<T>(path: string, options: RequestInit = {}): Promise<T
   return res.json() as Promise<T>;
 }
 
-// Auth
-export const adminLogin = (email: string, password: string) =>
-  adminFetch<{ token: string; admin: AdminUser }>("/admin/auth/login", {
-    method: "POST", body: JSON.stringify({ email, password }),
-  });
-
-export const adminMe = () => adminFetch<{ email: string }>("/admin/auth/me");
-
-export const adminForgotPassword = (email: string) =>
-  adminFetch<{ ok: boolean }>("/admin/auth/forgot-password", {
-    method: "POST", body: JSON.stringify({ email }),
-  });
-
-export const adminResetPassword = (email: string, code: string, password: string) =>
-  adminFetch<{ token: string; admin: AdminUser }>("/admin/auth/reset-password", {
-    method: "POST", body: JSON.stringify({ email, code, password }),
-  });
-
 // Stats
-export const getAdminStats = () => adminFetch<AdminStats>("/admin/stats");
+export const getAdminStats = () => adminFetch<AdminStats>("/stats");
 
 // Clients
 export const listAdminClients = () =>
-  adminFetch<{ clients: AdminClient[] }>("/admin/clients");
+  adminFetch<{ clients: AdminClient[] }>("/clients");
 
 export const createAdminClient = (data: { name: string; industry?: string; notes?: string }) =>
-  adminFetch<{ client: AdminClient }>("/admin/clients", { method: "POST", body: JSON.stringify(data) });
+  adminFetch<{ client: AdminClient }>("/clients", { method: "POST", body: JSON.stringify(data) });
 
 export const updateAdminClient = (id: string, data: Partial<AdminClient>) =>
-  adminFetch<{ client: AdminClient }>(`/admin/clients/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+  adminFetch<{ client: AdminClient }>(`/clients/${id}`, { method: "PATCH", body: JSON.stringify(data) });
 
 export const deleteAdminClient = (id: string) =>
-  adminFetch<void>(`/admin/clients/${id}`, { method: "DELETE" });
+  adminFetch<void>(`/clients/${id}`, { method: "DELETE" });
 
 // Users
-export const listAdminUsers = () => adminFetch<{ users: AdminUserRow[] }>("/admin/users");
+export const listAdminUsers = () => adminFetch<{ users: AdminUserRow[] }>("/users");
 
 export const getUserMemberships = (userId: string) =>
-  adminFetch<{ memberships: { id: string; client_id: string; clients: AdminClient | null }[] }>(`/admin/users/${userId}/clients`);
+  adminFetch<{ memberships: { id: string; client_id: string; clients: AdminClient | null }[] }>(`/users/${userId}/clients`);
 
 export const assignUserToClient = (userId: string, clientId: string) =>
-  adminFetch<{ membership: unknown }>(`/admin/users/${userId}/clients`, {
+  adminFetch<{ membership: unknown }>(`/users/${userId}/clients`, {
     method: "POST", body: JSON.stringify({ client_id: clientId }),
   });
 
 export const removeUserFromClient = (userId: string, clientId: string) =>
-  adminFetch<void>(`/admin/users/${userId}/clients/${clientId}`, { method: "DELETE" });
+  adminFetch<void>(`/users/${userId}/clients/${clientId}`, { method: "DELETE" });
 
 export const deleteAdminUser = (userId: string) =>
-  adminFetch<void>(`/admin/users/${userId}`, { method: "DELETE" });
+  adminFetch<void>(`/users/${userId}`, { method: "DELETE" });
 
 export const addUser = (data: { email: string; first_name?: string; last_name?: string }) =>
-  adminFetch<{ ok: boolean; email_sent: boolean; user: { clerk_user_id: string; email: string; created_at: number } }>("/admin/users/add", {
+  adminFetch<{ ok: boolean; email_sent: boolean; user: { clerk_user_id: string; email: string; created_at: number } }>("/users/add", {
     method: "POST", body: JSON.stringify(data),
   });
 
 // Clauses
-export const listAdminClauses = () => adminFetch<{ clauses: AdminClause[] }>("/admin/clauses");
+export const listAdminClauses = () => adminFetch<{ clauses: AdminClause[] }>("/clauses");
 
 export const createAdminClause = (data: Omit<AdminClause, "id" | "created_at" | "version">) =>
-  adminFetch<{ clause: AdminClause }>("/admin/clauses", { method: "POST", body: JSON.stringify(data) });
+  adminFetch<{ clause: AdminClause }>("/clauses", { method: "POST", body: JSON.stringify(data) });
 
 export const updateAdminClause = (id: string, data: Partial<AdminClause>) =>
-  adminFetch<{ clause: AdminClause }>(`/admin/clauses/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+  adminFetch<{ clause: AdminClause }>(`/clauses/${id}`, { method: "PATCH", body: JSON.stringify(data) });
 
 export const deleteAdminClause = (id: string) =>
-  adminFetch<void>(`/admin/clauses/${id}`, { method: "DELETE" });
+  adminFetch<void>(`/clauses/${id}`, { method: "DELETE" });
 
 // Playbooks
-export const listAdminPlaybooks = () => adminFetch<{ rules: AdminPlaybook[] }>("/admin/playbooks");
+export const listAdminPlaybooks = () => adminFetch<{ rules: AdminPlaybook[] }>("/playbooks");
 
 export const createAdminPlaybook = (data: { name: string; description?: string; is_active?: boolean; jurisdiction?: string | null; file: File }) => {
   const form = new FormData();
@@ -174,14 +156,14 @@ export const createAdminPlaybook = (data: { name: string; description?: string; 
   if (data.description) form.append("description", data.description);
   if (data.jurisdiction) form.append("jurisdiction", data.jurisdiction);
   form.append("is_active", String(data.is_active ?? true));
-  return adminFetch<{ rule: AdminPlaybook }>("/admin/playbooks", { method: "POST", body: form });
+  return adminFetch<{ rule: AdminPlaybook }>("/playbooks", { method: "POST", body: form });
 };
 
 export const updateAdminPlaybook = (id: string, data: Partial<AdminPlaybook>) =>
-  adminFetch<{ rule: AdminPlaybook }>(`/admin/playbooks/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+  adminFetch<{ rule: AdminPlaybook }>(`/playbooks/${id}`, { method: "PATCH", body: JSON.stringify(data) });
 
 export const deleteAdminPlaybook = (id: string) =>
-  adminFetch<void>(`/admin/playbooks/${id}`, { method: "DELETE" });
+  adminFetch<void>(`/playbooks/${id}`, { method: "DELETE" });
 
 // Tasks (admin assigns work to users)
 export interface AdminTask {
@@ -196,7 +178,7 @@ export interface AdminTask {
   created_at: string;
 }
 
-export const listAdminTasks = () => adminFetch<{ tasks: AdminTask[] }>("/admin/tasks");
+export const listAdminTasks = () => adminFetch<{ tasks: AdminTask[] }>("/tasks");
 
 export const createAdminTask = (data: {
   user_id: string; title: string; notes?: string;
@@ -210,34 +192,33 @@ export const createAdminTask = (data: {
   form.append("priority", data.priority ?? "medium");
   if (data.due_date) form.append("due_date", data.due_date);
   if (data.file) form.append("file", data.file);
-  return adminFetch<{ task: AdminTask; email_sent: boolean }>("/admin/tasks", {
+  return adminFetch<{ task: AdminTask; email_sent: boolean }>("/tasks/with-attachment", {
     method: "POST", body: form,
   });
 };
 
 export const deleteAdminTask = (id: string) =>
-  adminFetch<void>(`/admin/tasks/${id}`, { method: "DELETE" });
+  adminFetch<void>(`/tasks/${id}`, { method: "DELETE" });
 
-// Contracts (global read-only overview)
+// Contracts (org-scoped, read-only overview)
 export const listAdminContracts = () =>
-  adminFetch<{ contracts: AdminContract[] }>("/admin/contracts");
+  adminFetch<{ contracts: AdminContract[] }>("/contracts");
 
 export const getAdminContractHistory = (id: string) =>
-  adminFetch<AdminContractHistory>(`/admin/contracts/${id}/history`);
+  adminFetch<AdminContractHistory>(`/contracts/${id}/history`);
 
 // Billing (billable-work totals + Excel export)
 export interface AdminBillingUser {
-  user_id: string; user_email: string;
-  entries: number; total_mins: number; total_hours: number;
+  user_id: string; user_email: string; entries: number; total_mins: number; total_hours: number;
   last_entry_at: string | null;
 }
 
-export const listAdminBilling = () => adminFetch<{ users: AdminBillingUser[] }>("/admin/billing");
+export const listAdminBilling = () => adminFetch<{ users: AdminBillingUser[] }>("/billing");
 
 export async function downloadAdminBillingReport(userId?: string): Promise<void> {
-  const token = getAdminToken();
+  const token = await getClerkToken();
   const qs = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
-  const res = await fetch(`${API_URL}/admin/billing/report${qs}`, {
+  const res = await fetch(`${API_URL}/api/org/billing/report${qs}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) throw new Error("Billing report download failed");
@@ -255,8 +236,8 @@ export async function downloadAdminBillingReport(userId?: string): Promise<void>
 
 // Per-tab formatted Excel reports (auth header required, so fetch as blob)
 export async function downloadAdminReport(kind: "dashboard" | "contracts"): Promise<void> {
-  const token = getAdminToken();
-  const res = await fetch(`${API_URL}/admin/report/${kind}`, {
+  const token = await getClerkToken();
+  const res = await fetch(`${API_URL}/api/org/report/${kind}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) throw new Error("Report download failed");
@@ -273,24 +254,7 @@ export async function downloadAdminReport(kind: "dashboard" | "contracts"): Prom
 
 // Tickets
 export const listAdminTickets = (status?: string) =>
-  adminFetch<{ tickets: AdminTicket[] }>(`/admin/tickets${status ? `?status=${status}` : ""}`);
+  adminFetch<{ tickets: AdminTicket[] }>(`/tickets${status ? `?status=${status}` : ""}`);
 
 export const updateAdminTicket = (id: string, data: { status?: string; admin_notes?: string }) =>
-  adminFetch<{ ticket: AdminTicket; email_sent: boolean }>(`/admin/tickets/${id}`, { method: "PATCH", body: JSON.stringify(data) });
-
-// System / architecture overview
-export interface SystemInfo {
-  status: "healthy" | "degraded";
-  environment: string;
-  services: {
-    database: { provider: string; connected: boolean };
-    storage:  { provider: string; bucket: string; region: string; configured: boolean };
-    ai:       { provider: string; model: string; configured: boolean };
-    auth:     { provider: string; configured: boolean };
-    email:    { provider: string; configured: boolean };
-  };
-  secrets_managed_via: string;
-  tables: { table: string; rows: number; ok: boolean }[];
-}
-
-export const getSystemInfo = () => adminFetch<SystemInfo>("/admin/system");
+  adminFetch<{ ticket: AdminTicket; email_sent: boolean }>(`/tickets/${id}`, { method: "PATCH", body: JSON.stringify(data) });

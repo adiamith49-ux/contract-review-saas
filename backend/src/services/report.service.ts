@@ -102,13 +102,24 @@ const typeLabel = (t: string) => TYPE_LABELS[t] ?? cap(t);
 // ─── Dashboard report ─────────────────────────────────────────────────────────
 // Platform-wide overview: totals + every chart shown on the admin dashboard.
 
-export async function buildDashboardReport(): Promise<Buffer> {
+// orgId is omitted only for the platform super admin's cross-org view; every
+// org-scoped caller (org.ts) must pass it — same convention as buildBillingReport.
+export async function buildDashboardReport(orgId?: string): Promise<Buffer> {
+  let clientsQ = db.from("clients").select("id", { count: "exact", head: true });
+  let usersQ = db.from("users").select("id", { count: "exact", head: true });
+  let contractsQ = db.from("contracts").select("status, contract_type, created_at");
+  let analysesQ = db.from("analyses").select("risk_level");
+  let ticketsQ = db.from("tickets").select("status");
+  if (orgId) {
+    clientsQ = clientsQ.eq("org_id", orgId);
+    usersQ = usersQ.eq("org_id", orgId);
+    contractsQ = contractsQ.eq("org_id", orgId);
+    analysesQ = analysesQ.eq("org_id", orgId);
+    ticketsQ = ticketsQ.eq("org_id", orgId);
+  }
+
   const [clientsRes, usersRes, contractsRes, analysesRes, ticketsRes] = await Promise.all([
-    db.from("clients").select("id", { count: "exact", head: true }),
-    db.from("users").select("id", { count: "exact", head: true }),
-    db.from("contracts").select("status, contract_type, created_at"),
-    db.from("analyses").select("risk_level"),
-    db.from("tickets").select("status"),
+    clientsQ, usersQ, contractsQ, analysesQ, ticketsQ,
   ]);
 
   const contracts = contractsRes.data ?? [];
@@ -190,12 +201,15 @@ function fmtHours(mins: number): string {
   return (mins / 60).toFixed(1);
 }
 
-export async function buildBillingReport(userId?: string): Promise<Buffer> {
+// orgId is omitted only for the platform super admin's cross-org view
+// (admin.ts, unscoped by design); every org-scoped caller (org.ts) must pass it.
+export async function buildBillingReport(orgId?: string, userId?: string): Promise<Buffer> {
   let query = db
     .from("time_entries")
     .select("user_id, subject, contract, date, duration, duration_mins, category, description, created_at")
     .eq("billable", true)
     .order("date", { ascending: false });
+  if (orgId) query = query.eq("org_id", orgId);
   if (userId) query = query.eq("user_id", userId);
 
   const [entriesRes, usersRes] = await Promise.all([
@@ -278,12 +292,15 @@ export async function buildBillingReport(userId?: string): Promise<Buffer> {
 // ─── Contracts report ─────────────────────────────────────────────────────────
 // Full register of every contract with client, owner, status, and AI risk.
 
-export async function buildContractsReport(): Promise<Buffer> {
+export async function buildContractsReport(orgId?: string): Promise<Buffer> {
+  let contractsQ = db
+    .from("contracts")
+    .select("user_id, filename, contract_type, status, file_size, created_at, clients(name), analyses(risk_level, created_at)")
+    .order("created_at", { ascending: false });
+  if (orgId) contractsQ = contractsQ.eq("org_id", orgId);
+
   const [contractsRes, usersRes] = await Promise.all([
-    db
-      .from("contracts")
-      .select("user_id, filename, contract_type, status, file_size, created_at, clients(name), analyses(risk_level, created_at)")
-      .order("created_at", { ascending: false }),
+    contractsQ,
     db.from("users").select("clerk_user_id, email"),
   ]);
 

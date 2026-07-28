@@ -1,6 +1,27 @@
 -- Contralyn Database Schema
 -- Run this in Supabase SQL Editor to initialize the database
 
+-- Organizations (tenants — mirrors a Clerk Organization; owns lifecycle state
+-- Clerk itself doesn't track for us). Every business table below carries a
+-- bare org_id (the Clerk organization id), the same convention already used
+-- for user_id — no FK, so req.orgId filters directly with zero joins.
+CREATE TABLE IF NOT EXISTS organizations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  clerk_org_id text NOT NULL UNIQUE,
+  name text NOT NULL,
+  status text NOT NULL DEFAULT 'pending',              -- pending | active | suspended | deleted
+  onboarding_type text NOT NULL DEFAULT 'self_serve',  -- self_serve | sales_assisted
+  approved_at timestamptz,
+  approved_by text,
+  suspended_at timestamptz,
+  suspended_by text,
+  deleted_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_organizations_clerk_org ON organizations(clerk_org_id);
+CREATE INDEX IF NOT EXISTS idx_organizations_status    ON organizations(status);
+
 -- Clients (grouping layer for contracts — each user has their own clients)
 CREATE TABLE IF NOT EXISTS clients (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -19,6 +40,7 @@ CREATE TABLE IF NOT EXISTS users (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clerk_user_id text NOT NULL UNIQUE,
   email text NOT NULL UNIQUE,
+  org_id text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -308,6 +330,104 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   metadata jsonb NOT NULL DEFAULT '{}',
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- ─── Multi-tenancy: org_id (run in Supabase SQL editor) ──────────────────────
+-- Added nullable first — fully backward-compatible with existing rows and
+-- code that doesn't reference it yet. Backfill every existing row into
+-- "org #1" (see migration notes at the end of this file), THEN tighten each
+-- to NOT NULL once the backfill is verified. Deploying org-aware backend code
+-- before the backfill completes would silently return empty result sets
+-- (.eq("org_id", orgId) never matches NULL) — sequencing matters.
+ALTER TABLE clients               ADD COLUMN IF NOT EXISTS org_id text;
+ALTER TABLE contracts             ADD COLUMN IF NOT EXISTS org_id text;
+ALTER TABLE legal_intake          ADD COLUMN IF NOT EXISTS org_id text;
+ALTER TABLE analyses              ADD COLUMN IF NOT EXISTS org_id text;
+ALTER TABLE chat_messages         ADD COLUMN IF NOT EXISTS org_id text;
+ALTER TABLE clause_library        ADD COLUMN IF NOT EXISTS org_id text;
+ALTER TABLE review_rules          ADD COLUMN IF NOT EXISTS org_id text;
+ALTER TABLE redlines              ADD COLUMN IF NOT EXISTS org_id text;
+ALTER TABLE contract_comments     ADD COLUMN IF NOT EXISTS org_id text;
+ALTER TABLE tasks                 ADD COLUMN IF NOT EXISTS org_id text;
+ALTER TABLE approval_rules        ADD COLUMN IF NOT EXISTS org_id text;
+ALTER TABLE client_memberships    ADD COLUMN IF NOT EXISTS org_id text;
+ALTER TABLE contract_approvals    ADD COLUMN IF NOT EXISTS org_id text;
+ALTER TABLE signature_requests    ADD COLUMN IF NOT EXISTS org_id text;
+ALTER TABLE contract_comparisons  ADD COLUMN IF NOT EXISTS org_id text;
+ALTER TABLE time_entries          ADD COLUMN IF NOT EXISTS org_id text;
+ALTER TABLE activity_logs         ADD COLUMN IF NOT EXISTS org_id text;
+-- tickets and calendar_events are live in production (used by admin.ts /
+-- tickets.ts / calendar.ts) but were never captured as an uncommitted CREATE
+-- TABLE in this file — see the commented "Migration: admin + RBAC" block
+-- below for tickets' original shape. Both tables are confirmed to already
+-- exist wherever this schema has been applied, so a plain ALTER is safe here.
+ALTER TABLE tickets                ADD COLUMN IF NOT EXISTS org_id text;
+ALTER TABLE calendar_events        ADD COLUMN IF NOT EXISTS org_id text;
+-- users.org_id is also declared directly on the CREATE TABLE above for fresh
+-- installs; ALTER here covers databases created before that column existed.
+ALTER TABLE users                  ADD COLUMN IF NOT EXISTS org_id text;
+
+CREATE INDEX IF NOT EXISTS idx_users_org                ON users(org_id);
+CREATE INDEX IF NOT EXISTS idx_clients_org             ON clients(org_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_contracts_org            ON contracts(org_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_analyses_org             ON analyses(org_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_clause_library_org       ON clause_library(org_id, clause_type);
+CREATE INDEX IF NOT EXISTS idx_review_rules_org         ON review_rules(org_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_tasks_org                ON tasks(org_id);
+CREATE INDEX IF NOT EXISTS idx_client_memberships_org   ON client_memberships(org_id);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_org        ON activity_logs(org_id, created_at DESC);
+
+-- Run ONLY after every table above has been backfilled (see migration notes
+-- at the end of this file) — tightens the isolation boundary to mandatory:
+-- ALTER TABLE clients               ALTER COLUMN org_id SET NOT NULL;
+-- ALTER TABLE contracts             ALTER COLUMN org_id SET NOT NULL;
+-- ALTER TABLE legal_intake          ALTER COLUMN org_id SET NOT NULL;
+-- ALTER TABLE analyses              ALTER COLUMN org_id SET NOT NULL;
+-- ALTER TABLE chat_messages         ALTER COLUMN org_id SET NOT NULL;
+-- ALTER TABLE clause_library        ALTER COLUMN org_id SET NOT NULL;
+-- ALTER TABLE review_rules          ALTER COLUMN org_id SET NOT NULL;
+-- ALTER TABLE redlines              ALTER COLUMN org_id SET NOT NULL;
+-- ALTER TABLE contract_comments     ALTER COLUMN org_id SET NOT NULL;
+-- ALTER TABLE tasks                 ALTER COLUMN org_id SET NOT NULL;
+-- ALTER TABLE approval_rules        ALTER COLUMN org_id SET NOT NULL;
+-- ALTER TABLE client_memberships    ALTER COLUMN org_id SET NOT NULL;
+-- ALTER TABLE contract_approvals    ALTER COLUMN org_id SET NOT NULL;
+-- ALTER TABLE signature_requests    ALTER COLUMN org_id SET NOT NULL;
+-- ALTER TABLE contract_comparisons  ALTER COLUMN org_id SET NOT NULL;
+-- ALTER TABLE time_entries          ALTER COLUMN org_id SET NOT NULL;
+-- ALTER TABLE activity_logs         ALTER COLUMN org_id SET NOT NULL;
+-- ALTER TABLE tickets               ALTER COLUMN org_id SET NOT NULL;
+-- ALTER TABLE calendar_events       ALTER COLUMN org_id SET NOT NULL;
+
+-- ─── Migration: org #1 for existing data (run once, in order) ───────────────
+-- 1. Create one Clerk Organization for Amith's own firm (Clerk Dashboard or a
+--    one-off script), note its id, then:
+--    INSERT INTO organizations (clerk_org_id, name, status, onboarding_type, approved_at, approved_by)
+--    VALUES ('<clerk_org_id>', '<firm name>', 'active', 'sales_assisted', now(), 'migration');
+-- 2. Add every existing Clerk user (from the `users` table) as a member of
+--    that org via Clerk's backend API — Amith as org:admin, others org:member.
+-- 3. Backfill every existing row into that one tenant (safe: 100% of rows
+--    today belong to this single tenant, no per-row matching needed):
+--    UPDATE clients              SET org_id = '<clerk_org_id>' WHERE org_id IS NULL;
+--    UPDATE contracts            SET org_id = '<clerk_org_id>' WHERE org_id IS NULL;
+--    UPDATE legal_intake         SET org_id = '<clerk_org_id>' WHERE org_id IS NULL;
+--    UPDATE analyses             SET org_id = '<clerk_org_id>' WHERE org_id IS NULL;
+--    UPDATE chat_messages        SET org_id = '<clerk_org_id>' WHERE org_id IS NULL;
+--    UPDATE clause_library       SET org_id = '<clerk_org_id>' WHERE org_id IS NULL;
+--    UPDATE review_rules         SET org_id = '<clerk_org_id>' WHERE org_id IS NULL;
+--    UPDATE redlines             SET org_id = '<clerk_org_id>' WHERE org_id IS NULL;
+--    UPDATE contract_comments    SET org_id = '<clerk_org_id>' WHERE org_id IS NULL;
+--    UPDATE tasks                SET org_id = '<clerk_org_id>' WHERE org_id IS NULL;
+--    UPDATE approval_rules       SET org_id = '<clerk_org_id>' WHERE org_id IS NULL;
+--    UPDATE client_memberships   SET org_id = '<clerk_org_id>' WHERE org_id IS NULL;
+--    UPDATE contract_approvals   SET org_id = '<clerk_org_id>' WHERE org_id IS NULL;
+--    UPDATE signature_requests   SET org_id = '<clerk_org_id>' WHERE org_id IS NULL;
+--    UPDATE contract_comparisons SET org_id = '<clerk_org_id>' WHERE org_id IS NULL;
+--    UPDATE time_entries         SET org_id = '<clerk_org_id>' WHERE org_id IS NULL;
+--    UPDATE activity_logs        SET org_id = '<clerk_org_id>' WHERE org_id IS NULL;
+--    UPDATE tickets               SET org_id = '<clerk_org_id>' WHERE org_id IS NULL;
+--    UPDATE calendar_events       SET org_id = '<clerk_org_id>' WHERE org_id IS NULL;
+-- 4. Verify row counts, spot-check a handful of records, THEN run the
+--    "SET NOT NULL" block above, THEN deploy the org-aware backend code.
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_contracts_user_created    ON contracts(user_id, created_at DESC);

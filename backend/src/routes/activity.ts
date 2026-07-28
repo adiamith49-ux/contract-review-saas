@@ -2,9 +2,10 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireActiveOrg } from "../middleware/org.js";
 
 export const activityRouter = Router();
-activityRouter.use(requireAuth);
+activityRouter.use(requireAuth, requireActiveOrg);
 
 // GET /api/activity — paginated activity log for the dashboard
 activityRouter.get("/", async (req, res, next) => {
@@ -19,6 +20,7 @@ activityRouter.get("/", async (req, res, next) => {
       .from("activity_logs")
       .select("id, action, contract_id, metadata, created_at", { count: "exact" })
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .order("created_at", { ascending: false })
       .range(rawOffset, rawOffset + rawLimit - 1);
     if (contract_id) query = query.eq("contract_id", contract_id);

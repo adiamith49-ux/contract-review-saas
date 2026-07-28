@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireActiveOrg } from "../middleware/org.js";
 
 export const clausesRouter = Router();
-clausesRouter.use(requireAuth);
+clausesRouter.use(requireAuth, requireActiveOrg);
 
 function decodeNotes(notes: string | null | undefined): { tags: string[]; jurisdiction: string | null } {
   if (!notes) return { tags: [], jurisdiction: null };
@@ -25,7 +26,7 @@ function formatClause(row: Record<string, unknown>) {
   return { ...row, tags, jurisdiction, notes: undefined };
 }
 
-// GET /api/clauses — global admin-managed library (read-only for users)
+// GET /api/clauses — org's admin-managed library (read-only for members)
 clausesRouter.get("/", async (req, res, next) => {
   try {
     const { clause_type, contract_type, status, search } = req.query;
@@ -33,6 +34,7 @@ clausesRouter.get("/", async (req, res, next) => {
       .from("clause_library")
       .select("id, title, clause_type, content, notes, contract_types, status, source, version, created_at, updated_at")
       .eq("is_admin_managed", true)
+      .eq("org_id", req.orgId!)
       .order("clause_type")
       .order("title");
 

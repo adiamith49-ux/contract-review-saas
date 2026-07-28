@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireActiveOrg } from "../middleware/org.js";
 import { downloadFromS3 } from "../services/storage.service.js";
 import { logActivity } from "../services/activity.service.js";
 import {
@@ -12,7 +13,7 @@ import {
 // DocuSign e-signature — submitted once a contract's approval chain completes.
 // Mounted at /api/contracts alongside contractsRouter (paths don't overlap).
 export const signatureRouter = Router();
-signatureRouter.use(requireAuth);
+signatureRouter.use(requireAuth, requireActiveOrg);
 
 const partySchema = z.object({
   name: z.string().min(1).max(200),
@@ -38,6 +39,7 @@ signatureRouter.post("/:id/signature", async (req, res, next) => {
       .select("id, filename, title, contract_status, s3_key, mime_type")
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .single();
     if (error || !contract) { res.status(404).json({ error: "Contract not found" }); return; }
 
@@ -69,6 +71,7 @@ signatureRouter.post("/:id/signature", async (req, res, next) => {
       .insert({
         contract_id: req.params.id,
         user_id: req.userId,
+        org_id: req.orgId,
         status,
         docusign_envelope_id: envelopeId,
         parties,
@@ -102,6 +105,7 @@ signatureRouter.get("/:id/signature", async (req, res, next) => {
       .select("id")
       .eq("id", req.params.id)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .maybeSingle();
     if (!contract) { res.status(404).json({ error: "Contract not found" }); return; }
 
@@ -109,6 +113,7 @@ signatureRouter.get("/:id/signature", async (req, res, next) => {
       .from("signature_requests")
       .select("*")
       .eq("contract_id", req.params.id)
+      .eq("org_id", req.orgId!)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();

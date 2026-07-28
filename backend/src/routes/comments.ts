@@ -2,12 +2,13 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireActiveOrg } from "../middleware/org.js";
 import { logActivity } from "../services/activity.service.js";
 
 // Matter collaboration: per-contract comments + derived team view.
 // Mounted at /api/contracts alongside contractsRouter (paths don't overlap).
 export const commentsRouter = Router();
-commentsRouter.use(requireAuth);
+commentsRouter.use(requireAuth, requireActiveOrg);
 
 // @mentions: "@Jane" or "@Jane Smith" (two words max, each starting with a letter)
 export function parseMentions(body: string): string[] {
@@ -18,19 +19,20 @@ export function parseMentions(body: string): string[] {
   return [...out];
 }
 
-async function assertOwnership(contractId: string, userId: string): Promise<boolean> {
-  const { data } = await db.from("contracts").select("id").eq("id", contractId).eq("user_id", userId).single();
+async function assertOwnership(contractId: string, userId: string, orgId: string): Promise<boolean> {
+  const { data } = await db.from("contracts").select("id").eq("id", contractId).eq("user_id", userId).eq("org_id", orgId).single();
   return !!data;
 }
 
 // GET /api/contracts/:id/comments
 commentsRouter.get("/:id/comments", async (req, res, next) => {
   try {
-    if (!(await assertOwnership(req.params.id, req.userId))) return res.status(404).json({ error: "Contract not found" });
+    if (!(await assertOwnership(req.params.id, req.userId, req.orgId!))) return res.status(404).json({ error: "Contract not found" });
     const { data, error } = await db
       .from("contract_comments")
       .select("*")
       .eq("contract_id", req.params.id)
+      .eq("org_id", req.orgId!)
       .order("created_at", { ascending: true });
     if (error) throw error;
     res.json({ comments: data ?? [] });
@@ -45,7 +47,7 @@ commentsRouter.post("/:id/comments", async (req, res, next) => {
       visibility: z.enum(["internal", "shared"]).default("internal"),
       author_name: z.string().max(200).optional(),
     }).parse(req.body);
-    if (!(await assertOwnership(req.params.id, req.userId))) return res.status(404).json({ error: "Contract not found" });
+    if (!(await assertOwnership(req.params.id, req.userId, req.orgId!))) return res.status(404).json({ error: "Contract not found" });
 
     const mentions = parseMentions(body.body);
     const { data, error } = await db
@@ -53,6 +55,7 @@ commentsRouter.post("/:id/comments", async (req, res, next) => {
       .insert({
         contract_id: req.params.id,
         user_id: req.userId,
+        org_id: req.orgId,
         author_name: body.author_name?.trim() || "Team member",
         body: body.body,
         visibility: body.visibility,
@@ -78,7 +81,8 @@ commentsRouter.delete("/:id/comments/:commentId", async (req, res, next) => {
       .delete()
       .eq("id", req.params.commentId)
       .eq("contract_id", req.params.id)
-      .eq("user_id", req.userId);
+      .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!);
     if (error) throw error;
     await logActivity(req.userId, "comment.deleted", req.params.id);
     res.status(204).end();
@@ -94,13 +98,14 @@ commentsRouter.get("/:id/team", async (req, res, next) => {
       .select("id, owner_name, legal_intake(business_owner, department)")
       .eq("id", contractId)
       .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
       .single();
     if (!contract) return res.status(404).json({ error: "Contract not found" });
 
     const [{ data: approvers }, { data: tasks }, { data: comments }] = await Promise.all([
-      db.from("contract_approvals").select("approver_name, approver_email").eq("contract_id", contractId).eq("user_id", req.userId),
-      db.from("tasks").select("assignee").eq("contract_id", contractId).eq("user_id", req.userId),
-      db.from("contract_comments").select("author_name, mentions").eq("contract_id", contractId).eq("user_id", req.userId),
+      db.from("contract_approvals").select("approver_name, approver_email").eq("contract_id", contractId).eq("user_id", req.userId).eq("org_id", req.orgId!),
+      db.from("tasks").select("assignee").eq("contract_id", contractId).eq("user_id", req.userId).eq("org_id", req.orgId!),
+      db.from("contract_comments").select("author_name, mentions").eq("contract_id", contractId).eq("user_id", req.userId).eq("org_id", req.orgId!),
     ]);
 
     const team = new Map<string, { name: string; email: string | null; roles: Set<string> }>();

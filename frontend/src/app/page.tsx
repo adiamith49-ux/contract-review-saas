@@ -28,6 +28,27 @@ import { ContralyneLogoMark } from "@/components/ContralyneLogoMark";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
+// This page is served on the landing host (contralyne.com), where /sign-in
+// and /dashboard don't exist — middleware.ts 308-redirects those paths to
+// app.contralyne.com at the server/edge level. next/link's client-side router
+// treats a relative href as same-origin, so it doesn't reliably follow a
+// redirect to a DIFFERENT origin (works when typed directly as a full URL,
+// silently fails as a Link — this is why "Sign In"/"Go to Dashboard" didn't
+// work from here). Build the absolute app-host URL ourselves and use a plain
+// <a> (real navigation) for these; stays relative in dev/previews where the
+// current host isn't actually a landing host.
+function appUrl(path: string): string {
+  if (typeof window !== "undefined") {
+    const landingHosts = (process.env.NEXT_PUBLIC_LANDING_HOSTS ?? "contralyne.com,www.contralyne.com")
+      .split(",").map(h => h.trim()).filter(Boolean);
+    if (landingHosts.includes(window.location.hostname)) {
+      const appHost = process.env.NEXT_PUBLIC_APP_HOST ?? "app.contralyne.com";
+      return `https://${appHost}${path}`;
+    }
+  }
+  return path;
+}
+
 // ─── Brand palette ─────────────────────────────────────────────────────────────
 // Teal Wave #00BFA6 (main) · Aqua Silk #D9FAF4 (bg) · Deep Lagoon #0F2A2A (dark surfaces)
 // · Blood Red #8B0000 used only where red already was (Red Line, risk/redline accents)
@@ -70,14 +91,14 @@ function LandingNav() {
           <div className="hidden md:flex items-center gap-3">
             {isLoaded && isSignedIn ? (
               <Button asChild className={btnPrimary}>
-                <Link href="/dashboard">
+                <a href={appUrl("/dashboard")}>
                   Go to Dashboard <ArrowRight className="ml-1.5 h-4 w-4" />
-                </Link>
+                </a>
               </Button>
             ) : (
               <>
                 <Button variant="ghost" asChild className="rounded-full text-[#0F2A2A] hover:bg-[#0F2A2A]/5 hover:text-[#0F2A2A]">
-                  <Link href="/sign-in">Sign In</Link>
+                  <a href={appUrl("/sign-in")}>Sign In</a>
                 </Button>
                 <Button asChild className={btnPrimary}>
                   <a href="#contact">Request a Demo</a>
@@ -106,12 +127,12 @@ function LandingNav() {
             <div className="pt-2 border-t border-[#0F2A2A]/10 space-y-2">
               {isLoaded && isSignedIn ? (
                 <Button asChild className={`w-full ${btnPrimary}`}>
-                  <Link href="/dashboard">Go to Dashboard</Link>
+                  <a href={appUrl("/dashboard")}>Go to Dashboard</a>
                 </Button>
               ) : (
                 <>
                   <Button variant="outline" asChild className={`w-full ${btnOutline}`}>
-                    <Link href="/sign-in">Sign In</Link>
+                    <a href={appUrl("/sign-in")}>Sign In</a>
                   </Button>
                   <Button asChild className={`w-full ${btnPrimary}`}>
                     <a href="#contact" onClick={() => setMobileOpen(false)}>Request a Demo</a>
@@ -160,9 +181,9 @@ function Hero() {
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
           {isLoaded && isSignedIn ? (
             <Button size="lg" asChild className={`text-base px-8 h-12 ${btnPrimary}`}>
-              <Link href="/dashboard">
+              <a href={appUrl("/dashboard")}>
                 Go to Dashboard <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
+              </a>
             </Button>
           ) : (
             <>
@@ -747,7 +768,7 @@ function CtaBanner({ isSignedIn }: { isSignedIn: boolean }) {
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           {isSignedIn ? (
             <Button size="lg" asChild className="text-base px-8 h-12 rounded-full bg-[#D9FAF4] text-[#0F2A2A] hover:bg-white shadow-none">
-              <Link href="/dashboard">Go to Dashboard <ArrowRight className="ml-2 h-4 w-4" /></Link>
+              <a href={appUrl("/dashboard")}>Go to Dashboard <ArrowRight className="ml-2 h-4 w-4" /></a>
             </Button>
           ) : (
             <>
@@ -755,7 +776,7 @@ function CtaBanner({ isSignedIn }: { isSignedIn: boolean }) {
                 <a href="#contact">Request a Demo <ArrowRight className="ml-2 h-4 w-4" /></a>
               </Button>
               <Button size="lg" variant="ghost" asChild className="text-base px-8 h-12 rounded-full text-white hover:bg-white/10 hover:text-white">
-                <Link href="/sign-in">Sign In</Link>
+                <a href={appUrl("/sign-in")}>Sign In</a>
               </Button>
             </>
           )}
@@ -801,7 +822,7 @@ function Footer() {
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-[#D9FAF4]/40 mb-4">Account</p>
             <ul className="space-y-2 text-sm">
-              <li><Link href="/sign-in" className="hover:text-[#D9FAF4] transition-colors">Sign In</Link></li>
+              <li><a href={appUrl("/sign-in")} className="hover:text-[#D9FAF4] transition-colors">Sign In</a></li>
               <li><a href="#contact" className="hover:text-[#D9FAF4] transition-colors">Request a Demo</a></li>
               <li><a href="mailto:contact@contralyne.com" className="hover:text-[#D9FAF4] transition-colors">Contact Support</a></li>
             </ul>

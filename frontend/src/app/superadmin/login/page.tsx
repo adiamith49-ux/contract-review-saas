@@ -5,12 +5,12 @@ import { ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { adminLogin, adminForgotPassword, adminResetPassword, setAdminToken } from "@/lib/admin-api";
+import { superAdminLogin, superAdminForgotPassword, superAdminResetPassword, setSuperAdminToken } from "@/lib/superadmin-api";
 import { ContralyneLogoMark } from "@/components/ContralyneLogoMark";
 
 type View = "signin" | "forgot" | "reset";
 
-export default function AdminLoginPage() {
+export default function SuperAdminLoginPage() {
   const router = useRouter();
   const [view, setView]         = useState<View>("signin");
   const [email, setEmail]       = useState("");
@@ -29,9 +29,9 @@ export default function AdminLoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const { token } = await adminLogin(email, password);
-      setAdminToken(token, remember);
-      router.push("/admin/dashboard");
+      const { token } = await superAdminLogin(email, password);
+      setSuperAdminToken(token, remember);
+      router.push("/superadmin/dashboard");
     } catch (err: any) {
       toast.error(err.message ?? "Invalid credentials");
     } finally {
@@ -43,8 +43,8 @@ export default function AdminLoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      await adminForgotPassword(email);
-      toast.success("If an admin account exists for this email, a reset code has been sent.");
+      await superAdminForgotPassword(email);
+      toast.success("If an account exists for this email, a reset code has been sent.");
       setView("reset");
     } catch (err: any) {
       toast.error(err.message ?? "Could not send reset code");
@@ -57,10 +57,10 @@ export default function AdminLoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const { token } = await adminResetPassword(email, code.trim(), newPw);
-      setAdminToken(token, remember);
+      const { token } = await superAdminResetPassword(email, code.trim(), newPw);
+      setSuperAdminToken(token, remember);
       toast.success("Password updated");
-      router.push("/admin/dashboard");
+      router.push("/superadmin/dashboard");
     } catch (err: any) {
       toast.error(err.message ?? "Could not reset password");
     } finally {
@@ -71,27 +71,26 @@ export default function AdminLoginPage() {
   return (
     <div className="min-h-screen bg-[#081a1a] flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        {/* Logo */}
         <div className="flex flex-col items-center mb-8">
           <div className="h-14 w-14 rounded-2xl bg-white p-1.5 flex items-center justify-center mb-4 shadow-xl">
             <ContralyneLogoMark className="h-full w-full" />
           </div>
           <h1 className="text-xl font-bold text-white tracking-tight">Contralyne</h1>
-          <p className="text-sm text-slate-400 mt-0.5">Admin Panel</p>
+          <p className="text-sm text-slate-400 mt-0.5">Super Admin</p>
         </div>
 
         <div className="bg-[#0F2A2A] rounded-2xl border border-slate-700/60 p-6 shadow-2xl">
           {view === "signin" && (
             <>
-              <h2 className="text-base font-semibold text-white mb-5">Sign in to admin</h2>
+              <h2 className="text-base font-semibold text-white mb-5">Sign in</h2>
 
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
-                  <label htmlFor="admin-email" className={labelCls}>Email address</label>
+                  <label htmlFor="sa-email" className={labelCls}>Email address</label>
                   <Input
-                    id="admin-email"
+                    id="sa-email"
                     type="email"
-                    placeholder="admin@contralyne.com"
+                    placeholder="amith@contralyne.com"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     autoComplete="username"
@@ -103,7 +102,7 @@ export default function AdminLoginPage() {
 
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label htmlFor="admin-password" className="text-xs font-medium text-slate-400">Password</label>
+                    <label htmlFor="sa-password" className="text-xs font-medium text-slate-400">Password</label>
                     <button
                       type="button"
                       onClick={() => setView("forgot")}
@@ -114,7 +113,7 @@ export default function AdminLoginPage() {
                   </div>
                   <div className="relative">
                     <Input
-                      id="admin-password"
+                      id="sa-password"
                       type={showPw ? "text" : "password"}
                       placeholder="••••••••"
                       value={password}
@@ -155,7 +154,7 @@ export default function AdminLoginPage() {
             <>
               <h2 className="text-base font-semibold text-white mb-1">Reset password</h2>
               <p className="text-xs text-slate-400 mb-5">
-                Enter your admin email and we&apos;ll send you a 6-digit reset code.
+                Enter your email and we&apos;ll send you a 6-digit reset code.
               </p>
 
               <form onSubmit={handleForgot} className="space-y-4">
@@ -164,7 +163,7 @@ export default function AdminLoginPage() {
                   <Input
                     id="forgot-email"
                     type="email"
-                    placeholder="admin@contralyne.com"
+                    placeholder="amith@contralyne.com"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     autoComplete="email"
@@ -263,7 +262,6 @@ export default function AdminLoginPage() {
             </>
           )}
         </div>
-
       </div>
     </div>
   );
