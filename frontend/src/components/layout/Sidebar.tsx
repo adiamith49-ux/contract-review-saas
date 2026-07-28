@@ -6,7 +6,7 @@ import { useUser, useClerk } from "@clerk/nextjs";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
   LayoutDashboard, FileSearch, Upload, ClipboardList, Clock, CalendarDays,
-  Library, Gavel, UserCheck, LineChart, Settings, User, Lock, CreditCard,
+  Library, Gavel, UserCheck, LineChart, Settings,
   LifeBuoy, LogOut, ChevronDown, ChevronsLeft, ChevronsRight, Menu, X,
   GitCompare, MessagesSquare, ArrowLeft, PenTool,
 } from "lucide-react";
@@ -104,24 +104,20 @@ function ContractTabItem({ contractId, tabKey, label, icon: Icon, collapsed, onC
 
 function ProfileMenu({ collapsed }: { collapsed?: boolean }) {
   const { user } = useUser();
-  const { openUserProfile, signOut } = useClerk();
+  const { signOut } = useClerk();
 
   const fullName  = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "My Account";
   const email     = user?.primaryEmailAddress?.emailAddress ?? "";
   const avatarUrl = user?.imageUrl;
   const initials  = (user?.firstName?.[0] ?? "") + (user?.lastName?.[0] ?? "") || "U";
 
+  // Profile editing and password changes live on the Settings page (the
+  // sidebar's own "Settings" nav item) — no second entry point here, and no
+  // Clerk-hosted modal; that page's own custom forms handle both directly.
+  // Analytics already has its own entry in the Tools nav above — no duplicate here.
   const menuSections = [
     [
-      { label: "My Profile", icon: User, action: () => openUserProfile() },
-      { label: "Change Password", icon: Lock, action: () => openUserProfile() },
-    ],
-    [
-      { label: "Billing & Plan", icon: CreditCard, href: "/settings" },
-      { label: "Analytics Dashboard", icon: LineChart, href: "/analytics" },
-    ],
-    [
-      { label: "Support", icon: LifeBuoy, href: "mailto:rajasaipranv0@gmail.com", external: true },
+      { label: "Support", icon: LifeBuoy, href: "support@contralyne.com", external: true },
     ],
   ];
 
@@ -182,25 +178,15 @@ function ProfileMenu({ collapsed }: { collapsed?: boolean }) {
               {si > 0 && <DropdownMenu.Separator className="my-1 h-px bg-gray-100 mx-2" />}
               {section.map((item) => (
                 <DropdownMenu.Item key={item.label} asChild>
-                  {"href" in item ? (
-                    <Link
-                      href={item.href}
-                      target={"external" in item && item.external ? "_blank" : undefined}
-                      rel={"external" in item && item.external ? "noopener noreferrer" : undefined}
-                      className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 outline-none cursor-pointer transition-colors mx-1 rounded-lg"
-                    >
-                      <item.icon className="h-4 w-4 text-gray-400 shrink-0" />
-                      {item.label}
-                    </Link>
-                  ) : (
-                    <button
-                      onClick={item.action}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 outline-none cursor-pointer transition-colors mx-1 rounded-lg"
-                    >
-                      <item.icon className="h-4 w-4 text-gray-400 shrink-0" />
-                      {item.label}
-                    </button>
-                  )}
+                  <Link
+                    href={item.href}
+                    target={"external" in item && item.external ? "_blank" : undefined}
+                    rel={"external" in item && item.external ? "noopener noreferrer" : undefined}
+                    className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 outline-none cursor-pointer transition-colors mx-1 rounded-lg"
+                  >
+                    <item.icon className="h-4 w-4 text-gray-400 shrink-0" />
+                    {item.label}
+                  </Link>
                 </DropdownMenu.Item>
               ))}
             </div>

@@ -1,15 +1,17 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useUser, useClerk } from "@clerk/nextjs";
 import {
   User, SlidersHorizontal, Shield, Info,
-  ExternalLink, Check, LogOut, Lock, CreditCard,
-  Bell, CheckCircle2, Trash2, AlertTriangle, Loader2,
+  Check, LogOut, Lock, Camera,
+  Bell, CheckCircle2, Trash2, AlertTriangle, Loader2, Eye, EyeOff,
 } from "lucide-react";
 import { toast } from "sonner";
+import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { deleteAccount } from "@/lib/api";
 import { Label } from "@/components/ui/label";
 import {
@@ -19,10 +21,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { CONTRACT_TYPE_LABELS } from "@/lib/utils";
 import type { ContractType } from "@/lib/types";
+
+function errorMessage(err: unknown): string {
+  if (isClerkAPIResponseError(err)) {
+    return err.errors[0]?.longMessage ?? err.errors[0]?.message ?? "Something went wrong. Please try again.";
+  }
+  return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+}
 
 const PREF_KEY = "contralyn_prefs";
 
@@ -65,6 +77,221 @@ const TABS = [
 
 type TabId = typeof TABS[number]["id"];
 
+// ─── Edit profile modal (name + avatar — no Clerk-hosted UI) ──────────────────
+
+function EditProfileModal({
+  open, onOpenChange, user,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  user: ReturnType<typeof useUser>["user"];
+}) {
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setFirstName(user?.firstName ?? "");
+    setLastName(user?.lastName ?? "");
+    setAvatarPreview(user?.imageUrl ?? null);
+    setAvatarFile(null);
+  }, [open, user]);
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+  }
+
+  async function handleSave() {
+    if (!user) return;
+    setSaving(true);
+    try {
+      await user.update({ firstName: firstName.trim(), lastName: lastName.trim() });
+      if (avatarFile) await user.setProfileImage({ file: avatarFile });
+      toast.success("Profile updated");
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit profile</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="relative h-16 w-16 rounded-2xl overflow-hidden bg-primary/10 flex items-center justify-center shrink-0 group"
+            >
+              {avatarPreview ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={avatarPreview} alt="Avatar preview" className="h-full w-full object-cover" />
+              ) : (
+                <User className="h-6 w-6 text-primary" />
+              )}
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <Camera className="h-5 w-5 text-white" />
+              </div>
+            </button>
+            <div>
+              <button type="button" onClick={() => fileInputRef.current?.click()} className="text-sm font-medium text-primary hover:underline">
+                Change photo
+              </button>
+              <p className="text-xs text-gray-400 mt-0.5">JPG or PNG</p>
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="first-name" className="text-sm font-medium text-gray-700">First name</Label>
+              <Input id="first-name" value={firstName} onChange={e => setFirstName(e.target.value)} className="mt-1.5" autoFocus />
+            </div>
+            <div>
+              <Label htmlFor="last-name" className="text-sm font-medium text-gray-700">Last name</Label>
+              <Input id="last-name" value={lastName} onChange={e => setLastName(e.target.value)} className="mt-1.5" />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
+            <Button size="sm" onClick={handleSave} disabled={saving}>
+              {saving && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+              {saving ? "Saving…" : "Save changes"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Change password modal (no Clerk-hosted UI) ───────────────────────────────
+
+function ChangePasswordModal({
+  open, onOpenChange, user,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  user: ReturnType<typeof useUser>["user"];
+}) {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const hasPassword = user?.passwordEnabled ?? false;
+
+  useEffect(() => {
+    if (!open) return;
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+  }, [open]);
+
+  async function handleSave() {
+    if (!user) return;
+    if (newPassword.length < 8) { toast.error("Password must be at least 8 characters"); return; }
+    if (newPassword !== confirmPassword) { toast.error("Passwords don't match"); return; }
+    setSaving(true);
+    try {
+      await user.updatePassword({
+        ...(hasPassword ? { currentPassword } : {}),
+        newPassword,
+        signOutOfOtherSessions: true,
+      });
+      toast.success("Password updated");
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const canSave = newPassword.length >= 8 && confirmPassword.length > 0 && (!hasPassword || currentPassword.length > 0);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{hasPassword ? "Change password" : "Set a password"}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          {hasPassword && (
+            <div>
+              <Label htmlFor="current-password" className="text-sm font-medium text-gray-700">Current password</Label>
+              <div className="relative mt-1.5">
+                <Input
+                  id="current-password"
+                  type={showCurrent ? "text" : "password"}
+                  value={currentPassword}
+                  onChange={e => setCurrentPassword(e.target.value)}
+                  autoComplete="current-password"
+                  className="pr-10"
+                  autoFocus
+                />
+                <button type="button" onClick={() => setShowCurrent(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  {showCurrent ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+          )}
+          <div>
+            <Label htmlFor="new-password" className="text-sm font-medium text-gray-700">New password</Label>
+            <div className="relative mt-1.5">
+              <Input
+                id="new-password"
+                type={showNew ? "text" : "password"}
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                autoComplete="new-password"
+                minLength={8}
+                className="pr-10"
+              />
+              <button type="button" onClick={() => setShowNew(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="confirm-password" className="text-sm font-medium text-gray-700">Confirm new password</Label>
+            <Input
+              id="confirm-password"
+              type={showNew ? "text" : "password"}
+              value={confirmPassword}
+              onChange={e => setConfirmPassword(e.target.value)}
+              autoComplete="new-password"
+              className="mt-1.5"
+            />
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
+            <Button size="sm" onClick={handleSave} disabled={saving || !canSave}>
+              {saving && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+              {saving ? "Updating…" : hasPassword ? "Update password" : "Set password"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Toggle switch ────────────────────────────────────────────────────────────
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
@@ -91,14 +318,14 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 
 function ProfileTab({
   fullName, email, avatarUrl, initials, user,
-  onOpenProfile, onSignOut,
+  onEditProfile, onSignOut,
 }: {
   fullName: string;
   email: string;
   avatarUrl?: string | null;
   initials: string;
   user: ReturnType<typeof useUser>["user"];
-  onOpenProfile: () => void;
+  onEditProfile: () => void;
   onSignOut: () => void;
 }) {
   const authMethod = (() => {
@@ -137,8 +364,8 @@ function ProfileTab({
                 <span className="text-2xl font-bold text-primary uppercase">{initials}</span>
               )}
             </div>
-            <Button variant="outline" size="sm" onClick={onOpenProfile} className="gap-2 mb-1">
-              <ExternalLink className="h-3.5 w-3.5" />
+            <Button variant="outline" size="sm" onClick={onEditProfile} className="gap-2 mb-1">
+              <User className="h-3.5 w-3.5" />
               Edit Profile
             </Button>
           </div>
@@ -173,26 +400,6 @@ function ProfileTab({
           <h3 className="text-sm font-semibold text-gray-700">Account Actions</h3>
         </div>
         <div className="divide-y">
-          <div className="flex items-center justify-between px-6 py-4">
-            <div>
-              <p className="text-sm font-medium text-gray-800">Manage Profile</p>
-              <p className="text-xs text-gray-400 mt-0.5">Update name, email, password, and connected accounts via Clerk</p>
-            </div>
-            <Button variant="outline" size="sm" onClick={onOpenProfile} className="shrink-0 gap-2">
-              <ExternalLink className="h-3.5 w-3.5" />
-              Open
-            </Button>
-          </div>
-          <div className="flex items-center justify-between px-6 py-4">
-            <div>
-              <p className="text-sm font-medium text-gray-800">Change Password / 2FA</p>
-              <p className="text-xs text-gray-400 mt-0.5">Manage security settings and two-factor authentication</p>
-            </div>
-            <Button variant="outline" size="sm" onClick={onOpenProfile} className="shrink-0 gap-2">
-              <Lock className="h-3.5 w-3.5" />
-              Manage
-            </Button>
-          </div>
           <div className="flex items-center justify-between px-6 py-4">
             <div>
               <p className="text-sm font-medium text-red-600">Sign Out</p>
@@ -323,7 +530,7 @@ function PreferencesTab({
 
 // ─── Security tab ─────────────────────────────────────────────────────────────
 
-function SecurityTab({ onOpenProfile, onDeleteAccount }: { onOpenProfile: () => void; onDeleteAccount: () => void }) {
+function SecurityTab({ onChangePassword, onDeleteAccount }: { onChangePassword: () => void; onDeleteAccount: () => void }) {
   const securityItems = [
     { label: "Authentication", detail: "Clerk — SOC2 certified", ok: true },
     { label: "File storage", detail: "AWS S3 — AES-256 encrypted at rest", ok: true },
@@ -368,7 +575,6 @@ function SecurityTab({ onOpenProfile, onDeleteAccount }: { onOpenProfile: () => 
         </div>
       </div>
 
-      {/* Billing placeholder */}
       <div className="rounded-2xl border bg-white shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b bg-gray-50/70">
           <h3 className="text-sm font-semibold text-gray-700">Account Security</h3>
@@ -376,22 +582,12 @@ function SecurityTab({ onOpenProfile, onDeleteAccount }: { onOpenProfile: () => 
         <div className="divide-y">
           <div className="flex items-center justify-between px-6 py-4">
             <div>
-              <p className="text-sm font-medium text-gray-800">Password & Two-Factor Auth</p>
-              <p className="text-xs text-gray-400 mt-0.5">Manage your password and 2FA via Clerk</p>
+              <p className="text-sm font-medium text-gray-800">Password</p>
+              <p className="text-xs text-gray-400 mt-0.5">Change your account password</p>
             </div>
-            <Button variant="outline" size="sm" onClick={onOpenProfile} className="shrink-0 gap-2">
-              <ExternalLink className="h-3.5 w-3.5" />
+            <Button variant="outline" size="sm" onClick={onChangePassword} className="shrink-0 gap-2">
+              <Lock className="h-3.5 w-3.5" />
               Manage
-            </Button>
-          </div>
-          <div className="flex items-center justify-between px-6 py-4">
-            <div>
-              <p className="text-sm font-medium text-gray-800">Billing & Plan</p>
-              <p className="text-xs text-gray-400 mt-0.5">View your subscription and payment details</p>
-            </div>
-            <Button variant="outline" size="sm" className="shrink-0 gap-2">
-              <CreditCard className="h-3.5 w-3.5" />
-              View
             </Button>
           </div>
         </div>
@@ -508,7 +704,7 @@ function AboutTab() {
 
 export default function SettingsPage() {
   const { user } = useUser();
-  const { openUserProfile, signOut } = useClerk();
+  const { signOut } = useClerk();
   const { getToken } = useAuth();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("profile");
@@ -516,6 +712,8 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
   useEffect(() => {
     setPrefs(loadPrefs());
@@ -607,7 +805,7 @@ export default function SettingsPage() {
             email={email}
             avatarUrl={avatarUrl}
             initials={initials}
-            onOpenProfile={() => openUserProfile()}
+            onEditProfile={() => setEditProfileOpen(true)}
             onSignOut={() => signOut({ redirectUrl: "/" })}
           />
         )}
@@ -621,12 +819,15 @@ export default function SettingsPage() {
         )}
         {activeTab === "security" && (
           <SecurityTab
-            onOpenProfile={() => openUserProfile()}
+            onChangePassword={() => setChangePasswordOpen(true)}
             onDeleteAccount={() => setDeleteConfirm(true)}
           />
         )}
         {activeTab === "about" && <AboutTab />}
       </div>
+
+      <EditProfileModal open={editProfileOpen} onOpenChange={setEditProfileOpen} user={user} />
+      <ChangePasswordModal open={changePasswordOpen} onOpenChange={setChangePasswordOpen} user={user} />
 
       {/* ── Delete account confirmation dialog ───────────────────────── */}
       {deleteConfirm && (
