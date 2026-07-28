@@ -7,14 +7,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 export interface SuperAdminUser { email: string; name: string }
 
 export interface SuperAdminStats {
-  organizations: number; clients: number; contracts: number; users: number; open_tickets: number;
-  charts: {
-    uploads_per_month:   { month: string; count: number }[];
-    risk_breakdown:      { risk: string; count: number }[];
-    contracts_by_status: { status: string; count: number }[];
-    contracts_by_type:   { type: string; count: number }[];
-    tickets_by_status:   { status: string; count: number }[];
-  };
+  organizations: number;
+  organizations_by_status: { status: "pending" | "active" | "suspended" | "deleted"; count: number }[];
 }
 
 export interface SystemInfo {
@@ -36,7 +30,8 @@ export interface SuperAdminOrganization {
   status: "pending" | "active" | "suspended" | "deleted";
   onboarding_type: "self_serve" | "sales_assisted";
   approved_at: string | null; suspended_at: string | null; deleted_at: string | null;
-  contract_count: number; created_at: string;
+  monthly_analysis_cap: number | null;
+  contract_count: number; analyses_this_month: number; created_at: string;
 }
 
 export function getSuperAdminToken(): string | null {
@@ -111,3 +106,8 @@ export const restoreOrganization = (id: string) =>
 
 export const deleteOrganization = (id: string) =>
   superAdminFetch<void>(`/superadmin/organizations/${id}`, { method: "DELETE" });
+
+export const updateOrganizationCap = (id: string, monthly_analysis_cap: number | null) =>
+  superAdminFetch<{ ok: boolean; organization: { id: string; monthly_analysis_cap: number | null } }>(
+    `/superadmin/organizations/${id}/cap`, { method: "PATCH", body: JSON.stringify({ monthly_analysis_cap }) },
+  );

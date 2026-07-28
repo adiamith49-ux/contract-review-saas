@@ -608,6 +608,37 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
       // else: previous run wedged — fall through and re-analyze
     }
 
+    // Per-org monthly analysis cap — set by the super admin, NULL = unlimited.
+    // Counts completed analyses this calendar month (successful runs only —
+    // a failed run never inserts an `analyses` row, so it never counts against
+    // the org's quota). Checked before doing any real work so a capped org
+    // fails fast instead of burning an AI call it can't afford.
+    const { data: orgRow } = await db
+      .from("organizations")
+      .select("monthly_analysis_cap")
+      .eq("clerk_org_id", req.orgId!)
+      .maybeSingle();
+    const cap = orgRow?.monthly_analysis_cap ?? null;
+    if (cap !== null) {
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+      const { count: usedThisMonth } = await db
+        .from("analyses")
+        .select("id", { count: "exact", head: true })
+        .eq("org_id", req.orgId!)
+        .gte("created_at", monthStart.toISOString());
+      if ((usedThisMonth ?? 0) >= cap) {
+        res.status(403).json({
+          error: `Your organization has reached its monthly analysis limit (${usedThisMonth ?? 0}/${cap}). Contact your admin to raise it.`,
+          code: "monthly_analysis_cap_exceeded",
+          cap,
+          used: usedThisMonth ?? 0,
+        });
+        return;
+      }
+    }
+
     const { selectedRuleIds } = z.object({
       selectedRuleIds: z.array(z.string().uuid()).optional(),
     }).parse(req.body ?? {});

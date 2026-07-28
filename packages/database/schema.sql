@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS organizations (
   suspended_at timestamptz,
   suspended_by text,
   deleted_at timestamptz,
+  monthly_analysis_cap integer,  -- NULL = unlimited; set by the super admin per org
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -330,6 +331,10 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   metadata jsonb NOT NULL DEFAULT '{}',
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- ─── Per-org monthly analysis cap (run in Supabase SQL editor) ────────────────
+-- Additive — covers databases created before this column existed.
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS monthly_analysis_cap integer;
 
 -- ─── Multi-tenancy: org_id (run in Supabase SQL editor) ──────────────────────
 -- Added nullable first — fully backward-compatible with existing rows and

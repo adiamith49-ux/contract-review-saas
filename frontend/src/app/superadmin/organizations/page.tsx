@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Building2, Plus, Ban, RotateCcw, Trash2 } from "lucide-react";
+import { Building2, Plus, Ban, RotateCcw, Trash2, Gauge } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   listOrganizations, createOrganization,
-  revokeOrganization, restoreOrganization, deleteOrganization,
+  revokeOrganization, restoreOrganization, deleteOrganization, updateOrganizationCap,
   type SuperAdminOrganization,
 } from "@/lib/superadmin-api";
 import { cn } from "@/lib/utils";
@@ -27,6 +27,8 @@ export default function SuperAdminOrganizationsPage() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SuperAdminOrganization | null>(null);
+  const [capTarget, setCapTarget] = useState<SuperAdminOrganization | null>(null);
+  const [capValue, setCapValue] = useState("");
   const [form, setForm] = useState({ name: "", admin_email: "" });
   const [saving, setSaving] = useState(false);
 
@@ -86,6 +88,28 @@ export default function SuperAdminOrganizationsPage() {
     }
   }
 
+  function openCapEditor(org: SuperAdminOrganization) {
+    setCapTarget(org);
+    setCapValue(org.monthly_analysis_cap === null ? "" : String(org.monthly_analysis_cap));
+  }
+
+  async function handleSaveCap() {
+    if (!capTarget) return;
+    const cap = capValue.trim() === "" ? null : Number(capValue);
+    if (cap !== null && (!Number.isInteger(cap) || cap < 0)) {
+      toast.error("Cap must be a whole number, 0 or more");
+      return;
+    }
+    try {
+      await updateOrganizationCap(capTarget.id, cap);
+      setOrgs(prev => prev.map(o => o.id === capTarget.id ? { ...o, monthly_analysis_cap: cap } : o));
+      toast.success(cap === null ? `${capTarget.name} set to unlimited` : `${capTarget.name} capped at ${cap}/month`);
+      setCapTarget(null);
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  }
+
   return (
     <div className="p-6 lg:p-8 max-w-[1100px] mx-auto space-y-5">
       <div className="flex items-center justify-between gap-4">
@@ -102,18 +126,19 @@ export default function SuperAdminOrganizationsPage() {
 
       {/* Table */}
       <div className="rounded-xl border bg-white shadow-sm overflow-hidden">
-        <div className="grid grid-cols-[minmax(0,2fr)_120px_100px_90px_160px] border-b bg-gray-50/80 px-5 py-2.5">
-          {["Organization", "Onboarding", "Contracts", "Status", ""].map((h, i) => (
+        <div className="grid grid-cols-[minmax(0,2fr)_120px_90px_130px_90px_160px] border-b bg-gray-50/80 px-5 py-2.5">
+          {["Organization", "Onboarding", "Contracts", "Analysis Cap", "Status", ""].map((h, i) => (
             <div key={i} className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">{h}</div>
           ))}
         </div>
 
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="grid grid-cols-[minmax(0,2fr)_120px_100px_90px_160px] items-center px-5 py-4 border-b last:border-b-0">
+            <div key={i} className="grid grid-cols-[minmax(0,2fr)_120px_90px_130px_90px_160px] items-center px-5 py-4 border-b last:border-b-0">
               <Skeleton className="h-4 w-40" />
               <Skeleton className="h-4 w-20" />
               <Skeleton className="h-4 w-8" />
+              <Skeleton className="h-4 w-16" />
               <Skeleton className="h-5 w-16 rounded-full" />
               <div />
             </div>
@@ -131,13 +156,23 @@ export default function SuperAdminOrganizationsPage() {
           </div>
         ) : (
           orgs.map(o => (
-            <div key={o.id} className="grid grid-cols-[minmax(0,2fr)_120px_100px_90px_160px] items-center px-5 py-3.5 border-b last:border-b-0 hover:bg-gray-50 transition-colors">
+            <div key={o.id} className="grid grid-cols-[minmax(0,2fr)_120px_90px_130px_90px_160px] items-center px-5 py-3.5 border-b last:border-b-0 hover:bg-gray-50 transition-colors">
               <div className="min-w-0 pr-4">
                 <p className="text-sm font-medium text-gray-900 truncate">{o.name}</p>
                 <p className="text-[11px] text-gray-400 truncate">{o.clerk_org_id}</p>
               </div>
               <span className="text-xs text-gray-500 truncate capitalize">{o.onboarding_type.replace("_", "-")}</span>
               <span className="text-sm font-semibold text-gray-700">{o.contract_count}</span>
+              <button
+                onClick={() => openCapEditor(o)}
+                className="flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-primary w-fit"
+                title="Edit monthly analysis cap"
+              >
+                <Gauge className="h-3 w-3 shrink-0" />
+                {o.monthly_analysis_cap === null
+                  ? `${o.analyses_this_month} / ∞`
+                  : `${o.analyses_this_month} / ${o.monthly_analysis_cap}`}
+              </button>
               <span className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full w-fit capitalize", STATUS_COLORS[o.status])}>
                 {o.status}
               </span>
@@ -211,6 +246,37 @@ export default function SuperAdminOrganizationsPage() {
               <Button size="sm" onClick={handleCreate} disabled={saving || !form.name.trim() || !form.admin_email.trim()}>
                 {saving ? "Sending…" : "Create + send invite"}
               </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Analysis cap dialog */}
+      <Dialog open={!!capTarget} onOpenChange={open => !open && setCapTarget(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Monthly analysis cap — {capTarget?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-xs text-gray-500">
+              Limits how many contract analyses this org can run per calendar month. Leave blank for unlimited.
+              They&apos;ve used <strong>{capTarget?.analyses_this_month}</strong> this month so far.
+            </p>
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1.5 block">Analyses per month</label>
+              <Input
+                type="number"
+                min={0}
+                step={1}
+                placeholder="Unlimited"
+                value={capValue}
+                onChange={e => setCapValue(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setCapTarget(null)}>Cancel</Button>
+              <Button size="sm" onClick={handleSaveCap}>Save</Button>
             </div>
           </div>
         </DialogContent>

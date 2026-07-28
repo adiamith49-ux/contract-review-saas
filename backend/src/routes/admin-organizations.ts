@@ -26,22 +26,61 @@ adminOrganizationsRouter.get("/", async (_req, res, next) => {
   try {
     const { data: orgs, error } = await db
       .from("organizations")
-      .select("id, clerk_org_id, name, status, onboarding_type, approved_at, suspended_at, deleted_at, created_at")
+      .select("id, clerk_org_id, name, status, onboarding_type, approved_at, suspended_at, deleted_at, monthly_analysis_cap, created_at")
       .order("created_at", { ascending: false });
     if (error) throw error;
 
     const orgIds = (orgs ?? []).map((o) => o.clerk_org_id);
     let contractCounts: Record<string, number> = {};
+    let analysesThisMonth: Record<string, number> = {};
     if (orgIds.length > 0) {
       const { data: rows } = await db.from("contracts").select("org_id").in("org_id", orgIds);
       for (const r of rows ?? []) {
         if (r.org_id) contractCounts[r.org_id] = (contractCounts[r.org_id] ?? 0) + 1;
       }
+
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+      const { data: analysisRows } = await db
+        .from("analyses")
+        .select("org_id")
+        .in("org_id", orgIds)
+        .gte("created_at", monthStart.toISOString());
+      for (const r of analysisRows ?? []) {
+        if (r.org_id) analysesThisMonth[r.org_id] = (analysesThisMonth[r.org_id] ?? 0) + 1;
+      }
     }
 
     res.json({
-      organizations: (orgs ?? []).map((o) => ({ ...o, contract_count: contractCounts[o.clerk_org_id] ?? 0 })),
+      organizations: (orgs ?? []).map((o) => ({
+        ...o,
+        contract_count: contractCounts[o.clerk_org_id] ?? 0,
+        analyses_this_month: analysesThisMonth[o.clerk_org_id] ?? 0,
+      })),
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /superadmin/organizations/:id/cap — set or clear the monthly analysis
+// cap. null clears it (unlimited); enforced in contracts.ts's POST /analyze.
+adminOrganizationsRouter.patch("/:id/cap", async (req, res, next) => {
+  try {
+    const { monthly_analysis_cap } = z.object({
+      monthly_analysis_cap: z.number().int().min(0).nullable(),
+    }).parse(req.body);
+
+    const { data, error } = await db
+      .from("organizations")
+      .update({ monthly_analysis_cap, updated_at: new Date().toISOString() })
+      .eq("id", req.params.id)
+      .select("id, monthly_analysis_cap")
+      .single();
+
+    if (error || !data) { res.status(404).json({ error: "Organization not found" }); return; }
+    res.json({ ok: true, organization: data });
   } catch (err) {
     next(err);
   }

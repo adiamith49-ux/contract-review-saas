@@ -137,72 +137,26 @@ adminRouter.post("/auth/reset-password", authLimiter, async (req, res, next) => 
   }
 });
 
-// ─── Stats (cross-org — platform-wide totals for the super admin) ────────────
-
+// ─── Stats (organization-level only — never tenant business data) ────────────
+// The super admin manages the *list* of organizations, not what's inside any
+// one firm's account. Counting clients/users/contracts/tickets across every
+// org would leak aggregate business activity for firms this admin has no
+// relationship to beyond hosting them — so this endpoint reports only facts
+// about organizations themselves (count, status breakdown), same shape as
+// what /superadmin/organizations already shows per-row.
 adminRouter.get("/stats", requireAdmin, async (_req, res, next) => {
   try {
-    const [orgs, clients, users, openTickets, contracts, analyses, tickets] = await Promise.all([
-      db.from("organizations").select("id", { count: "exact", head: true }).eq("status", "active"),
-      db.from("clients").select("id", { count: "exact", head: true }),
-      db.from("users").select("id", { count: "exact", head: true }),
-      db.from("tickets").select("id", { count: "exact", head: true }).eq("status", "open"),
-      db.from("contracts").select("status, contract_type, created_at"),
-      db.from("analyses").select("risk_level"),
-      db.from("tickets").select("status"),
-    ]);
+    const { data: orgs, error } = await db.from("organizations").select("status");
+    if (error) throw error;
 
-    const contractData = contracts.data ?? [];
-    const analysisData = analyses.data ?? [];
-    const ticketData = tickets.data ?? [];
-
-    const uploads_per_month: { month: string; count: number }[] = [];
-    const now = new Date();
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      uploads_per_month.push({
-        month: key,
-        count: contractData.filter((c) => (c.created_at as string).slice(0, 7) === key).length,
-      });
-    }
-
-    const risk_breakdown = (["low", "medium", "high", "critical"] as const).map((risk) => ({
-      risk,
-      count: analysisData.filter((a) => a.risk_level === risk).length,
-    }));
-
-    const contracts_by_status = (["uploaded", "processing", "analyzed", "failed"] as const).map((status) => ({
+    const byStatus = (["pending", "active", "suspended", "deleted"] as const).map((status) => ({
       status,
-      count: contractData.filter((c) => c.status === status).length,
-    }));
-
-    const contracts_by_type = Object.entries(
-      contractData.reduce<Record<string, number>>((acc, c) => {
-        acc[c.contract_type] = (acc[c.contract_type] ?? 0) + 1;
-        return acc;
-      }, {}),
-    )
-      .map(([type, count]) => ({ type, count }))
-      .sort((a, b) => b.count - a.count);
-
-    const tickets_by_status = (["open", "in_progress", "resolved"] as const).map((status) => ({
-      status,
-      count: ticketData.filter((t) => t.status === status).length,
+      count: (orgs ?? []).filter((o) => o.status === status).length,
     }));
 
     res.json({
-      organizations: orgs.count ?? 0,
-      clients: clients.count ?? 0,
-      contracts: contractData.length,
-      users: users.count ?? 0,
-      open_tickets: openTickets.count ?? 0,
-      charts: {
-        uploads_per_month,
-        risk_breakdown,
-        contracts_by_status,
-        contracts_by_type,
-        tickets_by_status,
-      },
+      organizations: (orgs ?? []).length,
+      organizations_by_status: byStatus,
     });
   } catch (err) {
     next(err);

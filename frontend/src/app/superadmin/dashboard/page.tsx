@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Landmark, Building2, Users, FileText, Ticket, ArrowRight, Server } from "lucide-react";
+import { Landmark, CheckCircle2, Clock, Ban, ArrowRight, Server } from "lucide-react";
 import {
   getSuperAdminStats, getSystemInfo,
   type SuperAdminStats, type SystemInfo,
@@ -20,22 +20,26 @@ export default function SuperAdminDashboard() {
       .finally(() => setLoading(false));
   }, []);
 
+  const countFor = (status: "active" | "pending" | "suspended") =>
+    stats?.organizations_by_status.find((s) => s.status === status)?.count;
+
   const statCards = [
-    { label: "Organizations", value: stats?.organizations, icon: Landmark,  color: "text-teal-600",    bg: "bg-teal-50"   },
-    { label: "Clients",       value: stats?.clients,       icon: Building2, color: "text-blue-600",    bg: "bg-blue-50"   },
-    { label: "Total Users",   value: stats?.users,         icon: Users,     color: "text-violet-600",  bg: "bg-violet-50" },
-    { label: "Contracts",     value: stats?.contracts,     icon: FileText,  color: "text-emerald-600", bg: "bg-emerald-50"},
-    { label: "Open Tickets",  value: stats?.open_tickets,  icon: Ticket,    color: "text-red-600",     bg: "bg-red-50"    },
+    { label: "Total Organizations", value: stats?.organizations,     icon: Landmark,     color: "text-teal-600",    bg: "bg-teal-50"   },
+    { label: "Active",              value: countFor("active"),       icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50"},
+    { label: "Pending",             value: countFor("pending"),      icon: Clock,        color: "text-amber-600",   bg: "bg-amber-50"  },
+    { label: "Suspended",           value: countFor("suspended"),    icon: Ban,          color: "text-red-600",     bg: "bg-red-50"    },
   ];
 
   return (
     <div className="p-6 lg:p-8 max-w-[1100px] mx-auto space-y-7">
       <div>
         <h1 className="text-xl font-bold text-gray-900">Super Admin</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Platform-wide overview across every organization.</p>
+        <p className="text-sm text-gray-500 mt-0.5">
+          Organization oversight — not what&apos;s inside any firm&apos;s account, just the org list itself.
+        </p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map(({ label, value, icon: Icon, color, bg }) => (
           <div key={label} className="bg-white rounded-xl border shadow-sm p-5">
             <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center mb-3", bg)}>
