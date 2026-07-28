@@ -630,7 +630,7 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
         .gte("created_at", monthStart.toISOString());
       if ((usedThisMonth ?? 0) >= cap) {
         res.status(403).json({
-          error: `Your organization has reached its monthly analysis limit (${usedThisMonth ?? 0}/${cap}). Contact your admin to raise it.`,
+          error: "Your organization has reached its monthly analysis limit. Contact your admin to raise it.",
           code: "monthly_analysis_cap_exceeded",
           cap,
           used: usedThisMonth ?? 0,
