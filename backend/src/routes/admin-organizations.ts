@@ -32,11 +32,18 @@ adminOrganizationsRouter.get("/", async (_req, res, next) => {
 
     const orgIds = (orgs ?? []).map((o) => o.clerk_org_id);
     let contractCounts: Record<string, number> = {};
+    let analysesTotal: Record<string, number> = {};
     let analysesThisMonth: Record<string, number> = {};
+    let userCounts: Record<string, number> = {};
     if (orgIds.length > 0) {
       const { data: rows } = await db.from("contracts").select("org_id").in("org_id", orgIds);
       for (const r of rows ?? []) {
         if (r.org_id) contractCounts[r.org_id] = (contractCounts[r.org_id] ?? 0) + 1;
+      }
+
+      const { data: allAnalysisRows } = await db.from("analyses").select("org_id").in("org_id", orgIds);
+      for (const r of allAnalysisRows ?? []) {
+        if (r.org_id) analysesTotal[r.org_id] = (analysesTotal[r.org_id] ?? 0) + 1;
       }
 
       const monthStart = new Date();
@@ -50,12 +57,19 @@ adminOrganizationsRouter.get("/", async (_req, res, next) => {
       for (const r of analysisRows ?? []) {
         if (r.org_id) analysesThisMonth[r.org_id] = (analysesThisMonth[r.org_id] ?? 0) + 1;
       }
+
+      const { data: userRows } = await db.from("users").select("org_id").in("org_id", orgIds);
+      for (const r of userRows ?? []) {
+        if (r.org_id) userCounts[r.org_id] = (userCounts[r.org_id] ?? 0) + 1;
+      }
     }
 
     res.json({
       organizations: (orgs ?? []).map((o) => ({
         ...o,
         contract_count: contractCounts[o.clerk_org_id] ?? 0,
+        user_count: userCounts[o.clerk_org_id] ?? 0,
+        analyses_total: analysesTotal[o.clerk_org_id] ?? 0,
         analyses_this_month: analysesThisMonth[o.clerk_org_id] ?? 0,
       })),
     });

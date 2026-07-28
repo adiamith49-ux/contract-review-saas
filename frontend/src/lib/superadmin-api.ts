@@ -31,7 +31,9 @@ export interface SuperAdminOrganization {
   onboarding_type: "self_serve" | "sales_assisted";
   approved_at: string | null; suspended_at: string | null; deleted_at: string | null;
   monthly_analysis_cap: number | null;
-  contract_count: number; analyses_this_month: number; created_at: string;
+  contract_count: number; user_count: number;
+  analyses_total: number; analyses_this_month: number;
+  created_at: string;
 }
 
 export function getSuperAdminToken(): string | null {

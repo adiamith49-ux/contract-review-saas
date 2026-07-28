@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Building2, Plus, Ban, RotateCcw, Trash2, Gauge } from "lucide-react";
+import {
+  Building2, Plus, Ban, RotateCcw, Trash2, Calendar,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,13 +24,19 @@ const STATUS_COLORS: Record<SuperAdminOrganization["status"], string> = {
   deleted: "bg-gray-100 text-gray-500",
 };
 
+function formatDate(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
 export default function SuperAdminOrganizationsPage() {
   const [orgs, setOrgs] = useState<SuperAdminOrganization[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<SuperAdminOrganization | null>(null);
-  const [capTarget, setCapTarget] = useState<SuperAdminOrganization | null>(null);
+  const [detailTarget, setDetailTarget] = useState<SuperAdminOrganization | null>(null);
   const [capValue, setCapValue] = useState("");
+  const [savingCap, setSavingCap] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [form, setForm] = useState({ name: "", admin_email: "" });
   const [saving, setSaving] = useState(false);
 
@@ -56,10 +64,22 @@ export default function SuperAdminOrganizationsPage() {
     }
   }
 
+  function openDetail(org: SuperAdminOrganization) {
+    setDetailTarget(org);
+    setCapValue(org.monthly_analysis_cap === null ? "" : String(org.monthly_analysis_cap));
+  }
+
+  // Keeps detailTarget's own displayed values in sync after any action below,
+  // since the dialog stays open across suspend/restore/cap-save.
+  function patchOrg(id: string, patch: Partial<SuperAdminOrganization>) {
+    setOrgs(prev => prev.map(o => o.id === id ? { ...o, ...patch } : o));
+    setDetailTarget(prev => (prev && prev.id === id ? { ...prev, ...patch } : prev));
+  }
+
   async function handleRevoke(org: SuperAdminOrganization) {
     try {
       await revokeOrganization(org.id);
-      setOrgs(prev => prev.map(o => o.id === org.id ? { ...o, status: "suspended" } : o));
+      patchOrg(org.id, { status: "suspended" });
       toast.success(`${org.name} suspended`);
     } catch (err: any) {
       toast.error(err.message);
@@ -69,7 +89,7 @@ export default function SuperAdminOrganizationsPage() {
   async function handleRestore(org: SuperAdminOrganization) {
     try {
       await restoreOrganization(org.id);
-      setOrgs(prev => prev.map(o => o.id === org.id ? { ...o, status: "active" } : o));
+      patchOrg(org.id, { status: "active" });
       toast.success(`${org.name} restored`);
     } catch (err: any) {
       toast.error(err.message);
@@ -77,36 +97,34 @@ export default function SuperAdminOrganizationsPage() {
   }
 
   async function handleDelete() {
-    if (!deleteTarget) return;
+    if (!detailTarget) return;
     try {
-      await deleteOrganization(deleteTarget.id);
-      setOrgs(prev => prev.map(o => o.id === deleteTarget.id ? { ...o, status: "deleted" } : o));
-      setDeleteTarget(null);
-      toast.success(`${deleteTarget.name} permanently deleted`);
+      await deleteOrganization(detailTarget.id);
+      patchOrg(detailTarget.id, { status: "deleted" });
+      toast.success(`${detailTarget.name} permanently deleted`);
+      setDeleteConfirm(false);
+      setDetailTarget(null);
     } catch (err: any) {
       toast.error(err.message);
     }
   }
 
-  function openCapEditor(org: SuperAdminOrganization) {
-    setCapTarget(org);
-    setCapValue(org.monthly_analysis_cap === null ? "" : String(org.monthly_analysis_cap));
-  }
-
   async function handleSaveCap() {
-    if (!capTarget) return;
+    if (!detailTarget) return;
     const cap = capValue.trim() === "" ? null : Number(capValue);
     if (cap !== null && (!Number.isInteger(cap) || cap < 0)) {
       toast.error("Cap must be a whole number, 0 or more");
       return;
     }
+    setSavingCap(true);
     try {
-      await updateOrganizationCap(capTarget.id, cap);
-      setOrgs(prev => prev.map(o => o.id === capTarget.id ? { ...o, monthly_analysis_cap: cap } : o));
-      toast.success(cap === null ? `${capTarget.name} set to unlimited` : `${capTarget.name} capped at ${cap}/month`);
-      setCapTarget(null);
+      await updateOrganizationCap(detailTarget.id, cap);
+      patchOrg(detailTarget.id, { monthly_analysis_cap: cap });
+      toast.success(cap === null ? "Set to unlimited" : `Capped at ${cap}/month`);
     } catch (err: any) {
       toast.error(err.message);
+    } finally {
+      setSavingCap(false);
     }
   }
 
@@ -116,7 +134,7 @@ export default function SuperAdminOrganizationsPage() {
         <div>
           <h1 className="text-xl font-bold text-gray-900">Organizations</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {loading ? "Loading…" : `${orgs.length} organization${orgs.length !== 1 ? "s" : ""}`}
+            {loading ? "Loading…" : `${orgs.length} organization${orgs.length !== 1 ? "s" : ""} — click one for details`}
           </p>
         </div>
         <Button size="sm" onClick={openCreate}>
@@ -126,21 +144,19 @@ export default function SuperAdminOrganizationsPage() {
 
       {/* Table */}
       <div className="rounded-xl border bg-white shadow-sm overflow-hidden">
-        <div className="grid grid-cols-[minmax(0,2fr)_120px_90px_130px_90px_160px] border-b bg-gray-50/80 px-5 py-2.5">
-          {["Organization", "Onboarding", "Contracts", "Analysis Cap", "Status", ""].map((h, i) => (
+        <div className="grid grid-cols-[minmax(0,2fr)_120px_140px_90px] border-b bg-gray-50/80 px-5 py-2.5">
+          {["Organization", "Onboarding", "Analyzed / Cap (this month)", "Status"].map((h, i) => (
             <div key={i} className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">{h}</div>
           ))}
         </div>
 
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="grid grid-cols-[minmax(0,2fr)_120px_90px_130px_90px_160px] items-center px-5 py-4 border-b last:border-b-0">
+            <div key={i} className="grid grid-cols-[minmax(0,2fr)_120px_140px_90px] items-center px-5 py-4 border-b last:border-b-0">
               <Skeleton className="h-4 w-40" />
               <Skeleton className="h-4 w-20" />
-              <Skeleton className="h-4 w-8" />
               <Skeleton className="h-4 w-16" />
               <Skeleton className="h-5 w-16 rounded-full" />
-              <div />
             </div>
           ))
         ) : orgs.length === 0 ? (
@@ -156,56 +172,23 @@ export default function SuperAdminOrganizationsPage() {
           </div>
         ) : (
           orgs.map(o => (
-            <div key={o.id} className="grid grid-cols-[minmax(0,2fr)_120px_90px_130px_90px_160px] items-center px-5 py-3.5 border-b last:border-b-0 hover:bg-gray-50 transition-colors">
+            <button
+              key={o.id}
+              onClick={() => openDetail(o)}
+              className="grid grid-cols-[minmax(0,2fr)_120px_140px_90px] items-center px-5 py-3.5 border-b last:border-b-0 hover:bg-gray-50 transition-colors text-left w-full"
+            >
               <div className="min-w-0 pr-4">
                 <p className="text-sm font-medium text-gray-900 truncate">{o.name}</p>
                 <p className="text-[11px] text-gray-400 truncate">{o.clerk_org_id}</p>
               </div>
               <span className="text-xs text-gray-500 truncate capitalize">{o.onboarding_type.replace("_", "-")}</span>
-              <span className="text-sm font-semibold text-gray-700">{o.contract_count}</span>
-              <button
-                onClick={() => openCapEditor(o)}
-                className="flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-primary w-fit"
-                title="Edit monthly analysis cap"
-              >
-                <Gauge className="h-3 w-3 shrink-0" />
-                {o.monthly_analysis_cap === null
-                  ? `${o.analyses_this_month} / ∞`
-                  : `${o.analyses_this_month} / ${o.monthly_analysis_cap}`}
-              </button>
+              <span className="text-xs font-medium text-gray-700">
+                {o.analyses_this_month} / {o.monthly_analysis_cap ?? "∞"}
+              </span>
               <span className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full w-fit capitalize", STATUS_COLORS[o.status])}>
                 {o.status}
               </span>
-              <div className="flex items-center gap-1 justify-end">
-                {o.status === "active" && (
-                  <button
-                    onClick={() => handleRevoke(o)}
-                    className="p-1.5 rounded-md text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                    title="Suspend"
-                  >
-                    <Ban className="h-3.5 w-3.5" />
-                  </button>
-                )}
-                {o.status === "suspended" && (
-                  <button
-                    onClick={() => handleRestore(o)}
-                    className="p-1.5 rounded-md text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
-                    title="Restore"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                  </button>
-                )}
-                {o.status !== "deleted" && (
-                  <button
-                    onClick={() => setDeleteTarget(o)}
-                    className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                    title="Delete permanently"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
+            </button>
           ))
         )}
       </div>
@@ -251,50 +234,102 @@ export default function SuperAdminOrganizationsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Analysis cap dialog */}
-      <Dialog open={!!capTarget} onOpenChange={open => !open && setCapTarget(null)}>
-        <DialogContent className="max-w-sm">
+      {/* Org detail dialog — the single place for everything about one org */}
+      <Dialog open={!!detailTarget} onOpenChange={open => !open && setDetailTarget(null)}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Monthly analysis cap — {capTarget?.name}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              {detailTarget?.name}
+              {detailTarget && (
+                <span className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full capitalize", STATUS_COLORS[detailTarget.status])}>
+                  {detailTarget.status}
+                </span>
+              )}
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-xs text-gray-500">
-              Limits how many contract analyses this org can run per calendar month. Leave blank for unlimited.
-              They&apos;ve used <strong>{capTarget?.analyses_this_month}</strong> this month so far.
-            </p>
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1.5 block">Analyses per month</label>
-              <Input
-                type="number"
-                min={0}
-                step={1}
-                placeholder="Unlimited"
-                value={capValue}
-                onChange={e => setCapValue(e.target.value)}
-                autoFocus
-              />
+
+          {detailTarget && (
+            <div className="space-y-5">
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="rounded-lg border px-3 py-2.5">
+                  <p className="text-gray-400 uppercase tracking-wide text-[10px]">Org ID</p>
+                  <p className="font-medium text-gray-800 mt-0.5 truncate">{detailTarget.clerk_org_id}</p>
+                </div>
+                <div className="rounded-lg border px-3 py-2.5">
+                  <p className="text-gray-400 uppercase tracking-wide text-[10px]">Onboarding</p>
+                  <p className="font-medium text-gray-800 mt-0.5 capitalize">{detailTarget.onboarding_type.replace("_", "-")}</p>
+                </div>
+                <div className="rounded-lg border px-3 py-2.5">
+                  <p className="text-gray-400 uppercase tracking-wide text-[10px] flex items-center gap-1"><Calendar className="h-3 w-3" /> Created</p>
+                  <p className="font-medium text-gray-800 mt-0.5">{formatDate(detailTarget.created_at)}</p>
+                </div>
+                <div className="rounded-lg border px-3 py-2.5">
+                  <p className="text-gray-400 uppercase tracking-wide text-[10px]">Analyzed this month</p>
+                  <p className="font-medium text-gray-800 mt-0.5 tabular-nums">{detailTarget.analyses_this_month}</p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border p-4 space-y-2.5">
+                <p className="text-sm font-semibold text-gray-800">Contracts analyzed every month (cap)</p>
+                <p className="text-xs text-gray-500">
+                  {detailTarget.analyses_this_month} analyzed so far this month
+                  {detailTarget.monthly_analysis_cap !== null && ` of ${detailTarget.monthly_analysis_cap}`}.
+                  Leave blank for unlimited.
+                </p>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    min={0}
+                    step={1}
+                    placeholder="Unlimited"
+                    value={capValue}
+                    onChange={e => setCapValue(e.target.value)}
+                    className="max-w-[140px]"
+                  />
+                  <Button size="sm" variant="outline" onClick={handleSaveCap} disabled={savingCap}>
+                    {savingCap ? "Saving…" : "Save"}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 pt-2 border-t">
+                <div className="flex gap-2">
+                  {detailTarget.status === "active" && (
+                    <Button variant="outline" size="sm" onClick={() => handleRevoke(detailTarget)} className="gap-1.5 text-amber-700 border-amber-200 hover:bg-amber-50">
+                      <Ban className="h-3.5 w-3.5" /> Suspend
+                    </Button>
+                  )}
+                  {detailTarget.status === "suspended" && (
+                    <Button variant="outline" size="sm" onClick={() => handleRestore(detailTarget)} className="gap-1.5 text-emerald-700 border-emerald-200 hover:bg-emerald-50">
+                      <RotateCcw className="h-3.5 w-3.5" /> Restore
+                    </Button>
+                  )}
+                  {detailTarget.status !== "deleted" && (
+                    <Button variant="outline" size="sm" onClick={() => setDeleteConfirm(true)} className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50">
+                      <Trash2 className="h-3.5 w-3.5" /> Delete
+                    </Button>
+                  )}
+                </div>
+                <DialogClose asChild>
+                  <Button variant="ghost" size="sm">Close</Button>
+                </DialogClose>
+              </div>
             </div>
-            <div className="flex justify-end gap-3 pt-2">
-              <Button variant="outline" size="sm" onClick={() => setCapTarget(null)}>Cancel</Button>
-              <Button size="sm" onClick={handleSaveCap}>Save</Button>
-            </div>
-          </div>
+          )}
         </DialogContent>
       </Dialog>
 
-      {/* Delete dialog */}
-      <Dialog open={!!deleteTarget} onOpenChange={open => !open && setDeleteTarget(null)}>
+      {/* Delete confirmation — stacks on top of the detail dialog */}
+      <Dialog open={deleteConfirm} onOpenChange={setDeleteConfirm}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Delete organization permanently?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-gray-500">
-            This permanently deletes every contract, client, clause, and user record belonging to <strong>{deleteTarget?.name}</strong>, and removes the organization from Clerk. This cannot be undone — use Suspend instead if you just want to block access.
+            This permanently deletes every contract, client, clause, and user record belonging to <strong>{detailTarget?.name}</strong>, and removes the organization from Clerk. This cannot be undone — use Suspend instead if you just want to block access.
           </p>
           <div className="flex justify-end gap-3 mt-4">
-            <DialogClose asChild>
-              <Button variant="outline" size="sm">Cancel</Button>
-            </DialogClose>
+            <Button variant="outline" size="sm" onClick={() => setDeleteConfirm(false)}>Cancel</Button>
             <Button variant="destructive" size="sm" onClick={handleDelete}>Delete permanently</Button>
           </div>
         </DialogContent>
