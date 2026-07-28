@@ -248,9 +248,14 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
       }),
       uploadToS3({ buffer: req.file.buffer, key: s3Key, mimeType: req.file.mimetype }).catch((err: unknown) => {
         const cause = err instanceof Error ? err.message : String(err);
-        console.error(`upload: S3 put failed for key ${s3Key}: ${cause}`);
+        // AWS error *names* (AccessDenied, InvalidAccessKeyId, NoSuchBucket,
+        // ExpiredToken…) are the whole diagnosis and carry no key material, so
+        // include the name in the response. The message can echo request detail,
+        // so it stays in the logs only.
+        const awsCode = err instanceof Error ? err.name : "UnknownError";
+        console.error(`upload: S3 put failed for key ${s3Key}: ${awsCode}: ${cause}`);
         throw Object.assign(
-          new Error("File storage is unavailable. Please try again in a moment."),
+          new Error(`File storage is unavailable (${awsCode}). Please try again in a moment.`),
           { status: 502, expose: true },
         );
       }),
