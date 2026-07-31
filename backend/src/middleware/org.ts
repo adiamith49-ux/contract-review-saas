@@ -10,14 +10,44 @@ export async function requireActiveOrg(req: Request, res: Response, next: NextFu
     return;
   }
 
-  const { data: org } = await db
+  const { data: org, error } = await db
     .from("organizations")
     .select("status")
     .eq("clerk_org_id", req.orgId)
     .maybeSingle();
 
-  if (!org || org.status !== "active") {
-    res.status(403).json({ error: "organization_not_active", status: org?.status ?? "unknown" });
+  // Distinguish "the lookup failed" from "the org isn't active". Dropping the
+  // error made an unreachable database, a missing `organizations` table, or an
+  // un-run migration all present as a 403 telling the user their organization
+  // was suspended — an infrastructure outage wearing a permissions error's
+  // clothes, which is the hardest kind to diagnose. A failed lookup is a 503:
+  // not the caller's fault, and retryable.
+  if (error) {
+    console.error(`requireActiveOrg: org lookup failed for ${req.orgId}: ${error.message} (code=${error.code ?? "none"})`);
+    res.status(503).json({
+      error: "Couldn't verify your organization right now. Please try again in a moment.",
+      code: "organization_lookup_failed",
+    });
+    return;
+  }
+
+  if (!org) {
+    // Authenticated against a Clerk org with no mirror row. Usually means the
+    // org_id backfill (scripts/migrate-org1.ts) hasn't run for this org yet.
+    console.warn(`requireActiveOrg: no organizations row for clerk_org_id ${req.orgId}`);
+    res.status(403).json({
+      error: "Your organization isn't set up yet. Please contact your administrator.",
+      code: "organization_not_provisioned",
+    });
+    return;
+  }
+
+  if (org.status !== "active") {
+    res.status(403).json({
+      error: "Your organization's access is not active. Please contact your administrator.",
+      code: "organization_not_active",
+      status: org.status,
+    });
     return;
   }
 
