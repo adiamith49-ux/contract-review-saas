@@ -59,6 +59,13 @@ export async function getObjectAvailability(key: string): Promise<ObjectAvailabi
   } catch (err: any) {
     // S3 answers a HEAD for a missing key with a bare 404 and no error code,
     // so the status has to be checked alongside the name.
+    //
+    // REQUIRES s3:ListBucket ON THE BUCKET ARN (not just /*). Without it S3
+    // returns 403 for a missing object instead of 404 — deliberately, so it
+    // can't leak whether a key exists — and every deleted file would be
+    // misreported as "unavailable" (transient, try again) rather than
+    // "missing" (gone), which is the exact distinction this function exists
+    // to make. Verified against the live bucket 2026-08-02.
     const status = err?.$metadata?.httpStatusCode;
     const name = err?.name ?? "";
     if (status === 404 || name === "NotFound" || name === "NoSuchKey") return "missing";
