@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useRef, useState } from "react";
-import { AlertTriangle, FileDown, Loader2, Zap } from "lucide-react";
+import { AlertTriangle, AlignLeft, Columns2, FileDown, Loader2, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { LocatedEdit, ProcessedEdit, UnmatchedEdit } from "@/lib/api";
@@ -58,16 +58,32 @@ function riskBadgeCls(risk: string) {
 
 // ─── Block renderer ───────────────────────────────────────────────────────────
 
+// "inline"   — Word-style markup: deletion and insertion sit next to each other.
+// "original" — the contract as it stands today; edited spans struck through.
+// "revised"  — the contract as it would read if every edit were accepted.
+type RenderMode = "inline" | "original" | "revised";
+
+const DEL_CLS = "text-red-600 bg-red-100 line-through px-0.5 rounded-sm decoration-red-600";
+const INS_CLS = "text-blue-700 bg-blue-100 underline not-italic px-0.5 rounded-sm";
+
+function editsInBlock(block: Block, matchedEdits: LocatedEdit[]): LocatedEdit[] {
+  return matchedEdits
+    .filter(e => e.start >= block.start && e.end <= block.end)
+    .sort((a, b) => a.start - b.start);
+}
+
 function renderBlockContent(
   block: Block,
   matchedEdits: LocatedEdit[],
   activeEditIdx: number | null,
   editRefs: React.MutableRefObject<Map<number, HTMLSpanElement>>,
   allMatchedEdits: LocatedEdit[],
+  mode: RenderMode = "inline",
+  // Only one column may own the scroll anchors, or the later one wins the ref
+  // and "jump to edit" scrolls the wrong pane.
+  registerRefs = true,
 ): React.ReactNode {
-  const blockEdits = matchedEdits
-    .filter(e => e.start >= block.start && e.end <= block.end)
-    .sort((a, b) => a.start - b.start);
+  const blockEdits = editsInBlock(block, matchedEdits);
 
   if (blockEdits.length === 0) return block.text;
 
@@ -86,35 +102,41 @@ function renderBlockContent(
 
     const raw = block.text.slice(edit.start - block.start, edit.end - block.start);
 
+    let body: React.ReactNode;
+    if (mode === "original") {
+      // A pure insertion adds nothing to the original — show the anchor plain.
+      body = edit.edit_type === "insert"
+        ? <span>{raw}</span>
+        : <del className={DEL_CLS}>{raw}</del>;
+    } else if (mode === "revised") {
+      // A deletion leaves nothing behind in the revised text.
+      if (edit.edit_type === "delete") body = null;
+      else if (edit.edit_type === "insert") {
+        body = <><span>{raw}</span><ins className={cn(INS_CLS, "ml-0.5")}>{edit.revised_text}</ins></>;
+      } else {
+        body = <ins className={INS_CLS}>{edit.revised_text}</ins>;
+      }
+    } else {
+      if (edit.edit_type === "delete") body = <del className={DEL_CLS}>{raw}</del>;
+      else if (edit.edit_type === "insert") {
+        body = <><span>{raw}</span><ins className={cn(INS_CLS, "ml-0.5")}>{edit.revised_text}</ins></>;
+      } else {
+        body = (
+          <>
+            <del className={DEL_CLS}>{raw}</del>
+            <ins className={cn(INS_CLS, "ml-0.5")}>{edit.revised_text}</ins>
+          </>
+        );
+      }
+    }
+
     segments.push(
       <span
         key={`e-${edit.start}`}
-        ref={el => { if (el) editRefs.current.set(editIdx, el); }}
+        ref={registerRefs ? (el => { if (el) editRefs.current.set(editIdx, el); }) : undefined}
         className={cn("rounded transition-all", isActive ? "ring-2 ring-blue-400 ring-offset-1" : "")}
       >
-        {edit.edit_type === "delete" && (
-          <del className="text-red-600 bg-red-100 line-through px-0.5 rounded-sm decoration-red-600">
-            {raw}
-          </del>
-        )}
-        {edit.edit_type === "insert" && (
-          <>
-            <span>{raw}</span>
-            <ins className="text-blue-700 bg-blue-100 underline not-italic px-0.5 rounded-sm ml-0.5">
-              {edit.revised_text}
-            </ins>
-          </>
-        )}
-        {edit.edit_type === "replace" && (
-          <>
-            <del className="text-red-600 bg-red-100 line-through px-0.5 rounded-sm decoration-red-600">
-              {raw}
-            </del>
-            <ins className="text-blue-700 bg-blue-100 underline not-italic px-0.5 rounded-sm ml-0.5">
-              {edit.revised_text}
-            </ins>
-          </>
-        )}
+        {body}
       </span>,
     );
 
@@ -136,6 +158,7 @@ export function RedlineViewer({
   source, edits, matched_count, unmatched_count, onDownloadDocx, downloadingDocx = false,
 }: Props) {
   const [activeEditIdx, setActiveEditIdx] = useState<number | null>(null);
+  const [layout, setLayout] = useState<"sidebyside" | "inline">("sidebyside");
   const editRefs = useRef<Map<number, HTMLSpanElement>>(new Map());
 
   const blocks = useMemo(() => parseBlocks(source), [source]);
@@ -160,13 +183,17 @@ export function RedlineViewer({
   const lowCount    = edits.filter(e => e.risk === "Low").length;
 
   const allUnplaced = matched.length === 0 && unmatched.length > 0;
+  const sideBySide = layout === "sidebyside";
 
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden">
       {/* ── Document with redlines ────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto bg-gray-100 px-6 py-8">
-        <div className="mx-auto max-w-3xl bg-white shadow-md rounded-lg px-10 py-10 min-h-full">
-          {/* Legend */}
+        <div className={cn(
+          "mx-auto bg-white shadow-md rounded-lg py-10 min-h-full",
+          sideBySide ? "max-w-6xl px-6" : "max-w-3xl px-10",
+        )}>
+          {/* Legend + layout toggle */}
           <div className="flex items-center gap-4 mb-8 pb-4 border-b text-xs text-gray-500">
             <span className="font-medium text-gray-700">Legend:</span>
             <span className="flex items-center gap-1.5">
@@ -177,6 +204,27 @@ export function RedlineViewer({
               <ins className="text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded text-[11px] underline not-italic">inserted</ins>
               <span>= suggested addition</span>
             </span>
+
+            <div className="ml-auto flex items-center rounded-md border bg-gray-50 p-0.5 gap-0.5 shrink-0">
+              <button
+                onClick={() => setLayout("sidebyside")}
+                className={cn(
+                  "flex items-center gap-1 text-[11px] px-2 py-1 rounded font-medium transition-colors",
+                  sideBySide ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700",
+                )}
+              >
+                <Columns2 className="h-3 w-3" />Side by side
+              </button>
+              <button
+                onClick={() => setLayout("inline")}
+                className={cn(
+                  "flex items-center gap-1 text-[11px] px-2 py-1 rounded font-medium transition-colors",
+                  !sideBySide ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700",
+                )}
+              >
+                <AlignLeft className="h-3 w-3" />Inline
+              </button>
+            </div>
           </div>
 
           {/* Zero-match warning banner */}
@@ -193,22 +241,60 @@ export function RedlineViewer({
             </div>
           )}
 
-          {/* Contract text with inline edits */}
+          {/* Column headers — side-by-side only */}
+          {sideBySide && (
+            <div className="sticky top-0 z-10 -mt-2 mb-4 flex gap-4 bg-white pb-2 border-b">
+              <div className="flex-1 min-w-0 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                Original
+              </div>
+              <div className="flex-1 min-w-0 text-[10px] font-semibold uppercase tracking-wider text-blue-500">
+                Redlined
+              </div>
+            </div>
+          )}
+
+          {/* Contract text with edits */}
           {blocks.map((block, bIdx) => {
             const hasEdits = matched.some(e => e.start >= block.start && e.end <= block.end);
             const heading = isHeading(block.text);
+
+            const paraCls = cn(
+              "break-words leading-relaxed",
+              heading ? "font-bold text-gray-900 text-sm" : "text-[13px] text-gray-700",
+              allUnplaced ? "opacity-40" : "",
+            );
+
+            if (sideBySide) {
+              return (
+                <div
+                  key={bIdx}
+                  className={cn(
+                    "flex gap-4 items-stretch",
+                    heading ? "mt-3 mb-1" : "mb-5",
+                    hasEdits ? "bg-yellow-50/40 -mx-1 px-1 rounded" : "",
+                  )}
+                >
+                  <p className={cn(paraCls, "flex-1 min-w-0")}>
+                    {renderBlockContent(block, matched, activeEditIdx, editRefs, matched, "original")}
+                  </p>
+                  <div className="w-px shrink-0 bg-gray-100" aria-hidden />
+                  <p className={cn(paraCls, "flex-1 min-w-0")}>
+                    {renderBlockContent(block, matched, activeEditIdx, editRefs, matched, "revised", false)}
+                  </p>
+                </div>
+              );
+            }
 
             return (
               <p
                 key={bIdx}
                 className={cn(
-                  "mb-5 break-words leading-relaxed",
-                  heading ? "font-bold text-gray-900 text-sm mt-3 mb-1" : "text-[13px] text-gray-700",
+                  paraCls,
+                  heading ? "mt-3 mb-1" : "mb-5",
                   hasEdits ? "bg-yellow-50/40 -mx-1 px-1 rounded" : "",
-                  allUnplaced ? "opacity-40" : "",
                 )}
               >
-                {renderBlockContent(block, matched, activeEditIdx, editRefs, matched)}
+                {renderBlockContent(block, matched, activeEditIdx, editRefs, matched, "inline")}
               </p>
             );
           })}
