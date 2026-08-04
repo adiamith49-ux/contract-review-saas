@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   getChatHistory, sendChatMessage, clearChatHistory, type ChatMessage,
 } from "@/lib/api";
+import { MarkdownContent } from "@/components/MarkdownContent";
 
 interface Props {
   contractId: string;
@@ -145,7 +146,9 @@ export function AIChatFloat({ contractId, isAnalyzed }: Props) {
                         : "bg-gray-100 text-gray-800 rounded-bl-sm"
                     }`}
                   >
-                    {m.content}
+                    {m.role === "assistant"
+                      ? <MarkdownContent content={m.content} className="space-y-1.5" />
+                      : m.content}
                   </div>
                 </div>
               ))
