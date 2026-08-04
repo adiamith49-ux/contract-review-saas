@@ -59,7 +59,10 @@ function buildAnalysisTool(maxItems: number | null): Anthropic.Tool {
               finding: { type: "string" },
               risk: { type: "string", enum: ["low", "medium", "high", "critical"] },
               recommendation: { type: "string" },
-              contractText: { type: "string" },
+              contractText: {
+                type: "string",
+                description: "The clause language being flagged, copied VERBATIM character-for-character from the contract text — same wording, punctuation, capitalisation and spacing. Never paraphrase, summarise, tidy up or re-quote from memory: this string is matched back against the source to anchor the redline, and a paraphrase cannot be placed. One or two key sentences is the right length.",
+              },
               suggestedLanguage: { type: "string", description: languageDescription },
               playbookRule: { type: "string", description: "If this finding deviates from a company playbook rule, name the playbook and rule that was triggered (e.g. 'SaaS Playbook — Liability cap: 12 months fees'). Omit if no playbook rule applies." },
             },

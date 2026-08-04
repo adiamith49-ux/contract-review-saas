@@ -24,6 +24,8 @@ export interface LocatedEdit extends RedlineEdit {
   matched: true;
   start: number;
   end: number;
+  /** 1 = verbatim hit; below that the anchor was recovered by word alignment. */
+  confidence: number;
 }
 
 export interface UnmatchedEdit extends RedlineEdit {
@@ -138,79 +140,195 @@ export function normalizeWithMap(str: string): { norm: string; map: number[] } {
   };
 }
 
+// ─── Word-token index ────────────────────────────────────────────────────────
+//
+// Verbatim `indexOf` on the normalised text is the fast path, but it only fires
+// when the model quoted the clause character-perfectly. It routinely doesn't —
+// it drops a stray "(a)", changes "Sec." to "Section", or re-quotes from memory
+// a word or two off. Matching on WORDS instead of characters absorbs all of
+// that: punctuation stops mattering, and a greedy alignment tolerates a handful
+// of inserted/dropped words while still yielding exact character offsets for
+// the span that was actually found.
+
+interface Token {
+  /** lowercased word */
+  t: string;
+  /** offsets into the NORMALISED string */
+  s: number;
+  e: number;
+}
+
+function tokenize(norm: string): Token[] {
+  const toks: Token[] = [];
+  const re = /[A-Za-z0-9]+/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(norm)) !== null) {
+    toks.push({ t: m[0].toLowerCase(), s: m.index, e: m.index + m[0].length });
+  }
+  return toks;
+}
+
+function buildTokenIndex(toks: Token[]): Map<string, number[]> {
+  const idx = new Map<string, number[]>();
+  for (let i = 0; i < toks.length; i++) {
+    const at = idx.get(toks[i].t);
+    if (at) at.push(i);
+    else idx.set(toks[i].t, [i]);
+  }
+  return idx;
+}
+
+// Greedy alignment of tgt against doc[start…]. Allows a word to be skipped on
+// either side, which is what "the model dropped/added a word" looks like.
+// Returns how many target words were matched and how much of doc was consumed.
+function align(doc: Token[], start: number, limit: number, tgt: Token[]): { hits: number; consumed: number } {
+  let i = 0, j = 0, hits = 0, lastHit = 0;
+  while (i < limit && j < tgt.length) {
+    if (doc[start + i].t === tgt[j].t) {
+      hits++; i++; j++; lastHit = i;
+    } else if (i + 1 < limit && doc[start + i + 1].t === tgt[j].t) {
+      i++;                                    // doc has an extra word
+    } else if (j + 1 < tgt.length && doc[start + i].t === tgt[j + 1].t) {
+      j++;                                    // target has an extra word
+    } else {
+      i++; j++;                               // substitution
+    }
+  }
+  return { hits, consumed: lastHit };
+}
+
+/**
+ * Locate `tgtToks` inside `docToks`, returning normalised-space offsets.
+ * Anchors on the RAREST target word so candidate windows stay few even when the
+ * clause opens with "the" or "Party".
+ */
+function locateTokens(
+  docToks: Token[],
+  docIdx: Map<string, number[]>,
+  tgtToks: Token[],
+): { s: number; e: number; confidence: number } | null {
+  const n = tgtToks.length;
+  if (n === 0) return null;
+
+  // Pick the anchor: the target word with the fewest occurrences in the doc.
+  let anchorAt = -1;
+  let anchorPositions: number[] = [];
+  for (let j = 0; j < n; j++) {
+    const positions = docIdx.get(tgtToks[j].t);
+    if (!positions || positions.length === 0) continue;
+    if (anchorAt === -1 || positions.length < anchorPositions.length) {
+      anchorAt = j;
+      anchorPositions = positions;
+    }
+  }
+  if (anchorAt === -1) return null;           // not one word of it is in the doc
+
+  // A very common anchor means a very expensive scan for no extra accuracy.
+  const candidates = anchorPositions.length > 4000 ? anchorPositions.slice(0, 4000) : anchorPositions;
+
+  // Short quotes get no fuzz — a 3-word window matches half the document.
+  const threshold = n < 6 ? 1 : 0.75;
+
+  let best: { s: number; e: number; confidence: number } | null = null;
+
+  for (const pos of candidates) {
+    const start = pos - anchorAt;
+    if (start < 0 || start >= docToks.length) continue;
+
+    // Allow the doc window to run a little past the target length to absorb
+    // words the model dropped.
+    const limit = Math.min(n + 4, docToks.length - start);
+    const { hits, consumed } = align(docToks, start, limit, tgtToks);
+    if (consumed === 0) continue;
+
+    const confidence = hits / n;
+    if (confidence < threshold) continue;
+    if (best && confidence <= best.confidence) continue;
+
+    best = {
+      s: docToks[start].s,
+      e: docToks[start + consumed - 1].e,
+      confidence,
+    };
+    if (confidence === 1) break;              // can't do better
+  }
+
+  return best;
+}
+
 // ─── Process edits against source ────────────────────────────────────────────
 
 export function processEdits(source: string, edits: RedlineEdit[]): ProcessedEdit[] {
-  // Pre-compute normalised document ONCE — used for every edit.
+  // Pre-compute the normalised document and its token index ONCE — reused for
+  // every edit, so a 30-edit "Apply All" costs one pass over the contract.
   const { norm: docNorm, map: docMap } = normalizeWithMap(source);
+  const docNormLower = docNorm.toLowerCase();
+  const docToks = tokenize(docNorm);
+  const docIdx = buildTokenIndex(docToks);
 
-  const usedRanges: [number, number][] = [];
+  // Track placed spans alongside the clause that claimed them, so an edit that
+  // loses a collision can say which finding beat it to that text.
+  const usedRanges: { start: number; end: number; clause: string }[] = [];
 
   return edits.map(edit => {
     const raw = edit.original_text ?? "";
 
     if (!raw.trim() && edit.edit_type !== "insert") {
-      return { ...edit, matched: false as const, reason: "original_text is empty" };
+      return { ...edit, matched: false as const, reason: "no contract text was quoted for this finding" };
     }
 
-    // Normalise the target the same way (norm string only; no map needed).
     const normTgt = normalizeWithMap(raw).norm;
-
     if (!normTgt) {
-      return { ...edit, matched: false as const, reason: "original_text is blank after normalisation" };
+      return { ...edit, matched: false as const, reason: "quoted text is blank after normalisation" };
     }
 
-    // Search in normalised space — case-sensitive first, then case-insensitive.
+    let normStart: number;
+    let normEnd: number;                      // exclusive, in normalised space
+    let confidence: number;
+
+    // Fast path — the model quoted it verbatim.
     let hit = docNorm.indexOf(normTgt);
-    if (hit === -1) hit = docNorm.toLowerCase().indexOf(normTgt.toLowerCase());
+    if (hit === -1) hit = docNormLower.indexOf(normTgt.toLowerCase());
 
-    // Fuzzy fallback 1: strip all punctuation and retry
-    if (hit === -1) {
-      const stripPunct = (s: string) => s.replace(/[^\w\s]/g, "").replace(/\s+/g, " ").trim();
-      const docStripped = stripPunct(docNorm.toLowerCase());
-      const tgtStripped = stripPunct(normTgt.toLowerCase());
-      if (tgtStripped.length >= 10) {
-        const strippedHit = docStripped.indexOf(tgtStripped);
-        if (strippedHit !== -1) {
-          // Map back: walk docNorm to find the position that corresponds to strippedHit
-          let si = 0, di = 0;
-          while (di < strippedHit && si < docNorm.length) {
-            const ch = docNorm[si].toLowerCase();
-            if (stripPunct(ch) !== "") di++;
-            si++;
-          }
-          hit = si;
-          // Adjust normTgt length to match in original — walk forward tgtStripped.length chars
-          // We'll use the original normTgt length for offset recovery below
-        }
+    if (hit !== -1) {
+      normStart = hit;
+      normEnd = hit + normTgt.length;
+      confidence = 1;
+    } else {
+      // Word-alignment path — survives paraphrase-level drift.
+      const located = locateTokens(docToks, docIdx, tokenize(normTgt));
+      if (!located) {
+        return {
+          ...edit,
+          matched: false as const,
+          reason: "the quoted clause text does not appear in this contract — it looks paraphrased rather than copied",
+        };
       }
+      normStart = located.s;
+      normEnd = located.e;
+      confidence = located.confidence;
     }
 
-    // Fuzzy fallback 2: try first 80% of target (AI sometimes adds/drops trailing words)
-    if (hit === -1 && normTgt.length >= 20) {
-      const cutoff = Math.floor(normTgt.length * 0.8);
-      const partial = normTgt.slice(0, cutoff);
-      hit = docNorm.toLowerCase().indexOf(partial.toLowerCase());
-      // If found, use the full match length from the partial start
+    // Recover ORIGINAL offsets through the position map.
+    const startOrig = docMap[normStart];
+    const endOrig = normEnd - 1 < docMap.length ? docMap[normEnd - 1] + 1 : source.length;
+
+    if (startOrig === undefined || endOrig <= startOrig) {
+      return { ...edit, matched: false as const, reason: "matched text could not be mapped back to the contract" };
     }
 
-    if (hit === -1) {
-      return { ...edit, matched: false as const, reason: "original_text not found in source" };
+    // Tracked changes cannot nest, so the first claim on a span wins.
+    const clash = usedRanges.find(r => startOrig < r.end && endOrig > r.start);
+    if (clash) {
+      return {
+        ...edit,
+        matched: false as const,
+        reason: `targets the same text as "${clash.clause}", which was redlined first`,
+      };
     }
 
-    // Recover original offsets using the position map.
-    const startOrig = docMap[hit];
-    const endNormIdx = hit + normTgt.length - 1;
-    const endOrig = endNormIdx < docMap.length ? docMap[endNormIdx] + 1 : source.length;
-
-    // Detect overlap with already-placed edits.
-    const overlaps = usedRanges.some(([s, e]) => startOrig < e && endOrig > s);
-    if (overlaps) {
-      return { ...edit, matched: false as const, reason: "overlaps with a previously placed edit" };
-    }
-
-    usedRanges.push([startOrig, endOrig]);
-    return { ...edit, matched: true as const, start: startOrig, end: endOrig };
+    usedRanges.push({ start: startOrig, end: endOrig, clause: edit.clause_ref });
+    return { ...edit, matched: true as const, start: startOrig, end: endOrig, confidence };
   });
 }
 
