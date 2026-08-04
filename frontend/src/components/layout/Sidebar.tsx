@@ -8,7 +8,7 @@ import {
   LayoutDashboard, FileSearch, Upload, ClipboardList, Clock, CalendarDays,
   Library, Gavel, UserCheck, LineChart, Settings,
   LifeBuoy, LogOut, ChevronDown, ChevronsLeft, ChevronsRight, Menu, X,
-  GitCompare, MessagesSquare, ArrowLeft, PenTool,
+  GitCompare, MessagesSquare, ArrowLeft, PenTool, CalendarClock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ContralyneLogoMark } from "@/components/ContralyneLogoMark";
@@ -37,11 +37,12 @@ const TOOLS_NAV = [
 // Consolidated per-contract panels — shown as the primary nav while a
 // specific contract is open, selected via the ?panel= query param.
 const CONTRACT_TABS = [
-  { key: "intake",    label: "Legal Intake", icon: ClipboardList },
-  { key: "approval",  label: "Approval",     icon: UserCheck },
-  { key: "versions",  label: "Versions",     icon: GitCompare },
-  { key: "workspace", label: "Workspace",    icon: MessagesSquare },
-  { key: "signature", label: "Signature",    icon: PenTool },
+  { key: "intake",      label: "Legal Intake", icon: ClipboardList },
+  { key: "approval",    label: "Approval",     icon: UserCheck },
+  { key: "versions",    label: "Versions",     icon: GitCompare },
+  { key: "workspace",   label: "Workspace",    icon: MessagesSquare },
+  { key: "signature",   label: "Signature",    icon: PenTool },
+  { key: "obligations", label: "Obligations",  icon: CalendarClock },
 ] as const;
 
 function useIsActive(href: string) {

@@ -288,6 +288,32 @@ CREATE TABLE IF NOT EXISTS signature_requests (
 CREATE INDEX IF NOT EXISTS idx_signature_requests_contract ON signature_requests(contract_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_signature_requests_envelope ON signature_requests(docusign_envelope_id);
 
+-- Time-bound obligations arising from a contract — milestone payments,
+-- certificate submissions, board updates, periodic deliverables, etc.
+-- Recurring ones (recurrence != 'none') auto-generate their next occurrence
+-- when marked completed, so "periodic deliverable" never needs re-creating
+-- by hand. reminder_sent_at guards the cron job against double-sending.
+CREATE TABLE IF NOT EXISTS contract_obligations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  contract_id uuid NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+  user_id text NOT NULL,
+  org_id text,
+  type text NOT NULL DEFAULT 'other',        -- milestone_payment | certificate_submission | board_update | periodic_deliverable | other
+  title text NOT NULL,
+  description text,
+  due_date date NOT NULL,
+  recurrence text NOT NULL DEFAULT 'none',   -- none | weekly | monthly | quarterly | annually
+  status text NOT NULL DEFAULT 'pending',    -- pending | completed | overdue
+  completed_at timestamptz,
+  reminder_days_before integer NOT NULL DEFAULT 7,
+  reminder_sent_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_contract_obligations_contract ON contract_obligations(contract_id);
+CREATE INDEX IF NOT EXISTS idx_contract_obligations_org_due  ON contract_obligations(org_id, due_date);
+CREATE INDEX IF NOT EXISTS idx_contract_obligations_pending  ON contract_obligations(due_date) WHERE status = 'pending';
+
 -- Contract comparisons (version diff + AI change summary, stored under the base contract)
 CREATE TABLE IF NOT EXISTS contract_comparisons (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -17,6 +17,8 @@ import { clausesRouter } from "./routes/clauses.js";
 import { contactRouter } from "./routes/contact.js";
 import { commentsRouter } from "./routes/comments.js";
 import { contractsRouter } from "./routes/contracts.js";
+import { cronRouter } from "./routes/cron.js";
+import { obligationsRouter } from "./routes/obligations.js";
 import { orgRouter } from "./routes/org.js";
 import { rulesRouter } from "./routes/rules.js";
 import { signatureRouter } from "./routes/signature.js";
@@ -57,6 +59,8 @@ app.use("/api/tasks", tasksRouter);
 app.use("/api/time", timeRouter);
 app.use("/api/calendar", calendarRouter);
 app.use("/api/approvals", approvalsRouter);
+app.use("/api/obligations", obligationsRouter);
+app.use("/api/cron", cronRouter);
 app.use("/api/org", orgRouter);
 
 app.use(errorHandler);
