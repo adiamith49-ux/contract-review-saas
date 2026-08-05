@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { config } from "../config.js";
 import { contactLimiter } from "../middleware/rateLimit.js";
-import { isMailerConfigured, sendMail } from "../services/mailer.service.js";
+import { isMailerConfigured, sendMail, wrapEmail, emailParagraphs, emailInfoBox, emailNoteBox } from "../services/mailer.service.js";
 
 export const contactRouter = Router();
 
@@ -23,10 +23,7 @@ contactRouter.post("/", contactLimiter, async (req, res, next) => {
       return;
     }
 
-    await sendMail(
-      config.CONTACT_EMAIL,
-      `Contralyne enquiry — ${firm} (${name})`,
-      `New enquiry from the Contralyne landing page:
+    const text = `New enquiry from the Contralyne landing page:
 
 Name:       ${name}
 Work email: ${email}
@@ -37,8 +34,26 @@ Message:
 ${message}
 
 —
-Reply directly to this email to respond to ${name}.`,
-      { replyTo: email },
+Reply directly to this email to respond to ${name}.`;
+
+    const html = wrapEmail(
+      `${emailParagraphs("New enquiry from the Contralyne landing page:")}
+       ${emailInfoBox([
+         { label: "Name", value: name },
+         { label: "Work email", value: email },
+         { label: "Firm", value: firm },
+         { label: "Team size", value: team_size || "not specified" },
+       ])}
+       ${emailNoteBox(message, { label: "Message" })}
+       ${emailParagraphs(`Reply directly to this email to respond to ${name}.`)}`,
+      { preheader: `New enquiry from ${name} at ${firm}` },
+    );
+
+    await sendMail(
+      config.CONTACT_EMAIL,
+      `Contralyne enquiry — ${firm} (${name})`,
+      text,
+      { replyTo: email, html },
     );
 
     res.json({ ok: true });

@@ -1,18 +1,16 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Building2, Users, FileText, Ticket, ArrowRight, Download } from "lucide-react";
-import { toast } from "sonner";
+import { Building2, Users, FileText, Ticket, ArrowRight } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
   PieChart, Pie, Cell,
 } from "recharts";
 import {
-  getAdminStats, listAdminTickets, downloadAdminReport,
+  getAdminStats, listAdminTickets,
   type AdminStats, type AdminTicket,
 } from "@/lib/admin-api";
 import { formatDate } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -50,25 +48,12 @@ export default function AdminDashboard() {
   const [stats, setStats]     = useState<AdminStats | null>(null);
   const [tickets, setTickets] = useState<AdminTicket[]>([]);
   const [loading, setLoading] = useState(true);
-  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     Promise.all([getAdminStats(), listAdminTickets("open")])
       .then(([s, t]) => { setStats(s); setTickets(t.tickets.slice(0, 5)); })
       .finally(() => setLoading(false));
   }, []);
-
-  async function handleDownloadReport() {
-    setDownloading(true);
-    try {
-      await downloadAdminReport("dashboard");
-      toast.success("Dashboard report downloaded");
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setDownloading(false);
-    }
-  }
 
   const statCards = [
     { label: "Clients",       value: stats?.clients,      icon: Building2, color: "text-blue-600",    bg: "bg-blue-50"   },
@@ -86,15 +71,9 @@ export default function AdminDashboard() {
 
   return (
     <div className="p-6 lg:p-8 max-w-[1100px] mx-auto space-y-7">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Admin Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Manage clients, users, content, and change requests.</p>
-        </div>
-        <Button size="sm" variant="outline" onClick={handleDownloadReport} disabled={downloading}>
-          <Download className="h-4 w-4 mr-1.5" />
-          {downloading ? "Preparing…" : "Download Report"}
-        </Button>
+      <div>
+        <h1 className="text-xl font-bold text-gray-900">Admin Dashboard</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Manage clients, users, content, and change requests.</p>
       </div>
 
       {/* Stat cards */}

@@ -17,6 +17,7 @@ import { DocumentViewer } from "@/components/DocumentViewer";
 import { RedlineViewer } from "@/components/RedlineViewer";
 import { ContractDetailTabs } from "@/components/ContractDetailTabs";
 import { AIChatFloat } from "@/components/AIChatFloat";
+import { MarkdownContent } from "@/components/MarkdownContent";
 import {
   getContract, analyzeContract, waitForAnalysis, downloadExport,
   runRedline, downloadRedlineDocx, summarizeContract, updateContractMetadata,
@@ -492,7 +493,7 @@ export default function ContractDetailPage() {
                 <p className="text-sm">Generating plain-English summary…</p>
               </div>
             ) : (
-              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{summary}</p>
+              <MarkdownContent content={summary ?? ""} className="text-sm text-gray-700" />
             )}
           </div>
           <div className="shrink-0 px-4 py-3 border-t">

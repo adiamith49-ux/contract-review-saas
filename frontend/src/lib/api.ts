@@ -1045,3 +1045,60 @@ export async function compareVersions(token: string | null, baseId: string, agai
 export async function listComparisons(token: string | null, contractId: string): Promise<{ comparisons: Comparison[] }> {
   return apiFetch(`/api/contracts/${contractId}/comparisons`, token);
 }
+
+// ─── Obligations ────────────────────────────────────────────────────────────
+
+export type ObligationType = "milestone_payment" | "certificate_submission" | "board_update" | "periodic_deliverable" | "other";
+export type ObligationRecurrence = "none" | "weekly" | "monthly" | "quarterly" | "annually";
+
+export interface Obligation {
+  id: string;
+  contract_id: string;
+  type: ObligationType;
+  title: string;
+  description: string | null;
+  due_date: string;
+  recurrence: ObligationRecurrence;
+  status: "pending" | "completed" | "overdue";
+  completed_at: string | null;
+  reminder_days_before: number;
+  created_at: string;
+  contracts?: { filename: string } | null;
+}
+
+export async function listObligations(token: string | null, contractId?: string): Promise<{ obligations: Obligation[] }> {
+  const qs = contractId ? `?contract_id=${contractId}` : "";
+  return apiFetch(`/api/obligations${qs}`, token);
+}
+
+export async function getUpcomingObligations(token: string | null, days = 14): Promise<{ obligations: Obligation[] }> {
+  return apiFetch(`/api/obligations/upcoming?days=${days}`, token);
+}
+
+export async function createObligation(
+  token: string | null,
+  data: {
+    contract_id: string; type: ObligationType; title: string; description?: string;
+    due_date: string; recurrence?: ObligationRecurrence; reminder_days_before?: number;
+  },
+): Promise<{ obligation: Obligation }> {
+  return apiFetch("/api/obligations", token, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function updateObligation(
+  token: string | null,
+  id: string,
+  data: Partial<{
+    type: ObligationType; title: string; description: string | null; due_date: string;
+    recurrence: ObligationRecurrence; reminder_days_before: number; status: "pending" | "completed";
+  }>,
+): Promise<{ obligation: Obligation; next_occurrence: Obligation | null }> {
+  return apiFetch(`/api/obligations/${id}`, token, { method: "PATCH", body: JSON.stringify(data) });
+}
+
+export async function deleteObligation(token: string | null, id: string): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}/api/obligations/${id}`, { method: "DELETE", headers });
+  if (!res.ok) throw new Error("Failed to delete obligation");
+}

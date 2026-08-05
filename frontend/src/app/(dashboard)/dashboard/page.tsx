@@ -5,13 +5,13 @@ import { useAuth, useUser } from "@clerk/nextjs";
 import {
   FileText, Upload, CheckCircle2, Clock, ShieldAlert, Plus,
   ArrowRight, TrendingUp, LineChart, Library, Gavel, Building2,
-  CalendarCheck2, CalendarX2, CalendarClock, UserCheck,
+  CalendarCheck2, CalendarX2, CalendarClock, UserCheck, Bell, AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RiskBadge } from "@/components/RiskBadge";
 import { StatusBadge } from "@/components/StatusBadge";
-import { listContracts, type ContractListItem } from "@/lib/api";
+import { listContracts, getUpcomingObligations, type ContractListItem, type Obligation } from "@/lib/api";
 import { formatDate, formatFileSize, CONTRACT_TYPE_LABELS } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import type { RiskLevel } from "@/lib/types";
@@ -31,14 +31,19 @@ export default function DashboardPage() {
   const { getToken } = useAuth();
   const { user } = useUser();
   const [contracts, setContracts] = useState<ContractListItem[]>([]);
+  const [obligations, setObligations] = useState<Obligation[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       try {
         const token = await getToken();
-        const { contracts } = await listContracts(token);
+        const [{ contracts }, obligationsRes] = await Promise.all([
+          listContracts(token),
+          getUpcomingObligations(token, 14).catch(() => ({ obligations: [] as Obligation[] })),
+        ]);
         setContracts(contracts);
+        setObligations(obligationsRes.obligations);
       } catch {
         // silently fail on dashboard
       } finally {
@@ -247,6 +252,47 @@ export default function DashboardPage() {
 
         {/* Right column (2/5) */}
         <div className="lg:col-span-2 space-y-4">
+
+          {/* Upcoming due alerts */}
+          {!loading && obligations.length > 0 && (
+            <div className="rounded-xl border bg-white shadow-sm overflow-hidden">
+              <div className="flex items-center gap-2 px-5 py-4 border-b">
+                <Bell className="h-4 w-4 text-amber-500" />
+                <h2 className="text-sm font-semibold text-gray-900">Upcoming Due</h2>
+                <span className="ml-auto text-[11px] font-medium text-gray-400">next 14 days</span>
+              </div>
+              <div className="divide-y">
+                {obligations.map(ob => {
+                  const overdue = ob.status === "overdue";
+                  const daysUntil = Math.round((new Date(ob.due_date + "T00:00:00").getTime() - Date.now()) / 86400000);
+                  return (
+                    <Link
+                      key={ob.id}
+                      href={`/contracts/${ob.contract_id}?panel=obligations`}
+                      className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition-colors group"
+                    >
+                      <div className={cn(
+                        "h-8 w-8 rounded-lg flex items-center justify-center shrink-0",
+                        overdue ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-600",
+                      )}>
+                        {overdue ? <AlertTriangle className="h-4 w-4" /> : <CalendarClock className="h-4 w-4" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{ob.title}</p>
+                        <p className="text-[11px] text-gray-400 truncate mt-0.5">{ob.contracts?.filename ?? "Contract"}</p>
+                      </div>
+                      <span className={cn(
+                        "text-[11px] font-medium px-2 py-0.5 rounded-full shrink-0",
+                        overdue ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700",
+                      )}>
+                        {overdue ? "Overdue" : daysUntil === 0 ? "Today" : `${daysUntil}d`}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Quick actions */}
           <div className="rounded-xl border bg-white shadow-sm p-5">

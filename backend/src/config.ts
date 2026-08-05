@@ -33,6 +33,10 @@ const EnvSchema = z.object({
   ANALYSIS_MAX_TOKENS: z.coerce.number().default(8000),
   ADMIN_JWT_SECRET: str("change-me-admin-secret"),
   CLERK_WEBHOOK_SECRET: str(""),
+  // Protects /api/cron/* — Vercel sends this automatically as
+  // `Authorization: Bearer <value>` for scheduled invocations when set.
+  // Unset: cron routes still work in dev, refuse to run in production.
+  CRON_SECRET: str(""),
   // Clerk's Organizations API requires an existing Clerk user id as the
   // "createdBy"/"inviterUserId" actor for backend-created orgs and invitations
   // (Clerk has no service-account concept). Set this to the platform founder's

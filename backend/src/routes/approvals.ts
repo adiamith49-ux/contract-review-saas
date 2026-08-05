@@ -7,7 +7,7 @@ import { config } from "../config.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireActiveOrg } from "../middleware/org.js";
 import { logActivity } from "../services/activity.service.js";
-import { isMailerConfigured, sendMail } from "../services/mailer.service.js";
+import { isMailerConfigured, sendMail, wrapEmail, emailParagraphs, emailInfoBox, emailButton } from "../services/mailer.service.js";
 import { uploadToS3, getPresignedUrl } from "../services/storage.service.js";
 
 export const approvalsRouter = Router();
@@ -143,10 +143,20 @@ export async function isApproverForContract(email: string, contractId: string): 
 function notifyApprover(step: { approver_name: string; approver_email: string | null }, contractName: string, contractId: string) {
   if (!isMailerConfigured() || !step.approver_email) return;
   const url = `${config.WEB_URL}/contracts/${contractId}`;
+  const tasksUrl = `${config.WEB_URL}/tasks`;
+  const text = `Hi ${step.approver_name},\n\nThe contract "${contractName}" is pending your approval on Contralyne.\n\nReview it here: ${url}\n\nThis has also been added to your task list: ${tasksUrl}\n\n— Contralyne`;
+  const html = wrapEmail(
+    `${emailParagraphs(`Hi ${step.approver_name},\n\nThe contract below is pending your approval on Contralyne.`)}
+     ${emailInfoBox([{ label: "Contract", value: contractName }])}
+     ${emailButton(url, "Review contract")}
+     <p style="margin:0;font-size:13px;line-height:1.6;color:#6b7280;">This has also been added to your <a href="${tasksUrl}" style="color:#00BFA6;font-weight:600;text-decoration:none;">task list</a>.</p>`,
+    { preheader: `"${contractName}" is pending your approval` },
+  );
   sendMail(
     step.approver_email,
     `Approval requested: ${contractName}`,
-    `Hi ${step.approver_name},\n\nThe contract "${contractName}" is pending your approval on Contralyne.\n\nReview it here: ${url}\n\nThis has also been added to your task list: ${config.WEB_URL}/tasks\n\n— Contralyne`,
+    text,
+    { html },
   ).catch(() => { /* notification failure must not block the approval flow */ });
 }
 

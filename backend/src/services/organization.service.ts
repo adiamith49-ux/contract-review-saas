@@ -9,7 +9,7 @@ const ORG_SCOPED_TABLES = [
   "legal_intake", "analyses", "chat_messages", "clause_library", "review_rules",
   "redlines", "contract_comments", "tasks", "approval_rules", "contract_approvals",
   "contract_comparisons", "time_entries", "activity_logs", "client_memberships",
-  "signature_requests", "clients", "tickets", "calendar_events",
+  "signature_requests", "clients", "tickets", "calendar_events", "contract_obligations",
 ] as const;
 
 /**

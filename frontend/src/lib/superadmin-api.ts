@@ -84,6 +84,19 @@ export const superAdminResetPassword = (email: string, code: string, password: s
     method: "POST", body: JSON.stringify({ email, code, password }),
   });
 
+// Passwordless login — the login page uses this exclusively; the
+// password/reset-password endpoints above stay in the API for emergency use
+// but are no longer exposed in the UI.
+export const requestSuperAdminOtp = (email: string) =>
+  superAdminFetch<{ ok: boolean }>("/superadmin/auth/request-otp", {
+    method: "POST", body: JSON.stringify({ email }),
+  });
+
+export const verifySuperAdminOtp = (email: string, code: string) =>
+  superAdminFetch<{ token: string; admin: SuperAdminUser }>("/superadmin/auth/verify-otp", {
+    method: "POST", body: JSON.stringify({ email, code }),
+  });
+
 // Stats + system (cross-org)
 export const getSuperAdminStats = () => superAdminFetch<SuperAdminStats>("/superadmin/stats");
 export const getSystemInfo = () => superAdminFetch<SystemInfo>("/superadmin/system");

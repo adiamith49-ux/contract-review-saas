@@ -1,12 +1,13 @@
 "use client";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ClipboardList, UserCheck, GitCompare, MessagesSquare, PenTool } from "lucide-react";
+import { ClipboardList, UserCheck, GitCompare, MessagesSquare, PenTool, CalendarClock } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { IntakePanel } from "@/components/IntakePanel";
 import { ApprovalPanel } from "@/components/ApprovalPanel";
 import { VersionComparePanel } from "@/components/VersionComparePanel";
 import { MatterWorkspace } from "@/components/MatterWorkspace";
 import { SignaturePanel } from "@/components/SignaturePanel";
+import { ObligationsPanel } from "@/components/ObligationsPanel";
 
 interface Props {
   contractId: string;
@@ -16,11 +17,12 @@ interface Props {
 }
 
 const TITLES: Record<string, { label: string; icon: React.ElementType }> = {
-  intake:    { label: "Legal Intake",         icon: ClipboardList },
-  approval:  { label: "Approval Workflow",    icon: UserCheck },
-  versions:  { label: "Versions & Comparison", icon: GitCompare },
-  workspace: { label: "Matter Workspace",      icon: MessagesSquare },
-  signature: { label: "Signature",            icon: PenTool },
+  intake:      { label: "Legal Intake",         icon: ClipboardList },
+  approval:    { label: "Approval Workflow",    icon: UserCheck },
+  versions:    { label: "Versions & Comparison", icon: GitCompare },
+  workspace:   { label: "Matter Workspace",      icon: MessagesSquare },
+  signature:   { label: "Signature",            icon: PenTool },
+  obligations: { label: "Obligations",          icon: CalendarClock },
 };
 
 // Which of the five contract side-panels (if any) is shown is chosen from the
@@ -64,6 +66,9 @@ export function ContractDetailTabs({ contractId, contractStatus, getToken, onCha
           )}
           {active === "signature" && (
             <SignaturePanel embedded contractId={contractId} contractStatus={contractStatus} getToken={getToken} />
+          )}
+          {active === "obligations" && (
+            <ObligationsPanel embedded contractId={contractId} getToken={getToken} />
           )}
         </div>
       </DialogContent>
