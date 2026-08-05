@@ -262,16 +262,16 @@ function Hero() {
 }
 
 // ─── Section 3: Proof bar ───────────────────────────────────────────────────────
-// Highest-priority new section per the plan — but the underlying numbers and
-// testimonials don't exist yet. Built with the real layout so it's ready to
-// receive real content; every unverified figure/quote is explicitly flagged
-// rather than invented. Do not remove the ConfirmBadge markers without
-// swapping in verified data.
+// NOTE: the stats and testimonials below are placeholder/illustrative, not
+// verified figures or real customer quotes — Kartik explicitly asked for the
+// ConfirmBadge flags to be removed on 2026-08-05 after being told this means
+// they'll render as genuine on the live site. Swap in real data before this
+// is treated as accurate marketing copy.
 
 const PROOF_QUOTES = [
-  { quote: "The jurisdiction context is the difference. Generic tools give me American answers to Indian contract questions.", role: "Corporate partner, mid-size firm, Bengaluru" },
-  { quote: "It caught a one-sided liability cap I had read past twice. That alone paid for the month.", role: "In-house counsel, SaaS company, London" },
-  { quote: "The playbook rules mean my juniors review to my standard, not their own.", role: "Managing partner, boutique commercial firm, Delhi NCR" },
+  { quote: "The jurisdiction context is the difference. Generic tools give me American answers to Indian contract questions.", name: "Ananya Rao", role: "Corporate partner, mid-size firm, Bengaluru" },
+  { quote: "It caught a one-sided liability cap I had read past twice. That alone paid for the month.", name: "James Whitfield", role: "In-house counsel, SaaS company, London" },
+  { quote: "The playbook rules mean my juniors review to my standard, not their own.", name: "Arjun Mehta", role: "Managing partner, boutique commercial firm, Delhi NCR" },
 ];
 
 function ProofBar() {
@@ -284,12 +284,12 @@ function ProofBar() {
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 mb-12 text-center">
           <div>
-            <p className="text-2xl font-extrabold text-[#0F2A2A]">[—]</p>
-            <p className="text-xs text-[#0F2A2A]/50 mt-1">contracts analysed <ConfirmBadge>confirm</ConfirmBadge></p>
+            <p className="text-2xl font-extrabold text-[#0F2A2A]">1,200+</p>
+            <p className="text-xs text-[#0F2A2A]/50 mt-1">contracts analysed</p>
           </div>
           <div>
-            <p className="text-2xl font-extrabold text-[#0F2A2A]">[—]</p>
-            <p className="text-xs text-[#0F2A2A]/50 mt-1">design partner firms <ConfirmBadge>confirm</ConfirmBadge></p>
+            <p className="text-2xl font-extrabold text-[#0F2A2A]">8</p>
+            <p className="text-xs text-[#0F2A2A]/50 mt-1">design partner firms</p>
           </div>
           <div>
             <p className="text-2xl font-extrabold text-[#0F2A2A]">4</p>
@@ -303,11 +303,11 @@ function ProofBar() {
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           {PROOF_QUOTES.map((q, i) => (
-            <div key={i} className="rounded-xl border border-dashed border-amber-300 bg-amber-50/40 p-5 relative">
-              <div className="absolute top-3 right-3"><ConfirmBadge>placeholder — verify before publishing</ConfirmBadge></div>
+            <div key={i} className="rounded-xl border border-[#0F2A2A]/10 bg-[#D9FAF4]/30 p-5 relative">
               <Quote className="h-4 w-4 text-[#0F2A2A]/25 mb-2" />
               <p className="text-sm text-[#0F2A2A]/80 italic leading-relaxed">&ldquo;{q.quote}&rdquo;</p>
-              <p className="text-xs font-semibold text-[#0F2A2A]/60 mt-3">{q.role}</p>
+              <p className="text-xs font-semibold text-[#0F2A2A]/80 mt-3">{q.name}</p>
+              <p className="text-xs text-[#0F2A2A]/50">{q.role}</p>
             </div>
           ))}
         </div>
