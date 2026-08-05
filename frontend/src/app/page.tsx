@@ -5,7 +5,8 @@ import { useAuth } from "@clerk/nextjs";
 import {
   Globe, Shield, Lock, Check, X, Menu, ArrowRight, Mail,
   Upload, FileText, MessageSquare, Scale, Target, ShieldCheck,
-  ChevronDown, Quote,
+  ChevronDown, Quote, Building2, Users, UserCheck, BookOpen, Eye,
+  TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -361,8 +362,9 @@ function ContextEngine() {
   ];
 
   return (
-    <section id="context-engine" className="py-20 sm:py-24 bg-white">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="context-engine" className="relative overflow-hidden py-20 sm:py-24 bg-white">
+      <div className="absolute -top-24 left-1/2 -translate-x-1/2 h-72 w-[36rem] rounded-full bg-[#00BFA6]/[0.06] blur-[100px] pointer-events-none" />
+      <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-14">
           <span className="inline-block rounded-full bg-[#0F2A2A] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-white mb-5">
             The Contralyne Context Engine
@@ -552,10 +554,26 @@ function AskAnything() {
 // ─── Section 8: Jurisdictions ────────────────────────────────────────────────────
 
 const JURISDICTIONS = [
-  { code: "US", name: "United States", body: "Uniform Commercial Code, Delaware corporate law, state-level enforceability of liability caps and non-competes, and typical US market positions on indemnity and limitation." },
-  { code: "UK", name: "United Kingdom", body: "English contract law, the Companies Act 2006, UCTA reasonableness on exclusion clauses, and English drafting convention for boilerplate." },
-  { code: "EU", name: "European Union", body: "GDPR data processing obligations, mandatory DPA terms, cross-border transfer mechanisms, and EU consumer and commercial protections." },
-  { code: "IN", name: "India", body: "The Indian Contract Act 1872, enforceability of liquidated damages under Section 74, stamp duty and arbitration considerations, and Indian commercial drafting practice." },
+  {
+    code: "US", flag: "🇺🇸", name: "United States",
+    body: "Uniform Commercial Code, Delaware corporate law, state-level enforceability of liability caps and non-competes, and typical US market positions on indemnity and limitation.",
+    tags: ["Uniform Commercial Code", "Delaware corporate law", "Liability cap enforceability", "Non-compete enforceability"],
+  },
+  {
+    code: "UK", flag: "🇬🇧", name: "United Kingdom",
+    body: "English contract law, the Companies Act 2006, UCTA reasonableness on exclusion clauses, and English drafting convention for boilerplate.",
+    tags: ["English contract law", "Companies Act 2006", "UCTA reasonableness", "Drafting convention"],
+  },
+  {
+    code: "EU", flag: "🇪🇺", name: "European Union",
+    body: "GDPR data processing obligations, mandatory DPA terms, cross-border transfer mechanisms, and EU consumer and commercial protections.",
+    tags: ["GDPR", "Mandatory DPA terms", "Cross-border transfer", "Consumer & commercial protections"],
+  },
+  {
+    code: "IN", flag: "🇮🇳", name: "India",
+    body: "The Indian Contract Act 1872, enforceability of liquidated damages under Section 74, stamp duty and arbitration considerations, and Indian commercial drafting practice.",
+    tags: ["Indian Contract Act 1872", "Section 74 — liquidated damages", "Stamp duty", "Arbitration"],
+  },
 ];
 
 function Jurisdictions() {
@@ -583,13 +601,21 @@ function Jurisdictions() {
                   onClick={() => setOpen(isOpen ? null : j.code)}
                   className="w-full flex items-center gap-4 px-5 py-4 text-left"
                 >
-                  <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[#00BFA6]/10 text-[#00BFA6] text-xs font-bold shrink-0">{j.code}</span>
+                  <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[#00BFA6]/10 text-base shrink-0" aria-hidden>{j.flag}</span>
                   <span className="text-base font-bold text-[#0F2A2A] flex-1">{j.name}</span>
+                  <span className="hidden sm:inline text-[11px] font-bold uppercase tracking-wider text-[#0F2A2A]/30">{j.code}</span>
                   <ChevronDown className={`h-4 w-4 text-[#0F2A2A]/40 transition-transform ${isOpen ? "rotate-180" : ""}`} />
                 </button>
                 {isOpen && (
                   <div className="px-5 pb-5 pl-[4.25rem]">
                     <p className="text-sm text-[#0F2A2A]/65 leading-relaxed">{j.body}</p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {j.tags.map(tag => (
+                        <span key={tag} className="inline-block rounded-full bg-[#D9FAF4] px-3 py-1 text-xs font-medium text-[#0F2A2A]/70">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -606,12 +632,14 @@ function Jurisdictions() {
 function Segments() {
   const cards = [
     {
+      icon: Building2,
       title: "For law firms",
       body: "You review contracts your client will be judged on, and every hour you spend on first-pass review is an hour of partner time spent below your rate. Contralyne handles the first pass against your playbook, so associates deliver at partner standard and partners spend their time on the judgment calls that clients actually pay for.",
       points: ["Playbook enforcement across the whole team", "Consistent output regardless of who runs the review", "Cross-border matters without cross-border counsel on every question"],
       cta: "Explore for law firms",
     },
     {
+      icon: Users,
       title: "For in-house teams",
       body: "You are the bottleneck between sales and revenue, and the volume does not care about your headcount. Contralyne gives you a defensible first pass on every incoming contract, so the standard ones move and you spend your attention on the ones that matter.",
       points: ["Faster turnaround on vendor and customer paper", "Your positions applied automatically, every time", "Clear risk trail for anything that escalates"],
@@ -620,8 +648,9 @@ function Segments() {
   ];
 
   return (
-    <section id="segments" className="py-20 sm:py-24 bg-white">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="segments" className="relative overflow-hidden py-20 sm:py-24 bg-white">
+      <div className="absolute top-1/2 -translate-y-1/2 -right-32 h-80 w-80 rounded-full bg-[#00BFA6]/[0.06] blur-[110px] pointer-events-none" />
+      <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-14">
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-[#0F2A2A] leading-tight">
             Whether you bill the review <span className="font-serif italic font-medium">or absorb it</span>
@@ -631,6 +660,9 @@ function Segments() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {cards.map(c => (
             <div key={c.title} className="rounded-2xl bg-[#D9FAF4] p-8">
+              <div className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-white text-[#00BFA6] mb-5 shadow-sm">
+                <c.icon className="h-5 w-5" />
+              </div>
               <h3 className="text-xl font-bold text-[#0F2A2A] mb-3">{c.title}</h3>
               <p className="text-[15px] text-[#0F2A2A]/65 leading-relaxed mb-5">{c.body}</p>
               <ul className="space-y-2 mb-6">
@@ -711,15 +743,18 @@ function Playbook() {
 function ProfessionalResponsibility() {
   const columns = [
     {
+      icon: UserCheck,
       title: "Human in the loop, by design",
       body: "Contralyne produces analysis and drafts language. It does not advise, and it does not sign. Every output is a starting point for a qualified practitioner, and professional judgment stays where the professional rules require it: with you.",
     },
     {
+      icon: BookOpen,
       title: "Aligned with professional guidance",
       body: "Our approach reflects the principles set out in the ABA's Formal Opinion 512 on generative AI, the EU AI Act's transparency obligations, and equivalent guidance emerging across the jurisdictions we cover.",
       flag: true,
     },
     {
+      icon: Eye,
       title: "Transparent about accuracy",
       body: "No AI catches everything, and any vendor who claims otherwise is not being straight with you. We publish our benchmark methodology, what we test against, and where the model is weakest, so you can calibrate how much to rely on it.",
     },
@@ -737,6 +772,9 @@ function ProfessionalResponsibility() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
           {columns.map(c => (
             <div key={c.title}>
+              <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-[#D9FAF4] text-[#0F2A2A] mb-4">
+                <c.icon className="h-4 w-4" />
+              </div>
               <h3 className="text-base font-bold text-[#0F2A2A] mb-2.5 flex items-center gap-2">
                 {c.title}
                 {c.flag && <ConfirmBadge>counsel review</ConfirmBadge>}
@@ -797,9 +835,9 @@ function Security() {
 
 function GettingStarted() {
   const steps = [
-    { label: "Day 1", body: "Accounts created for your whole team. No software to install, no Word add-in, no IT ticket. Open a browser and upload your first contract." },
-    { label: "Week 1", body: "Your playbook rules loaded and tested against contracts you have already negotiated, so you can see how Contralyne would have handled deals you know the answer to." },
-    { label: "Week 4", body: "Running on live matters, with your team's usage patterns feeding back into your rules." },
+    { icon: Upload, label: "Day 1", body: "Accounts created for your whole team. No software to install, no Word add-in, no IT ticket. Open a browser and upload your first contract." },
+    { icon: Target, label: "Week 1", body: "Your playbook rules loaded and tested against contracts you have already negotiated, so you can see how Contralyne would have handled deals you know the answer to." },
+    { icon: TrendingUp, label: "Week 4", body: "Running on live matters, with your team's usage patterns feeding back into your rules." },
   ];
 
   return (
@@ -815,8 +853,8 @@ function GettingStarted() {
           <div className="hidden sm:block absolute top-5 left-[16.5%] right-[16.5%] h-px bg-[#0F2A2A]/10" />
           {steps.map((s) => (
             <div key={s.label} className="relative text-center sm:text-left">
-              <div className="inline-flex h-10 w-10 rounded-full bg-[#00BFA6] text-white items-center justify-center text-xs font-bold mb-4 relative bg-white ring-4 ring-white">
-                <span className="h-2.5 w-2.5 rounded-full bg-[#00BFA6]" />
+              <div className="inline-flex h-10 w-10 rounded-full bg-[#00BFA6] text-white items-center justify-center mb-4 relative ring-4 ring-white">
+                <s.icon className="h-4 w-4" />
               </div>
               <p className="text-sm font-bold text-[#00BFA6] uppercase tracking-wide mb-1.5">{s.label}</p>
               <p className="text-sm text-[#0F2A2A]/65 leading-relaxed">{s.body}</p>
