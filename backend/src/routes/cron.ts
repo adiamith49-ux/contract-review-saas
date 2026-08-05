@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "../db.js";
 import { config } from "../config.js";
-import { isMailerConfigured, sendMail } from "../services/mailer.service.js";
+import { isMailerConfigured, sendMail, wrapEmail, emailParagraphs, emailInfoBox, emailButton } from "../services/mailer.service.js";
 
 // Scheduled jobs — invoked by Vercel Cron (see backend/vercel.json's "crons"
 // entry), never by a user. Vercel automatically sends `Authorization: Bearer
@@ -55,20 +55,36 @@ cronRouter.get("/obligation-reminders", async (req, res, next) => {
         const contractName = (o as any).contracts?.filename ?? "your contract";
         const overdue = new Date(o.due_date as string).getTime() < todayMs;
         try {
-          await sendMail(
-            email,
-            `${overdue ? "Overdue" : "Reminder"}: ${o.title} — due ${o.due_date}`,
-            `Hi,
+          const dueDateStr = new Date(o.due_date as string).toDateString();
+          const url = `${config.WEB_URL}/contracts/`;
+          const text = `Hi,
 
 ${overdue ? "This is now overdue:" : "This is coming up:"}
 
 ${TYPE_LABELS[o.type as string] ?? "Obligation"}: ${o.title}
 Contract:  ${contractName}
-Due date:  ${new Date(o.due_date as string).toDateString()}
+Due date:  ${dueDateStr}
 
-View it on Contralyne: ${config.WEB_URL}/contracts/
+View it on Contralyne: ${url}
 
-— The Contralyne Team`,
+— The Contralyne Team`;
+          const html = wrapEmail(
+            `${emailParagraphs(
+              `Hi,\n\n${overdue ? "This obligation is now overdue:" : "This obligation is coming up:"}`,
+            )}
+             ${emailInfoBox([
+               { label: "Obligation", value: `${TYPE_LABELS[o.type as string] ?? "Obligation"}: ${o.title}` },
+               { label: "Contract", value: contractName },
+               { label: "Due date", value: dueDateStr },
+             ])}
+             ${emailButton(url, "View on Contralyne")}`,
+            { preheader: `${overdue ? "Overdue" : "Due"}: ${o.title} — ${dueDateStr}` },
+          );
+          await sendMail(
+            email,
+            `${overdue ? "Overdue" : "Reminder"}: ${o.title} — due ${o.due_date}`,
+            text,
+            { html },
           );
           await db.from("contract_obligations").update({ reminder_sent_at: new Date().toISOString() }).eq("id", o.id);
           sent++;

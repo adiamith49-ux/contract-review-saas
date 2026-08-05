@@ -9,7 +9,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { requireActiveOrg, requireOrgAdmin } from "../middleware/org.js";
 import { extractText } from "../services/document.service.js";
 import { deleteFromS3, uploadToS3 } from "../services/storage.service.js";
-import { isMailerConfigured, sendMail } from "../services/mailer.service.js";
+import { isMailerConfigured, sendMail, wrapEmail, emailParagraphs, emailInfoBox, emailNoteBox, emailButton, escapeHtml as escapeAmp } from "../services/mailer.service.js";
 import { buildBillingReport, buildDashboardReport, buildContractsReport } from "../services/report.service.js";
 
 const clerk = createClerkClient({ secretKey: config.CLERK_SECRET_KEY });
@@ -648,13 +648,14 @@ orgRouter.post("/users/add", requireOrgAdmin, async (req, res, next) => {
     let email_sent = false;
     if (isMailerConfigured()) {
       const greeting = first_name ? `Hi ${first_name},` : "Hi,";
-      const body = `${greeting}
+      const signInUrl = `${config.WEB_URL}/sign-in`;
+      const text = `${greeting}
 
 An account has been created for you on Contralyne, the AI contract review platform.
 
 To log in for the first time:
 
-1. Open ${config.WEB_URL}/sign-in
+1. Open ${signInUrl}
 2. Click "Forgot password?"
 3. Enter this email address: ${email}
 4. Check your inbox for a verification code and enter it
@@ -664,9 +665,36 @@ To log in for the first time:
 That's it — you're in. If you have any trouble logging in, reply to this email or contact support@contralyne.com.
 
 — The Contralyne Team`;
+      const html = wrapEmail(
+        `${emailParagraphs(`${greeting}\n\nAn account has been created for you on Contralyne, the AI contract review platform.`)}
+         <p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#6b7280;">First-time login</p>
+         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 20px;">
+           ${[
+             "Open the sign-in page",
+             `Click "Forgot password?"`,
+             `Enter this email address: ${email}`,
+             "Check your inbox for a verification code and enter it",
+             "Choose a new password",
+             "Sign in with your email and new password",
+           ]
+             .map(
+               (step, i) => `
+           <tr>
+             <td valign="top" style="padding:5px 10px 5px 0;">
+               <span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:#D9FAF4;color:#0F2A2A;font-size:11px;font-weight:700;text-align:center;line-height:20px;">${i + 1}</span>
+             </td>
+             <td style="padding:5px 0;font-size:13.5px;line-height:1.5;color:#1f2937;">${escapeAmp(step)}</td>
+           </tr>`,
+             )
+             .join("")}
+         </table>
+         ${emailButton(signInUrl, "Sign in to Contralyne")}
+         ${emailParagraphs("That's it — you're in. If you have any trouble logging in, reply to this email or contact support@contralyne.com.")}`,
+        { preheader: "Your Contralyne account is ready — here's how to log in" },
+      );
       try {
         await Promise.race([
-          sendMail(email, "Your Contralyne account is ready", body),
+          sendMail(email, "Your Contralyne account is ready", text, { html }),
           new Promise((_, rej) => setTimeout(() => rej(new Error("mail timeout")), 12000)),
         ]);
         email_sent = true;
@@ -933,10 +961,8 @@ orgRouter.patch("/tickets/:id", requireOrgAdmin, async (req, res, next) => {
     if (justResolved && ownerEmail && isMailerConfigured()) {
       try {
         const subjectRef = data.reference_name ? ` — ${data.reference_name}` : "";
-        await sendMail(
-          ownerEmail,
-          `Your Contralyne support ticket has been resolved${subjectRef}`,
-          `Hi,
+        const signInUrl = `${config.WEB_URL}/sign-in`;
+        const text = `Hi,
 
 Good news — your support ticket on Contralyne has been resolved by our team.
 
@@ -947,11 +973,32 @@ Raised on: ${new Date(data.created_at).toDateString()}
 Your request:
 ${data.description}
 ${data.admin_notes ? `\nNote from our team:\n${data.admin_notes}\n` : ""}
-You can log in at ${config.WEB_URL}/sign-in to continue where you left off.
+You can log in at ${signInUrl} to continue where you left off.
 
 If the issue isn't fully fixed, just reply to this email and we'll take another look.
 
-— The Contralyne Team`,
+— The Contralyne Team`;
+        const html = wrapEmail(
+          `${emailParagraphs("Hi,\n\nGood news — your support ticket on Contralyne has been resolved by our team.")}
+           ${emailInfoBox(
+             [
+               { label: "Type", value: String(data.type) },
+               { label: "Regarding", value: data.reference_name ?? "" },
+               { label: "Raised on", value: new Date(data.created_at).toDateString() },
+             ],
+             { title: "Ticket details" },
+           )}
+           ${emailNoteBox(data.description, { label: "Your request" })}
+           ${data.admin_notes ? emailNoteBox(data.admin_notes, { label: "Note from our team" }) : ""}
+           ${emailButton(signInUrl, "Sign in to Contralyne")}
+           ${emailParagraphs("If the issue isn't fully fixed, just reply to this email and we'll take another look.")}`,
+          { preheader: `Your ticket${subjectRef} has been resolved` },
+        );
+        await sendMail(
+          ownerEmail,
+          `Your Contralyne support ticket has been resolved${subjectRef}`,
+          text,
+          { html },
         );
         email_sent = true;
       } catch (mailErr) {
@@ -1019,21 +1066,37 @@ orgRouter.post("/tasks/with-attachment", requireOrgAdmin, upload.single("file"),
     let email_sent = false;
     if (isMailerConfigured()) {
       try {
-        const due = body.due_date ? `\nDue date:  ${new Date(body.due_date + "T00:00:00").toDateString()}` : "";
+        const dueStr = body.due_date ? new Date(body.due_date + "T00:00:00").toDateString() : "";
+        const due = dueStr ? `\nDue date:  ${dueStr}` : "";
         const attachmentLine = attachment ? `\nAttached document: ${attachment.attachment_filename} — download it from your Tasks page.` : "";
-        await sendMail(
-          target.email,
-          `New task assigned to you: ${body.title}`,
-          `Hi,
+        const tasksUrl = `${config.WEB_URL}/tasks`;
+        const text = `Hi,
 
 A new task has been assigned to you on Contralyne:
 
 Task:      ${body.title}
 Priority:  ${body.priority}${due}${attachmentLine}${body.notes ? `\n\nDetails:\n${body.notes}` : ""}
 
-View your tasks: ${config.WEB_URL}/tasks
+View your tasks: ${tasksUrl}
 
-— The Contralyne Team`,
+— The Contralyne Team`;
+        const html = wrapEmail(
+          `${emailParagraphs("Hi,\n\nA new task has been assigned to you on Contralyne:")}
+           ${emailInfoBox([
+             { label: "Task", value: body.title },
+             { label: "Priority", value: body.priority },
+             { label: "Due date", value: dueStr },
+             { label: "Attachment", value: attachment ? attachment.attachment_filename : "" },
+           ])}
+           ${body.notes ? emailNoteBox(body.notes, { label: "Details" }) : ""}
+           ${emailButton(tasksUrl, "View your tasks")}`,
+          { preheader: `New task: ${body.title}` },
+        );
+        await sendMail(
+          target.email,
+          `New task assigned to you: ${body.title}`,
+          text,
+          { html },
         );
         email_sent = true;
       } catch (mailErr) {

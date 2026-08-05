@@ -7,7 +7,7 @@ import { db } from "../db.js";
 import { config } from "../config.js";
 import { requireAdmin } from "../middleware/adminAuth.js";
 import { authLimiter } from "../middleware/rateLimit.js";
-import { isMailerConfigured, sendMail } from "../services/mailer.service.js";
+import { isMailerConfigured, sendMail, wrapEmail, emailParagraphs, emailCodeBox } from "../services/mailer.service.js";
 
 // Mounted at /superadmin — the platform-level tier above every organization.
 // Everything org-specific (clients, users, contracts, clauses, playbooks,
@@ -89,11 +89,14 @@ adminRouter.post("/auth/forgot-password", authLimiter, async (req, res, next) =>
         .eq("id", (admin as any).id);
       if (error) throw error;
 
-      await sendMail(
-        (admin as any).email,
-        "Contralyne admin password reset",
-        `Your Contralyne admin password reset code is: ${code}\n\nIt expires in 15 minutes. If you did not request this, you can ignore this email.`,
+      const text = `Your Contralyne admin password reset code is: ${code}\n\nIt expires in 15 minutes. If you did not request this, you can ignore this email.`;
+      const html = wrapEmail(
+        `${emailParagraphs("Hi,\n\nUse this code to reset your Contralyne admin password:")}
+         ${emailCodeBox(code)}
+         ${emailParagraphs("It expires in 15 minutes. If you did not request this, you can safely ignore this email.")}`,
+        { preheader: `Your password reset code is ${code}` },
       );
+      await sendMail((admin as any).email, "Contralyne admin password reset", text, { html });
     }
 
     res.json({ ok: true });
@@ -169,11 +172,14 @@ adminRouter.post("/auth/request-otp", authLimiter, async (req, res, next) => {
         .eq("id", (admin as any).id);
       if (error) throw error;
 
-      await sendMail(
-        (admin as any).email,
-        "Your Contralyne sign-in code",
-        `Your Contralyne super admin sign-in code is: ${code}\n\nIt expires in 15 minutes. If you did not request this, you can ignore this email.`,
+      const text = `Your Contralyne super admin sign-in code is: ${code}\n\nIt expires in 15 minutes. If you did not request this, you can ignore this email.`;
+      const html = wrapEmail(
+        `${emailParagraphs("Hi,\n\nUse this code to sign in to Contralyne Super Admin:")}
+         ${emailCodeBox(code)}
+         ${emailParagraphs("It expires in 15 minutes. If you did not request this, you can safely ignore this email.")}`,
+        { preheader: `Your sign-in code is ${code}` },
       );
+      await sendMail((admin as any).email, "Your Contralyne sign-in code", text, { html });
     }
 
     // Always OK — never reveal whether an admin account exists for this email
