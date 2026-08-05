@@ -904,31 +904,121 @@ function WhyContralyne() {
 }
 
 // ─── Section 15: Founder and origin ──────────────────────────────────────────────
-// Shell only — placeholder copy, clearly marked. Needs to be written with the
-// founder (first person, signed, with photo + LinkedIn) before this ships.
+// Real first-person founder story, provided 2026-08-05. Photo and byline
+// (name / title / LinkedIn) are still placeholders — flagged individually,
+// not the whole section, since the story text itself is now final copy.
 
 function FounderOrigin() {
   return (
     <section className="py-20 sm:py-24 bg-white">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-center mb-6">
-          <ConfirmBadge>placeholder section — write with founder before publishing</ConfirmBadge>
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-10 items-start rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50/30 p-8">
-          <div className="mx-auto lg:mx-0 h-48 w-48 rounded-2xl bg-[#0F2A2A]/10 flex items-center justify-center text-[#0F2A2A]/30 text-sm font-medium text-center">
-            Founder photo
+        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-10 items-start">
+          <div className="lg:sticky lg:top-24">
+            <div className="mx-auto lg:mx-0 h-48 w-48 rounded-2xl bg-[#0F2A2A]/10 flex items-center justify-center text-[#0F2A2A]/30 text-sm font-medium text-center">
+              Founder photo
+            </div>
+            <div className="mt-3 flex justify-center lg:justify-start">
+              <ConfirmBadge>confirm photo</ConfirmBadge>
+            </div>
           </div>
+
           <div>
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#0F2A2A] leading-tight mb-4">
+            <span className="inline-block text-xs font-semibold uppercase tracking-[0.18em] text-[#00BFA6] mb-4">
+              Built from the contract problems legal teams actually face
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#0F2A2A] leading-tight mb-6">
               Why we built this
             </h2>
-            <p className="text-[15px] text-[#0F2A2A]/60 leading-relaxed italic">
-              [Placeholder — first-person, signed story to be written with the founder: the specific
-              moment that caused it (a real contract, a real jurisdiction mismatch, a real near-miss);
-              what was wrong with the tools that existed; the one belief the product rests on; what
-              Contralyne refuses to do.]
-            </p>
-            <p className="mt-5 text-sm font-semibold text-[#0F2A2A]/40">— [Name], [Title] · LinkedIn</p>
+
+            <div className="space-y-5 text-[15px] text-[#0F2A2A]/70 leading-relaxed">
+              <p>
+                I spent years working with commercial and technology contracts before building Contralyne.
+                The problems I kept seeing were not exotic or unusual. They were the kind that slip through
+                precisely because they are routine — and the kind that create tension between the people who
+                need contracts closed and the people responsible for making sure they are safe to sign.
+              </p>
+              <p>
+                A sales team or business unit needs a deal closed. A customer is waiting, a project has a
+                start date, or a quarter is ending. The contract lands with legal, and legal has to read it
+                carefully, compare it against the organisation&apos;s positions, identify what needs to
+                change, and push back on language that creates unacceptable risk.
+              </p>
+              <p>
+                The business is not wrong that speed matters. Legal is not wrong that the contract matters.
+                The problem is that the review process often requires a lawyer to hold everything in their
+                head simultaneously — the contract language, the organisation&apos;s preferred positions,
+                the business context and the risk threshold — while working under pressure.
+              </p>
+              <p>I saw the consequences of that gap firsthand.</p>
+              <p>
+                A business unit had been running on order forms for years — purchasing software, engaging
+                vendors and committing spend — without a Master Services Agreement governing those
+                transactions. Nobody had flagged the gap because the transactions kept working. When a
+                dispute arose, there was no governing framework to stand behind. We ultimately drafted the
+                MSA retrospectively, but the exposure that had existed silently for years was significant
+                and entirely avoidable.
+              </p>
+              <p>
+                In the same engagement, a vendor draft contained a one-sided indemnification provision.
+                There was no limitation of liability, no termination for convenience, and the broader
+                contract portfolio contained evergreen auto-renewal provisions that had been rolling over
+                silently for years, some with renewal windows as short as thirty days.
+              </p>
+              <p>
+                We addressed those issues by negotiating mutual indemnity, introducing an appropriate
+                limitation of liability with carve-outs, securing a termination-for-convenience right, and
+                restructuring the affected agreements onto fixed three-year terms with explicit renewal
+                decisions at each cycle.
+              </p>
+              <p>
+                These were not unusual contracts or extraordinary legal problems. They were ordinary
+                commercial issues that became significant because there was no systematic way to identify
+                them early, measure them against the organisation&apos;s position, and make the required
+                action visible to everyone involved.
+              </p>
+              <p>That experience led to a simple question:</p>
+
+              <p className="border-l-2 border-[#00BFA6] pl-5 italic text-[#0F2A2A] font-medium text-base">
+                What if the legal team could show the business exactly where a contract stands against the
+                organisation&apos;s position — in the time it takes to have the conversation about why the
+                review is taking so long?
+              </p>
+
+              <p>That became the foundation of Contralyne.</p>
+              <p>
+                Contralyne is built around <em className="not-italic font-semibold text-[#0F2A2A]">playbook-driven contract review</em>.
+                An organisation&apos;s preferred positions, acceptable fallback language and walk-away terms
+                can be embedded into the review process from the start. When a contract comes in, Contralyne
+                measures its provisions against those positions, flags the deviations that matter, surfaces
+                the clauses requiring attention, and provides a structured starting point for negotiation.
+              </p>
+              <p>
+                The objective is not simply to tell a lawyer what a contract says. It is to help answer the
+                more important question: <em className="not-italic font-semibold text-[#0F2A2A]">what should we do about it?</em>
+              </p>
+              <p>
+                That also creates a shared language between legal and the business. Instead of legal simply
+                saying that a contract needs review, the organisation can see what the contract says, where
+                it falls short of its established position, what requires attention, and what remains to be
+                resolved before signature.
+              </p>
+              <p>
+                The principle behind Contralyne is straightforward:{" "}
+                <em className="not-italic font-semibold text-[#0F2A2A]">AI should handle the repetitive analysis so lawyers can focus on the judgment calls that actually require them.</em>{" "}
+                The lawyer remains in control of every final decision. The system handles the work that
+                should not need to be done manually and surfaces the issues that deserve legal attention
+                before they become problems discovered too late.
+              </p>
+              <p className="font-medium text-[#0F2A2A]">
+                Contralyne exists because the gap between legal and the business is not a personality
+                problem. <em className="not-italic font-semibold">It is an infrastructure problem. And infrastructure can be fixed.</em>
+              </p>
+            </div>
+
+            <div className="mt-6 flex items-center gap-2 flex-wrap">
+              <p className="text-sm font-semibold text-[#0F2A2A]/70">— [Name], [Title] · LinkedIn</p>
+              <ConfirmBadge>confirm name, title, LinkedIn</ConfirmBadge>
+            </div>
           </div>
         </div>
       </div>
