@@ -137,6 +137,82 @@ adminRouter.post("/auth/reset-password", authLimiter, async (req, res, next) => 
   }
 });
 
+// ─── Passwordless login (email one-time code) ─────────────────────────────────
+// Reuses the same reset_code_hash/reset_code_expires_at columns as forgot-
+// password (structurally identical: a hashed, expiring 6-digit code) but
+// never touches password_hash — this is a second, independent way in, not a
+// password reset. The super admin login UI uses this exclusively.
+
+adminRouter.post("/auth/request-otp", authLimiter, async (req, res, next) => {
+  try {
+    const { email } = z.object({ email: z.string().email() }).parse(req.body);
+
+    if (!isMailerConfigured()) {
+      res.status(503).json({ error: "Login email is not configured on the server. Contact your developer." });
+      return;
+    }
+
+    const { data: admin } = await db
+      .from("admins")
+      .select("id, email")
+      .eq("email", email.toLowerCase().trim())
+      .single();
+
+    if (admin) {
+      const code = String(crypto.randomInt(100000, 1000000));
+      const reset_code_hash = await bcrypt.hash(code, 10);
+      const reset_code_expires_at = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+
+      const { error } = await db
+        .from("admins")
+        .update({ reset_code_hash, reset_code_expires_at })
+        .eq("id", (admin as any).id);
+      if (error) throw error;
+
+      await sendMail(
+        (admin as any).email,
+        "Your Contralyne sign-in code",
+        `Your Contralyne super admin sign-in code is: ${code}\n\nIt expires in 15 minutes. If you did not request this, you can ignore this email.`,
+      );
+    }
+
+    // Always OK — never reveal whether an admin account exists for this email
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.post("/auth/verify-otp", authLimiter, async (req, res, next) => {
+  try {
+    const { email, code } = z.object({
+      email: z.string().email(),
+      code: z.string().length(6),
+    }).parse(req.body);
+
+    const { data: admin } = await db
+      .from("admins")
+      .select("id, email, name, reset_code_hash, reset_code_expires_at")
+      .eq("email", email.toLowerCase().trim())
+      .single();
+
+    const a = admin as any;
+    const expired = !a?.reset_code_expires_at || new Date(a.reset_code_expires_at) < new Date();
+    if (!a?.reset_code_hash || expired || !(await bcrypt.compare(code, a.reset_code_hash))) {
+      res.status(400).json({ error: "Invalid or expired code" });
+      return;
+    }
+
+    // One-time: clear the code so it can't be replayed, but leave password_hash untouched
+    await db.from("admins").update({ reset_code_hash: null, reset_code_expires_at: null }).eq("id", a.id);
+
+    const token = signAdminToken(a.email);
+    res.json({ token, admin: { email: a.email, name: a.name } });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ─── Stats (organization-level only — never tenant business data) ────────────
 // The super admin manages the *list* of organizations, not what's inside any
 // one firm's account. Counting clients/users/contracts/tickets across every

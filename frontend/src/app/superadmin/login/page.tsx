@@ -1,68 +1,53 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { superAdminLogin, superAdminForgotPassword, superAdminResetPassword, setSuperAdminToken } from "@/lib/superadmin-api";
+import { requestSuperAdminOtp, verifySuperAdminOtp, setSuperAdminToken } from "@/lib/superadmin-api";
 import { ContralyneLogoMark } from "@/components/ContralyneLogoMark";
 
-type View = "signin" | "forgot" | "reset";
+type View = "email" | "code";
 
+// Passwordless by design — a super admin signs in with a one-time code
+// emailed to their address, not a password. See admin.ts's /auth/request-otp
+// and /auth/verify-otp.
 export default function SuperAdminLoginPage() {
   const router = useRouter();
-  const [view, setView]         = useState<View>("signin");
-  const [email, setEmail]       = useState("");
-  const [password, setPassword] = useState("");
-  const [showPw, setShowPw]     = useState(false);
+  const [view, setView] = useState<View>("email");
+  const [email, setEmail]   = useState("");
+  const [code, setCode]     = useState("");
   const [remember, setRemember] = useState(true);
-  const [code, setCode]         = useState("");
-  const [newPw, setNewPw]       = useState("");
-  const [showNewPw, setShowNewPw] = useState(false);
-  const [loading, setLoading]   = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const inputCls = "bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 focus-visible:ring-primary";
   const labelCls = "text-xs font-medium text-slate-400 mb-1.5 block";
 
-  async function handleLogin(e: React.FormEvent) {
+  async function handleRequestCode(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     try {
-      const { token } = await superAdminLogin(email, password);
-      setSuperAdminToken(token, remember);
-      router.push("/superadmin/dashboard");
+      await requestSuperAdminOtp(email.trim());
+      toast.success("If that email has super admin access, a sign-in code is on its way.");
+      setCode("");
+      setView("code");
     } catch (err: any) {
-      toast.error(err.message ?? "Invalid credentials");
+      toast.error(err.message ?? "Could not send sign-in code");
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleForgot(e: React.FormEvent) {
+  async function handleVerifyCode(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     try {
-      await superAdminForgotPassword(email);
-      toast.success("If an account exists for this email, a reset code has been sent.");
-      setView("reset");
-    } catch (err: any) {
-      toast.error(err.message ?? "Could not send reset code");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleReset(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const { token } = await superAdminResetPassword(email, code.trim(), newPw);
+      const { token } = await verifySuperAdminOtp(email.trim(), code.trim());
       setSuperAdminToken(token, remember);
-      toast.success("Password updated");
       router.push("/superadmin/dashboard");
     } catch (err: any) {
-      toast.error(err.message ?? "Could not reset password");
+      toast.error(err.message ?? "Could not verify that code");
     } finally {
       setLoading(false);
     }
@@ -80,17 +65,20 @@ export default function SuperAdminLoginPage() {
         </div>
 
         <div className="bg-[#0F2A2A] rounded-2xl border border-slate-700/60 p-6 shadow-2xl">
-          {view === "signin" && (
+          {view === "email" && (
             <>
-              <h2 className="text-base font-semibold text-white mb-5">Sign in</h2>
+              <h2 className="text-base font-semibold text-white mb-1">Sign in</h2>
+              <p className="text-xs text-slate-400 mb-5">
+                Enter your email and we&apos;ll send you a one-time sign-in code — no password needed.
+              </p>
 
-              <form onSubmit={handleLogin} className="space-y-4">
+              <form onSubmit={handleRequestCode} className="space-y-4">
                 <div>
                   <label htmlFor="sa-email" className={labelCls}>Email address</label>
                   <Input
                     id="sa-email"
                     type="email"
-                    placeholder="amith@contralyne.com"
+                    placeholder="admin@contralyne.com"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     autoComplete="username"
@@ -98,39 +86,6 @@ export default function SuperAdminLoginPage() {
                     autoFocus
                     className={inputCls}
                   />
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label htmlFor="sa-password" className="text-xs font-medium text-slate-400">Password</label>
-                    <button
-                      type="button"
-                      onClick={() => setView("forgot")}
-                      className="text-xs font-medium text-primary hover:underline"
-                    >
-                      Forgot password?
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <Input
-                      id="sa-password"
-                      type={showPw ? "text" : "password"}
-                      placeholder="••••••••"
-                      value={password}
-                      onChange={e => setPassword(e.target.value)}
-                      autoComplete="current-password"
-                      required
-                      className={`${inputCls} pr-10`}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPw(v => !v)}
-                      aria-label={showPw ? "Hide password" : "Show password"}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
-                    >
-                      {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
                 </div>
 
                 <label className="flex items-center gap-2 text-xs text-slate-400 select-none cursor-pointer">
@@ -144,62 +99,24 @@ export default function SuperAdminLoginPage() {
                 </label>
 
                 <Button type="submit" className="w-full mt-2" disabled={loading}>
-                  {loading ? "Signing in…" : "Sign in"}
+                  {loading ? "Sending…" : "Send sign-in code"}
                 </Button>
               </form>
             </>
           )}
 
-          {view === "forgot" && (
+          {view === "code" && (
             <>
-              <h2 className="text-base font-semibold text-white mb-1">Reset password</h2>
-              <p className="text-xs text-slate-400 mb-5">
-                Enter your email and we&apos;ll send you a 6-digit reset code.
-              </p>
-
-              <form onSubmit={handleForgot} className="space-y-4">
-                <div>
-                  <label htmlFor="forgot-email" className={labelCls}>Email address</label>
-                  <Input
-                    id="forgot-email"
-                    type="email"
-                    placeholder="amith@contralyne.com"
-                    value={email}
-                    onChange={e => setEmail(e.target.value)}
-                    autoComplete="email"
-                    required
-                    autoFocus
-                    className={inputCls}
-                  />
-                </div>
-
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? "Sending…" : "Send reset code"}
-                </Button>
-              </form>
-
-              <button
-                type="button"
-                onClick={() => setView("signin")}
-                className="mt-4 flex w-full items-center justify-center gap-1.5 text-xs text-slate-400 hover:text-slate-200"
-              >
-                <ArrowLeft className="h-3 w-3" /> Back to sign in
-              </button>
-            </>
-          )}
-
-          {view === "reset" && (
-            <>
-              <h2 className="text-base font-semibold text-white mb-1">Enter reset code</h2>
+              <h2 className="text-base font-semibold text-white mb-1">Enter your code</h2>
               <p className="text-xs text-slate-400 mb-5">
                 We sent a code to <span className="text-slate-200">{email}</span>. It expires in 15 minutes.
               </p>
 
-              <form onSubmit={handleReset} className="space-y-4">
+              <form onSubmit={handleVerifyCode} className="space-y-4">
                 <div>
-                  <label htmlFor="reset-code" className={labelCls}>Reset code</label>
+                  <label htmlFor="sa-code" className={labelCls}>Sign-in code</label>
                   <Input
-                    id="reset-code"
+                    id="sa-code"
                     type="text"
                     inputMode="numeric"
                     placeholder="123456"
@@ -212,47 +129,22 @@ export default function SuperAdminLoginPage() {
                   />
                 </div>
 
-                <div>
-                  <label htmlFor="new-password" className={labelCls}>New password</label>
-                  <div className="relative">
-                    <Input
-                      id="new-password"
-                      type={showNewPw ? "text" : "password"}
-                      placeholder="At least 8 characters"
-                      value={newPw}
-                      onChange={e => setNewPw(e.target.value)}
-                      autoComplete="new-password"
-                      minLength={8}
-                      required
-                      className={`${inputCls} pr-10`}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowNewPw(v => !v)}
-                      aria-label={showNewPw ? "Hide password" : "Show password"}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
-                    >
-                      {showNewPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-
                 <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? "Resetting…" : "Reset password & sign in"}
+                  {loading ? "Verifying…" : "Sign in"}
                 </Button>
               </form>
 
               <div className="mt-4 flex items-center justify-between text-xs">
                 <button
                   type="button"
-                  onClick={() => { setCode(""); setView("forgot"); }}
+                  onClick={() => { setCode(""); setView("email"); }}
                   className="flex items-center gap-1.5 text-slate-400 hover:text-slate-200"
                 >
                   <ArrowLeft className="h-3 w-3" /> Back
                 </button>
                 <button
                   type="button"
-                  onClick={handleForgot}
+                  onClick={() => handleRequestCode({ preventDefault: () => {} } as React.FormEvent)}
                   disabled={loading}
                   className="font-medium text-primary hover:underline disabled:opacity-50"
                 >
