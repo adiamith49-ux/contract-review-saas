@@ -1,11 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import {
   ArrowLeft, Download, Loader2, AlertTriangle, FileText, RefreshCw, GitPullRequest,
-  AlignLeft, X, Pencil, Building2, Calendar, User, DollarSign, Globe, Upload,
+  AlignLeft, X, Pencil, Building2, Calendar, User, DollarSign, Globe, Upload, GitCompare,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,7 @@ export default function ContractDetailPage() {
   const { getToken } = useAuth();
 
   const [contract, setContract] = useState<ContractDetail | null>(null);
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeElapsed, setAnalyzeElapsed] = useState(0);
@@ -405,6 +406,9 @@ export default function ContractDetailPage() {
             analyzing={analyzing}
             elapsed={analyzeElapsed}
             errorMessage={contract.error_message}
+            isVersion={!!contract.parent_contract_id}
+            versionNumber={contract.version_number}
+            onCompare={() => router.push(`/contracts/${id}?panel=versions&compare=auto`)}
           />
         </div>
       ) : view === "redline" ? (
@@ -528,12 +532,16 @@ function formatElapsed(seconds: number): string {
 
 function NotAnalyzedState({
   status, onAnalyze, analyzing, elapsed = 0, errorMessage = null,
+  versionNumber = 1, isVersion = false, onCompare,
 }: {
   status: string;
   onAnalyze: () => void;
   analyzing: boolean;
   elapsed?: number;
   errorMessage?: string | null;
+  versionNumber?: number;
+  isVersion?: boolean;
+  onCompare?: () => void;
 }) {
   if (status === "processing") {
     return (
@@ -576,6 +584,34 @@ function NotAnalyzedState({
       </div>
     );
   }
+  // A new version is not re-reviewed on upload — what you want from a
+  // counterparty's draft is what changed, not a fresh risk report on the 95%
+  // they left alone. Lead with the comparison and keep the full review one
+  // click away for when the new draft warrants its own review.
+  if (isVersion) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <GitCompare className="h-10 w-10 text-gray-300 mb-4" />
+        <p className="font-medium text-gray-700">Version {versionNumber} uploaded</p>
+        <p className="text-sm text-gray-400 mt-1 max-w-md">
+          Compare it against the previous draft to see what the counterparty changed, with an
+          AI summary of the changes. A full risk review of this version is optional.
+        </p>
+        <div className="flex items-center gap-2 mt-6">
+          <Button onClick={onCompare}>
+            <GitCompare className="h-4 w-4 mr-2" />
+            View Comparison
+          </Button>
+          <Button variant="outline" onClick={onAnalyze} disabled={analyzing}>
+            {analyzing
+              ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Analyzing…</>
+              : "Run Full AI Analysis"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center">
       <FileText className="h-10 w-10 text-gray-300 mb-4" />
