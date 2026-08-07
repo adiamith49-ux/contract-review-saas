@@ -226,7 +226,7 @@ You are reviewing ONE PORTION of a longer contract (${segment.label}). Other por
   return `${context}${segmentNote}\n\nReview this contract${segment ? " portion" : " end to end"} and return ALL four required fields:
 - riskLevel: overall risk
 - riskSummary: the major risk themes, 1-2 sentences each. Group related findings; ${listRule}
-- clauseAnalysis: one entry per commercially significant one-sided or problematic provision. ${clauseRule} Put the section number in the clause field (e.g. "Section 9.2 — Service Credits"). Keep contractText to the key sentence. ${languageRule} If a finding deviates from a company playbook/review rule provided above, set playbookRule to the playbook name and rule (e.g. "SaaS Playbook — Liability cap: 12 months fees").
+- clauseAnalysis: one entry per commercially significant one-sided or problematic provision. ${clauseRule} Put the section number in the clause field (e.g. "Section 9.2 — Service Credits"). contractText must be the key sentence copied VERBATIM from the contract text below — exact characters, punctuation and capitalisation, no paraphrasing or tidying — because it is matched back against the source to anchor the redline. Always include it. ${languageRule} If a finding deviates from a company playbook/review rule provided above, set playbookRule to the playbook name and rule (e.g. "SaaS Playbook — Liability cap: 12 months fees").
 - negotiationPoints: the leverage points worth taking into the negotiation, most valuable first. ${listRule}
 Also include ambiguityFlags for vague or undefined terms ("reasonable", "material", "best efforts", "promptly", "satisfactory to Customer") that gate an obligation or remedy. ${listRule}
 

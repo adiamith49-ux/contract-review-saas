@@ -147,7 +147,10 @@ export interface ContractDetail {
   file_size: number;
   s3_key: string;
   created_at: string;
-  fileUrl: string;
+  // null whenever the stored original can't be served — the API only signs a
+  // URL it has confirmed resolves. See fileStatus for which case applies.
+  fileUrl: string | null;
+  fileStatus?: "available" | "missing" | "unavailable";
   extracted_text?: string | null;
   summary?: string | null;
   start_date: string | null;

@@ -52,7 +52,11 @@ export default function ExportPage() {
 
   function handleOriginalDownload() {
     if (!contract?.fileUrl) {
-      toast.error("Original file is unavailable");
+      toast.error(
+        contract?.fileStatus === "missing"
+          ? "The original file is no longer in storage. The reviewed exports below still work."
+          : "Can't reach file storage right now — please try again in a moment.",
+      );
       return;
     }
     setDownloading("original");
@@ -140,8 +144,26 @@ export default function ExportPage() {
                 busy={downloading === "original"}
                 iconBg="bg-gray-100" iconColor="text-gray-600" icon={<Download className="h-5 w-5" />}
                 title="Download Original Contract"
-                subtitle={contract.filename}
+                subtitle={
+                  contract.fileUrl
+                    ? contract.filename
+                    : contract.fileStatus === "missing"
+                      ? `${contract.filename} — no longer in storage`
+                      : `${contract.filename} — storage unreachable, try again shortly`
+                }
               />
+              {/* A disabled button with no reason reads as a broken page. Say which
+                  case it is, and that the reviewed exports are unaffected — they
+                  rebuild from the extracted text, not the stored original. */}
+              {!contract.fileUrl && contract.fileStatus === "missing" && (
+                <p className="mt-3 flex items-start gap-1.5 text-xs text-amber-600">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                  <span>
+                    The uploaded file is no longer available in storage. The review, findings
+                    and chat for this contract are unaffected, and the exports above still work.
+                  </span>
+                </p>
+              )}
             </CardContent>
           </Card>
 

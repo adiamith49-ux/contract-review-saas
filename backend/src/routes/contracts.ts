@@ -15,7 +15,7 @@ import { logActivity } from "../services/activity.service.js";
 import { chatWithContract } from "../services/chat.service.js";
 import { extractText, validateFileType } from "../services/document.service.js";
 import { exportToDocx, exportToPdf } from "../services/export.service.js";
-import { buildS3Key, deleteFromS3, downloadFromS3, getPresignedUrl, uploadToS3 } from "../services/storage.service.js";
+import { buildS3Key, deleteFromS3, downloadFromS3, getObjectAvailability, getPresignedUrl, uploadToS3 } from "../services/storage.service.js";
 import { editOriginalDocx, type DocxEdit } from "../services/docxEdit.service.js";
 import { getUserEmail, isApproverForContract } from "./approvals.js";
 
@@ -417,13 +417,22 @@ contractsRouter.get("/:id", async (req, res, next) => {
 
     if (error || !data) { res.status(404).json({ error: "Contract not found" }); return; }
 
-    const fileUrl = await getPresignedUrl(data.s3_key);
+    // Only hand back a URL that will actually resolve. Checking costs one HEAD,
+    // bounded here so a slow or unreachable S3 degrades the page instead of
+    // hanging it — a timeout is reported as "unavailable" (retryable), never as
+    // "missing", which would wrongly tell the user their document is gone.
+    const fileStatus = await withTimeout(
+      getObjectAvailability(data.s3_key),
+      3_000,
+      "s3 availability check timed out",
+    ).catch(() => "unavailable" as const);
+    const fileUrl = fileStatus === "available" ? await getPresignedUrl(data.s3_key) : null;
     // Supabase returns analyses as a single object (not array) when contract_id has UNIQUE constraint.
     // Normalize to array so the frontend type AnalysisOut[] stays correct.
     const analyses = data.analyses
       ? (Array.isArray(data.analyses) ? data.analyses : [data.analyses])
       : [];
-    res.json({ contract: { ...data, analyses, fileUrl } });
+    res.json({ contract: { ...data, analyses, fileUrl, fileStatus } });
   } catch (err) {
     next(err);
   }
