@@ -603,15 +603,20 @@ export async function summarizeChanges(diffText: string, contractType: ContractT
   console.log(`[compare] ${diffText.length} chars → ${segments.length} segments, ${SEGMENT_CONCURRENCY} at a time`);
   const settled = await runWithConcurrency(segments, SEGMENT_CONCURRENCY, async (segmentText, i) =>
     summarizeChangesSegment(segmentText, contractType, { index: i + 1, total: segments.length })
-      .then(r => ({ ok: true as const, r }))
+      .then(r => ({ ok: true as const, r, err: null }))
       .catch(err => {
-        console.error(`[compare] segment ${i + 1}/${segments.length} failed:`, (err as Error)?.message);
-        return { ok: false as const, r: null };
+        console.error(`[compare] segment ${i + 1}/${segments.length} failed:`, (err as Error)?.stack ?? err);
+        return { ok: false as const, r: null, err: (err as Error)?.message ?? String(err) };
       }),
   );
 
   const ok = settled.filter(s => s.ok).map(s => s.r!);
-  if (ok.length === 0) throw new Error("AI did not return a change summary");
+  // Carry the first real cause up — "AI did not return a change summary" on its
+  // own says nothing about why every segment failed.
+  if (ok.length === 0) {
+    const first = settled.find(s => !s.ok)?.err ?? "no segments ran";
+    throw new Error(`All ${segments.length} summary segments failed. First error: ${first}`);
+  }
 
   // Drop duplicates where two segments describe the same clause change.
   const seen = new Set<string>();
