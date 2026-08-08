@@ -4,10 +4,21 @@
 
 export type DiffType = "added" | "deleted" | "modified" | "unchanged";
 
+/** One run of text inside a modified block: unchanged, or added/removed words. */
+export interface DiffPart {
+  t: string;
+  c: "same" | "del" | "add";
+}
+
 export interface DiffBlock {
   type: DiffType;
   base?: string;      // paragraph from the base (prior) version
   compared?: string;  // paragraph from the compared (new) version
+  // Word-level breakdown, present on "modified" blocks only. Without this a
+  // reworded clause is just two walls of text and the reader has to spot the
+  // difference by eye.
+  baseParts?: DiffPart[];
+  comparedParts?: DiffPart[];
 }
 
 export interface DiffResult {
@@ -17,12 +28,69 @@ export interface DiffResult {
   modified: number;
 }
 
+// Above this, a "paragraph" is really a whole page and gets split further.
+// PDF extraction produces almost no blank lines, so blank-line splitting alone
+// yielded 7,500-char units on a real contract — and two 7,500-char units are
+// never byte-identical, so the LCS matched nothing: every page came back as a
+// delete plus an add, with zero unchanged and zero modified blocks.
+const MAX_UNIT_CHARS = 400;
+
+// Sentence boundary: terminator + space + capital/digit, not splitting common
+// legal abbreviations or numbered references like "Section 12.2".
+function splitSentences(block: string): string[] {
+  return block
+    .split(/(?<=[.;:!?])\s+(?=["'(]?[A-Z0-9])/)
+    .reduce<string[]>((acc, s) => {
+      const prev = acc[acc.length - 1];
+      // Re-join fragments left by "No." / "Inc." / a bare numeral.
+      if (prev && /\b(?:No|Inc|Ltd|Corp|Co|e\.g|i\.e|vs|Art|Sec|para)\.$|\b\d+\.$/i.test(prev)) {
+        acc[acc.length - 1] = `${prev} ${s}`;
+      } else acc.push(s);
+      return acc;
+    }, [])
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
 function splitParagraphs(text: string): string[] {
-  return text
+  const blocks = text
     .replace(/\r\n/g, "\n")
     .split(/\n\s*\n+/)              // blank-line separated blocks
     .map(p => p.replace(/\s+/g, " ").trim())
     .filter(Boolean);
+
+  return blocks.flatMap(b => (b.length > MAX_UNIT_CHARS ? splitSentences(b) : [b]));
+}
+
+// ─── Word-level diff inside a modified unit ──────────────────────────────────
+
+function wordLcs(a: string[], b: string[]): { base: DiffPart[]; compared: DiffPart[] } {
+  const n = a.length, m = b.length;
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const base: DiffPart[] = [], compared: DiffPart[] = [];
+  const push = (arr: DiffPart[], t: string, c: DiffPart["c"]) => {
+    const last = arr[arr.length - 1];
+    if (last && last.c === c) last.t += ` ${t}`;   // coalesce runs
+    else arr.push({ t, c });
+  };
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { push(base, a[i], "same"); push(compared, b[j], "same"); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { push(base, a[i], "del"); i++; }
+    else { push(compared, b[j], "add"); j++; }
+  }
+  while (i < n) { push(base, a[i], "del"); i++; }
+  while (j < m) { push(compared, b[j], "add"); j++; }
+  return { base, compared };
+}
+
+function wordDiff(base: string, compared: string) {
+  return wordLcs(base.split(/\s+/).filter(Boolean), compared.split(/\s+/).filter(Boolean));
 }
 
 // LCS table over exact-equal normalized paragraphs
@@ -80,7 +148,14 @@ function reclassifyModified(blocks: DiffBlock[]): DiffBlock[] {
           });
           if (bestIdx >= 0) {
             usedAdded.add(bestIdx);
-            out.push({ type: "modified", base: del.base, compared: added[bestIdx].compared });
+            const parts = wordDiff(del.base!, added[bestIdx].compared!);
+            out.push({
+              type: "modified",
+              base: del.base,
+              compared: added[bestIdx].compared,
+              baseParts: parts.base,
+              comparedParts: parts.compared,
+            });
           } else {
             out.push(del);
           }

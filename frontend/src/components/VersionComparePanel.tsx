@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { cn, formatDateTime } from "@/lib/utils";
 import {
   listVersions, compareVersions,
-  type VersionItem, type Comparison,
+  type VersionItem, type Comparison, type DiffPart,
 } from "@/lib/api";
 import { CONTRACT_BUSINESS_STATUS_LABELS } from "@/lib/utils";
 
@@ -161,6 +161,23 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
   const comparedVersion = result ? versions.find(v => v.id === result.compared_contract_id) : undefined;
   const colLabel = (v: VersionItem | undefined, fallback: string) =>
     v ? `v${v.version_number} · ${v.title || v.filename}` : fallback;
+
+  // Word-level highlight inside a reworded clause. Falls back to plain text for
+  // comparisons stored before the word diff existed.
+  const renderParts = (parts: DiffPart[] | undefined, plain: string | undefined, side: "base" | "compared") => {
+    if (!parts?.length) return plain;
+    return parts.map((p, i) => {
+      if (p.c === "same") return <span key={i}>{p.t} </span>;
+      const isDel = p.c === "del";
+      if ((isDel && side !== "base") || (!isDel && side !== "compared")) return null;
+      return (
+        <mark key={i} className={cn(
+          "rounded px-0.5",
+          isDel ? "bg-red-200 text-red-900 line-through decoration-red-500" : "bg-emerald-200 text-emerald-900",
+        )}>{p.t}</mark>
+      );
+    });
+  };
 
   const compareButton = (
     <Button size="sm" className="h-7 text-xs" onClick={handleCompare} disabled={comparing}>
@@ -322,8 +339,8 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
                 {b.type === "deleted" && <p className="rounded bg-red-50 border-l-2 border-red-400 px-3 py-2 text-red-900 line-through"><span className="font-semibold no-underline">− </span>{b.base}</p>}
                 {b.type === "modified" && (
                   <div className="rounded bg-amber-50 border-l-2 border-amber-400 px-3 py-2">
-                    <p className="text-red-700 line-through"><span className="font-semibold no-underline">was: </span>{b.base}</p>
-                    <p className="text-emerald-800 mt-1"><span className="font-semibold">now: </span>{b.compared}</p>
+                    <p className="text-gray-700"><span className="font-semibold text-red-700">was: </span>{renderParts(b.baseParts, b.base, "base")}</p>
+                    <p className="text-gray-700 mt-1"><span className="font-semibold text-emerald-800">now: </span>{renderParts(b.comparedParts, b.compared, "compared")}</p>
                   </div>
                 )}
               </div>
@@ -350,7 +367,11 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
                     b.type === "modified" && "bg-red-50/70 text-red-800",
                     b.type === "added" && "bg-gray-50 text-gray-300 italic",
                   )}>
-                    {b.type === "added" ? "— not in this version —" : b.base}
+                    {b.type === "added"
+                      ? "— not in this version —"
+                      : b.type === "modified"
+                        ? renderParts(b.baseParts, b.base, "base")
+                        : b.base}
                   </div>
                   <div className={cn("px-4 py-3 text-[13px] leading-relaxed whitespace-pre-wrap",
                     b.type === "unchanged" && "bg-white text-gray-600",
@@ -358,7 +379,11 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
                     b.type === "modified" && "bg-emerald-50/70 text-emerald-800",
                     b.type === "deleted" && "bg-gray-50 text-gray-300 italic",
                   )}>
-                    {b.type === "deleted" ? "— removed in this version —" : b.compared}
+                    {b.type === "deleted"
+                      ? "— removed in this version —"
+                      : b.type === "modified"
+                        ? renderParts(b.comparedParts, b.compared, "compared")
+                        : b.compared}
                   </div>
                 </div>
               ))}

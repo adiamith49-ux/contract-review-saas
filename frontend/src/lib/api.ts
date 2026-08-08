@@ -1017,10 +1017,20 @@ export interface VersionItem {
   parent_contract_id: string | null;
 }
 
+/** One run of text inside a modified block: unchanged, or added/removed words. */
+export interface DiffPart {
+  t: string;
+  c: "same" | "del" | "add";
+}
+
 export interface DiffBlock {
   type: "added" | "deleted" | "modified" | "unchanged";
   base?: string;
   compared?: string;
+  // Present on "modified" blocks from comparisons run after 2026-08-08.
+  // Older stored comparisons have neither, hence the plain-text fallback.
+  baseParts?: DiffPart[];
+  comparedParts?: DiffPart[];
 }
 
 export interface Comparison {
