@@ -73,6 +73,7 @@ interface ParentContractDefaults {
   owner_name: string | null;
   contract_value: number | null;
   contract_status: string | null;
+  client_id: string | null;
 }
 
 // True when the original upload is a Word .docx (only these can be edited in place)
@@ -241,7 +242,7 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
     if (meta.parent_contract_id) {
       const { data: parentRow } = await db
         .from("contracts")
-        .select("version_number, title, counterparty, contract_type, start_date, end_date, renewal_date, owner_name, contract_value, contract_status")
+        .select("version_number, title, counterparty, contract_type, start_date, end_date, renewal_date, owner_name, contract_value, contract_status, client_id")
         .eq("id", meta.parent_contract_id)
         .eq("org_id", req.orgId!)
         .single();
@@ -257,6 +258,27 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
         .single();
       const maxVersion = Math.max(existing?.version_number ?? 1, parent?.version_number ?? 1);
       versionNumber = maxVersion + 1;
+    }
+
+    // contracts.client_id has existed and been indexed since the first schema,
+    // and the clients screen reads it for both the contract count and the
+    // client's contract list — but upload never wrote it, so every client
+    // showed zero contracts. Validate it belongs to this org before attaching,
+    // so a stale or foreign id can't file a contract under someone else's client.
+    let clientId: string | null = null;
+    const requestedClientId = typeof req.body.client_id === "string" && req.body.client_id.trim()
+      ? req.body.client_id.trim() : null;
+    if (requestedClientId) {
+      const { data: client } = await db
+        .from("clients")
+        .select("id")
+        .eq("id", requestedClientId)
+        .eq("org_id", req.orgId!)
+        .single();
+      if (!client) { res.status(400).json({ error: "Client not found" }); return; }
+      clientId = client.id;
+    } else if (parent?.client_id) {
+      clientId = parent.client_id;   // a new version stays with the parent's client
     }
 
     const contractType = req.body.contract_type
@@ -321,6 +343,7 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
         owner_name: inherit(meta.owner_name, parent?.owner_name),
         contract_value: inherit(meta.contract_value, parent?.contract_value),
         contract_status: meta.contract_status ?? parent?.contract_status ?? "draft",
+        client_id: clientId,
         version_number: versionNumber,
         parent_contract_id: meta.parent_contract_id ?? null,
       })
