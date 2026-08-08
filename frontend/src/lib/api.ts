@@ -1102,6 +1102,21 @@ export async function compareVersions(token: string | null, baseId: string, agai
   return apiFetch(`/api/contracts/${baseId}/compare`, token, { method: "POST", body: JSON.stringify({ against }) });
 }
 
+export interface ContractPreview {
+  kind: "pdf" | "html";
+  url?: string;
+  html?: string;
+  filename: string;
+}
+
+/** The uploaded document itself — PDFs as a URL, Word converted to HTML. */
+export async function getContractPreview(
+  token: string | null,
+  contractId: string,
+): Promise<ContractPreview> {
+  return apiFetch(`/api/contracts/${contractId}/preview`, token);
+}
+
 export async function getComparison(
   token: string | null,
   contractId: string,

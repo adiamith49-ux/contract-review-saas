@@ -1475,6 +1475,58 @@ contractsRouter.post("/:id/compare", async (req, res, next) => {
   }
 });
 
+// GET /api/contracts/:id/preview — the uploaded document, renderable in place.
+//
+// "Show me the original" cannot be answered with extracted_text: that is a flat
+// reflow with no headings, tables or emphasis. A PDF can be framed directly
+// from its pre-signed URL, but a browser cannot render a .docx at all — and
+// most contracts here ARE .docx. mammoth is already a dependency and already
+// produces HTML, so the document is converted server-side and returned as
+// markup that keeps its structure.
+contractsRouter.get("/:id/preview", async (req, res, next) => {
+  try {
+    const { data, error } = await db
+      .from("contracts")
+      .select("filename, mime_type, s3_key")
+      .eq("id", req.params.id)
+      .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
+      .single();
+    if (error || !data) { res.status(404).json({ error: "Contract not found" }); return; }
+    if (!data.s3_key) { res.status(404).json({ error: "No stored file for this contract", code: "file_missing" }); return; }
+
+    const isPdf = (data.mime_type ?? "").includes("pdf") || /\.pdf$/i.test(data.filename);
+    if (isPdf) {
+      // PDFs render natively; hand back a URL rather than megabytes of base64.
+      const url = await getPresignedUrl(data.s3_key);
+      res.json({ kind: "pdf", url, filename: data.filename });
+      return;
+    }
+
+    let buffer: Buffer;
+    try {
+      buffer = await downloadFromS3(data.s3_key);
+    } catch (e) {
+      const name = (e as Error)?.name ?? "UnknownError";
+      console.error(`[preview] S3 download failed for ${data.s3_key}: ${name}`);
+      res.status(name === "NoSuchKey" ? 404 : 502).json({
+        error: name === "NoSuchKey"
+          ? "The original file is no longer in storage."
+          : `File storage is unavailable (${name}).`,
+        code: name === "NoSuchKey" ? "file_missing" : "storage_unavailable",
+      });
+      return;
+    }
+
+    const mammoth = (await import("mammoth")).default;
+    const { value: html, messages } = await mammoth.convertToHtml({ buffer });
+    if (messages?.length) console.warn(`[preview] mammoth notes for ${data.filename}:`, messages.slice(0, 3));
+    res.json({ kind: "html", html, filename: data.filename });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/contracts/:id/comparisons/:comparisonId — poll a running comparison
 contractsRouter.get("/:id/comparisons/:comparisonId", statusLimiter, async (req, res, next) => {
   try {

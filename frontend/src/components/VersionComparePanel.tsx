@@ -10,9 +10,9 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn, formatDateTime } from "@/lib/utils";
 import {
-  listVersions, compareVersions, waitForComparison, isClauseComparison, uploadContractVersion, getContract,
+  listVersions, compareVersions, waitForComparison, isClauseComparison, uploadContractVersion, getContractPreview,
   type VersionItem, type Comparison, type DiffPart,
-  type ClauseComparison, type ClauseStatus, type LegacyKeyChange,
+  type ClauseComparison, type ClauseStatus, type LegacyKeyChange, type ContractPreview,
 } from "@/lib/api";
 import { CONTRACT_BUSINESS_STATUS_LABELS } from "@/lib/utils";
 
@@ -71,7 +71,7 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
   // the uploaded PDFs themselves, which is the only view that preserves the
   // real headings, tables and pagination — the extracted text cannot.
   const [docView, setDocView] = useState<"text" | "original">("text");
-  const [originals, setOriginals] = useState<Record<string, { url: string | null; status?: string; filename: string; mime?: string }>>({});
+  const [originals, setOriginals] = useState<Record<string, ContractPreview | { error: string }>>({});
   const [loadingOriginals, setLoadingOriginals] = useState(false);
   // The diff is on screen while this is true — only the AI half is outstanding.
   const [awaitingAI, setAwaitingAI] = useState(false);
@@ -291,58 +291,58 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
     );
   }
 
-  // Pre-signed S3 URLs are minted per request and expire, so they are fetched
-  // when the view is opened rather than held with the version list.
+  // Fetched on demand: pre-signed URLs expire, and converting a Word file is
+  // work worth doing only for the versions actually being looked at.
   useEffect(() => {
-    if (docView !== "original" || !result) return;
-    const ids = [result.base_contract_id, result.compared_contract_id].filter(id => !originals[id]);
+    const wantIds = result
+      ? [result.base_contract_id, result.compared_contract_id]
+      : [baseId, againstId];                 // pre-compare view shows them too
+    if (docView !== "original" && result) return;
+    const ids = wantIds.filter(id => id && !originals[id]);
     if (ids.length === 0) return;
     let cancelled = false;
     setLoadingOriginals(true);
     (async () => {
-      try {
-        const token = await getToken();
-        const fetched = await Promise.all(ids.map(async id => {
-          const { contract } = await getContract(token, id);
-          return [id, { url: contract.fileUrl, status: contract.fileStatus, filename: contract.filename, mime: (contract as { mime_type?: string }).mime_type }] as const;
-        }));
-        if (!cancelled) setOriginals(prev => ({ ...prev, ...Object.fromEntries(fetched) }));
-      } catch { /* the panel shows its own unavailable state */ }
-      finally { if (!cancelled) setLoadingOriginals(false); }
+      const token = await getToken();
+      const fetched = await Promise.all(ids.map(async id => {
+        try {
+          return [id, await getContractPreview(token, id)] as const;
+        } catch (e) {
+          return [id, { error: e instanceof Error ? e.message : "Preview unavailable" }] as const;
+        }
+      }));
+      if (!cancelled) setOriginals(prev => ({ ...prev, ...Object.fromEntries(fetched) }));
+      if (!cancelled) setLoadingOriginals(false);
     })();
     return () => { cancelled = true; };
-  }, [docView, result, getToken]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [docView, result, baseId, againstId, getToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function OriginalColumn({ contractId }: { contractId: string }) {
     const o = originals[contractId];
-    if (loadingOriginals && !o) {
+    if (!o) {
       return <div className="h-full flex items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-gray-300" /></div>;
     }
-    if (o?.url && (o.mime?.includes("pdf") || /\.pdf$/i.test(o.filename))) {
-      return <iframe src={o.url} title={o.filename} className="w-full h-full border-0" />;
-    }
-    if (o?.url) {
-      // Word can't render in an iframe; offer the file rather than pretend.
+    if ("error" in o) {
       return (
-        <div className="h-full flex flex-col items-center justify-center gap-3 px-6 text-center">
-          <FileText className="h-7 w-7 text-gray-300" />
-          <p className="text-xs text-gray-500 max-w-xs">Word documents can&apos;t be previewed inline. Open it to see the original formatting.</p>
-          <Button asChild size="sm" variant="outline" className="h-8 text-xs">
-            <a href={o.url} target="_blank" rel="noopener noreferrer">Open {o.filename}</a>
-          </Button>
+        <div className="h-full flex flex-col items-center justify-center gap-2 px-6 text-center">
+          <AlertTriangle className="h-6 w-6 text-amber-400" />
+          <p className="text-xs text-gray-600 font-medium">Original file unavailable</p>
+          <p className="text-[11px] text-gray-400 max-w-xs">
+            {o.error} The text comparison is unaffected — it uses the text extracted at upload.
+          </p>
         </div>
       );
     }
+    if (o.kind === "pdf") {
+      return <iframe src={o.url} title={o.filename} className="w-full h-full border-0" />;
+    }
+    // Word converted to HTML — keeps headings, tables, lists and emphasis, which
+    // is the whole point of showing the original rather than extracted text.
     return (
-      <div className="h-full flex flex-col items-center justify-center gap-2 px-6 text-center">
-        <AlertTriangle className="h-6 w-6 text-amber-400" />
-        <p className="text-xs text-gray-600 font-medium">Original file unavailable</p>
-        <p className="text-[11px] text-gray-400 max-w-xs">
-          {o?.status === "missing"
-            ? "This file is no longer in storage, so the original pages can't be shown. The text comparison beside it is unaffected — it uses the text extracted at upload."
-            : "File storage is unreachable right now. Try again shortly."}
-        </p>
-      </div>
+      <div
+        className="h-full overflow-y-auto px-8 py-6 doc-preview"
+        dangerouslySetInnerHTML={{ __html: o.html ?? "" }}
+      />
     );
   }
 
@@ -635,8 +635,27 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
 
         {/* The two columns */}
         {!result ? (
-          <div className="flex-1 flex items-center justify-center text-sm text-gray-400">
-            {comparing ? `Comparing the two drafts… ${elapsed}s` : "Pick two versions and press Compare."}
+          // Both versions are already selected, so show them. Telling the user
+          // to "pick two versions" when two are picked reads as broken, and an
+          // empty screen is a worse answer than the documents themselves.
+          <div className="flex-1 min-h-0 flex flex-col">
+            <div className="shrink-0 grid grid-cols-2 gap-px bg-gray-200 text-[11px] font-semibold">
+              <div className="bg-gray-100 px-4 py-2 text-gray-600 truncate">
+                {versions.find(v => v.id === baseId)?.title || versions.find(v => v.id === baseId)?.filename || "Prior draft"}
+              </div>
+              <div className="bg-gray-100 px-4 py-2 text-gray-600 truncate">
+                {versions.find(v => v.id === againstId)?.title || versions.find(v => v.id === againstId)?.filename || "New draft"}
+              </div>
+            </div>
+            <div className="flex-1 min-h-0 grid grid-cols-2 gap-px bg-gray-200">
+              <div className="bg-white min-h-0"><OriginalColumn contractId={baseId} /></div>
+              <div className="bg-white min-h-0"><OriginalColumn contractId={againstId} /></div>
+            </div>
+            <div className="shrink-0 border-t bg-amber-50/60 px-4 py-1.5 text-[11px] text-amber-800 text-center">
+              {comparing
+                ? `Comparing… ${elapsed}s — the differences will be marked here when it finishes.`
+                : "Showing both documents as uploaded. Press Compare to mark the differences."}
+            </div>
           </div>
         ) : (
           <div className="flex-1 min-h-0 flex">
