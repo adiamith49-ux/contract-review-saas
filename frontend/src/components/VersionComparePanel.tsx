@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn, formatDateTime } from "@/lib/utils";
 import {
-  listVersions, compareVersions, isClauseComparison,
+  listVersions, compareVersions, isClauseComparison, uploadContractVersion,
   type VersionItem, type Comparison, type DiffPart,
   type ClauseComparison, type ClauseStatus, type LegacyKeyChange,
 } from "@/lib/api";
@@ -67,6 +67,8 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
   // Empty set = show everything. "missing_in_base" doubles as the Missing chip.
   const [statusFilter, setStatusFilter] = useState<Set<ClauseStatus>>(new Set());
   const [showResults, setShowResults] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!comparing) return;
@@ -264,6 +266,55 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
     );
   }
 
+  // A new version is the same matter, so it uploads straight from here — no
+  // wizard, no re-entering the client and counterparty we already hold. The
+  // server inherits everything from the parent; only the file is new.
+  async function handleVersionFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";                 // allow re-picking the same file
+    if (!file) return;
+    const parentId = versions[0]?.id ?? contractId;
+    setUploading(true);
+    try {
+      const token = await getToken();
+      const { contract } = await uploadContractVersion(token, file, parentId);
+      toast.success(`Uploaded as v${versions.length + 1}`);
+      const { versions: fresh } = await listVersions(token, contractId);
+      setVersions(fresh);
+      if (fresh.length >= 2) {
+        setBaseId(fresh[fresh.length - 2].id);
+        setAgainstId(contract.id);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const uploadVersionButton = (
+    <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        className="hidden"
+        onChange={handleVersionFile}
+      />
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-8 text-xs"
+        disabled={uploading}
+        onClick={() => fileInputRef.current?.click()}
+      >
+        {uploading
+          ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Uploading…</>
+          : <><Upload className="h-3.5 w-3.5 mr-1.5" />Upload New Version</>}
+      </Button>
+    </>
+  );
+
   function toggleFilter(st: ClauseStatus) {
     setStatusFilter(prev => {
       const next = new Set(prev);
@@ -373,11 +424,7 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
           <p className="text-sm text-gray-500 max-w-md">
             Only one version so far. Upload a second version — a counterparty redline, say — to compare the two drafts side by side with an AI change summary.
           </p>
-          <Button asChild size="sm" variant="outline" className="h-8 text-xs">
-            <Link href={`/upload?parent=${versions[0]?.id ?? contractId}`}>
-              <Upload className="h-3.5 w-3.5 mr-1.5" />Upload New Version
-            </Link>
-          </Button>
+          {uploadVersionButton}
         </div>
       );
     }
@@ -466,11 +513,7 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
                 {v.id === contractId && <span className="text-[9px] font-semibold text-primary shrink-0">CURRENT</span>}
               </div>
             ))}
-            <div className="pt-2">
-              <Button asChild size="sm" variant="outline" className="h-7 text-xs">
-                <Link href={`/upload?parent=${versions[0]?.id ?? contractId}`}><Upload className="h-3 w-3 mr-1.5" />Upload New Version</Link>
-              </Button>
-            </div>
+            <div className="pt-2">{uploadVersionButton}</div>
           </div>
         )}
 
@@ -621,11 +664,7 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
               </div>
 
               {/* Upload a new version */}
-              <Button asChild size="sm" variant="outline" className="h-8 text-xs">
-                <Link href={`/upload?parent=${versions[0]?.id ?? contractId}`}>
-                  <Upload className="h-3.5 w-3.5 mr-1.5" />Upload New Version (e.g. counterparty redline)
-                </Link>
-              </Button>
+              {uploadVersionButton}
 
               {versions.length < 2 ? (
                 <p className="text-[11px] text-gray-400">

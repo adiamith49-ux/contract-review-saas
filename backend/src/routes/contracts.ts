@@ -61,6 +61,20 @@ function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> 
   return Promise.race([p, timeout]).finally(() => clearTimeout(timer)) as Promise<T>;
 }
 
+/** Fields a new version inherits from the contract it supersedes. */
+interface ParentContractDefaults {
+  version_number: number;
+  title: string | null;
+  counterparty: string | null;
+  contract_type: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  renewal_date: string | null;
+  owner_name: string | null;
+  contract_value: number | null;
+  contract_status: string | null;
+}
+
 // True when the original upload is a Word .docx (only these can be edited in place)
 function isDocxSource(filename: string, mimeType?: string | null): boolean {
   return (mimeType ?? "").includes("wordprocessingml") || /\.docx$/i.test(filename);
@@ -213,13 +227,26 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
     // Ensure uploading user is registered in the users table
     void ensureUser(req.userId);
 
-    const contractType = contractTypeSchema.default("other").parse(req.body.contract_type);
-    const clientId: string | undefined = req.body.client_id || undefined;
     const meta = metaSchema.parse(req.body);
 
-    // Determine version number if uploading a new version of an existing contract
+    // A new version of an existing contract is the SAME matter: same
+    // counterparty, same client, same deal. Re-asking for all of it (and
+    // defaulting the client to whichever happened to be first in the list)
+    // was how a version could end up filed under the wrong client. Anything
+    // the caller does not send is inherited from the parent, so uploading a
+    // counterparty redline needs nothing but the file.
+    let parent: ParentContractDefaults | null = null;
+
     let versionNumber = 1;
     if (meta.parent_contract_id) {
+      const { data: parentRow } = await db
+        .from("contracts")
+        .select("version_number, title, counterparty, contract_type, start_date, end_date, renewal_date, owner_name, contract_value, contract_status")
+        .eq("id", meta.parent_contract_id)
+        .eq("org_id", req.orgId!)
+        .single();
+      parent = (parentRow as ParentContractDefaults | null) ?? null;
+
       const { data: existing } = await db
         .from("contracts")
         .select("version_number")
@@ -228,11 +255,16 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
         .order("version_number", { ascending: false })
         .limit(1)
         .single();
-      // Also check the parent itself
-      const { data: parent } = await db.from("contracts").select("version_number").eq("id", meta.parent_contract_id).eq("org_id", req.orgId!).single();
       const maxVersion = Math.max(existing?.version_number ?? 1, parent?.version_number ?? 1);
       versionNumber = maxVersion + 1;
     }
+
+    const contractType = req.body.contract_type
+      ? contractTypeSchema.parse(req.body.contract_type)
+      : contractTypeSchema.default("other").parse(parent?.contract_type ?? undefined);
+
+    const inherit = <T>(sent: T | undefined | null, fromParent: T | null | undefined): T | null =>
+      (sent ?? fromParent ?? null) as T | null;
 
     const fileId = randomUUID();
     const s3Key = buildS3Key(req.userId, fileId, req.file.originalname);
@@ -281,14 +313,14 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
         contract_type: contractType,
         status: "uploaded",
         extracted_text: extractedText,
-        title: meta.title ?? null,
-        counterparty: meta.counterparty ?? null,
-        start_date: meta.start_date ?? null,
-        end_date: meta.end_date ?? null,
-        renewal_date: meta.renewal_date ?? null,
-        owner_name: meta.owner_name ?? null,
-        contract_value: meta.contract_value ?? null,
-        contract_status: meta.contract_status ?? "draft",
+        title: inherit(meta.title, parent?.title),
+        counterparty: inherit(meta.counterparty, parent?.counterparty),
+        start_date: inherit(meta.start_date, parent?.start_date),
+        end_date: inherit(meta.end_date, parent?.end_date),
+        renewal_date: inherit(meta.renewal_date, parent?.renewal_date),
+        owner_name: inherit(meta.owner_name, parent?.owner_name),
+        contract_value: inherit(meta.contract_value, parent?.contract_value),
+        contract_status: meta.contract_status ?? parent?.contract_status ?? "draft",
         version_number: versionNumber,
         parent_contract_id: meta.parent_contract_id ?? null,
       })

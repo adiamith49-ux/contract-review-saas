@@ -199,7 +199,8 @@ async function apiFetch<T>(
 // ─── Contract endpoints ───────────────────────────────────────────────────────
 
 export interface UploadContractMeta {
-  contractType: ContractType;
+  /** Omit when uploading a new version — the server inherits the parent's type. */
+  contractType?: ContractType;
   clientId?: string;
   title?: string;
   counterparty?: string;
@@ -220,7 +221,7 @@ export async function uploadContract(
 ): Promise<{ contract: { id: string; filename: string; title: string | null; contract_type: ContractType; status: ContractStatus; created_at: string } }> {
   const form = new FormData();
   form.append("file", file);
-  form.append("contract_type", meta.contractType);
+  if (meta.contractType) form.append("contract_type", meta.contractType);
   if (meta.clientId) form.append("client_id", meta.clientId);
   if (meta.title) form.append("title", meta.title);
   if (meta.counterparty) form.append("counterparty", meta.counterparty);
@@ -234,6 +235,19 @@ export async function uploadContract(
   if (meta.parentContractId) form.append("parent_contract_id", meta.parentContractId);
 
   return apiFetch("/api/contracts/upload", token, { method: "POST", body: form });
+}
+
+/**
+ * Upload a new version of an existing contract. Sends the file and nothing
+ * else: counterparty, client, type, dates and owner are inherited from the
+ * parent server-side, because a new version is the same matter.
+ */
+export async function uploadContractVersion(
+  token: string | null,
+  file: File,
+  parentContractId: string,
+) {
+  return uploadContract(token, file, { parentContractId });
 }
 
 export interface ContractMeta {
