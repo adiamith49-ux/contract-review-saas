@@ -1252,13 +1252,21 @@ contractsRouter.post("/:id/compare", async (req, res, next) => {
     let summary: string | null = null;
     let keyChanges: unknown[] = [];
     let model = "";
+    let summaryError: string | null = null;
     if (diffText.trim()) {
       try {
         const cs = await summarizeChanges(diffText, base.contract_type as ContractType);
         summary = cs.summary;
         keyChanges = cs.keyChanges;
         model = cs.model;
-      } catch {
+      } catch (e) {
+        // A bare `catch {}` here hid a real, repeatable summarization failure
+        // behind a generic message — the diff still rendered, so the outage
+        // looked like a quirk rather than a bug. Log it, and carry the reason
+        // out to the caller (not persisted) so it is diagnosable without
+        // server-log access.
+        summaryError = (e as Error)?.message ?? String(e);
+        console.error("[compare] summarizeChanges failed:", (e as Error)?.stack ?? e);
         summary = "Automated change summary unavailable — showing the structural diff below.";
       }
     } else {
@@ -1289,7 +1297,7 @@ contractsRouter.post("/:id/compare", async (req, res, next) => {
       added: diff.added, deleted: diff.deleted, modified: diff.modified,
     });
 
-    res.json({ comparison: saved });
+    res.json({ comparison: saved, ...(summaryError ? { summary_error: summaryError } : {}) });
   } catch (err) {
     next(err);
   }
