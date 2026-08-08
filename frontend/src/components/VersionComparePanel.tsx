@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn, formatDateTime } from "@/lib/utils";
 import {
-  listVersions, compareVersions, isClauseComparison, uploadContractVersion, getContract,
+  listVersions, compareVersions, waitForComparison, isClauseComparison, uploadContractVersion, getContract,
   type VersionItem, type Comparison, type DiffPart,
   type ClauseComparison, type ClauseStatus, type LegacyKeyChange,
 } from "@/lib/api";
@@ -73,15 +73,17 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
   const [docView, setDocView] = useState<"text" | "original">("text");
   const [originals, setOriginals] = useState<Record<string, { url: string | null; status?: string; filename: string; mime?: string }>>({});
   const [loadingOriginals, setLoadingOriginals] = useState(false);
+  // The diff is on screen while this is true — only the AI half is outstanding.
+  const [awaitingAI, setAwaitingAI] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!comparing) return;
+    if (!comparing && !awaitingAI) return;
     setElapsed(0);
     const t = setInterval(() => setElapsed(e => e + 1), 1000);
     return () => clearInterval(t);
-  }, [comparing]);
+  }, [comparing, awaitingAI]);
 
   const load = useCallback(async () => {
     try {
@@ -121,9 +123,26 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
     setResult(null);
     try {
       const token = await getToken();
+      // Returns as soon as the structural diff is stored — show it straight
+      // away rather than staring at a spinner for three minutes while the AI
+      // half runs.
       const { comparison } = await compareVersions(token, baseId, againstId);
       setResult(comparison);
-      toast.success("Comparison ready");
+
+      if (comparison.status === "processing") {
+        setAwaitingAI(true);
+        try {
+          const finished = await waitForComparison(getToken, baseId, comparison.id, { onTick: setElapsed });
+          setResult(finished);
+          toast.success(finished.status === "failed" ? "Comparison finished with problems" : "Comparison ready");
+        } catch (err) {
+          toast.warning(err instanceof Error ? err.message : "Still running");
+        } finally {
+          setAwaitingAI(false);
+        }
+      } else {
+        toast.success("Comparison ready");
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Comparison failed");
     } finally {
@@ -413,7 +432,12 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto divide-y">
-        {clauses.length === 0 ? (
+        {awaitingAI && clauses.length === 0 ? (
+          <p className="px-3 py-4 text-[11px] text-gray-500 flex items-start gap-2">
+            <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0 mt-px" />
+            <span>Comparing clauses… {elapsed}s. The document diff on the left is already complete — clause deviations appear here when the AI pass finishes (usually two to four minutes).</span>
+          </p>
+        ) : clauses.length === 0 ? (
           <p className="px-3 py-4 text-[11px] text-gray-400">
             No clause comparison on this result. Run Compare again to generate one.
           </p>
@@ -519,7 +543,9 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
                     showResults ? "bg-gray-900 text-white border-gray-900" : "text-gray-600 hover:bg-gray-50")}
                 >
                   Result
-                  <span className={cn("rounded-full px-1 text-[9px]", showResults ? "bg-white/20" : "bg-gray-100")}>{clauses.length}</span>
+                  {awaitingAI
+                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                    : <span className={cn("rounded-full px-1 text-[9px]", showResults ? "bg-white/20" : "bg-gray-100")}>{clauses.length}</span>}
                 </button>
                 <button
                   type="button"

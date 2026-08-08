@@ -171,7 +171,7 @@ async function assignApproverTask(step: { approver_name: string; approver_email:
       .ilike("email", step.approver_email)
       .maybeSingle();
     if (!approver) return;
-    await db.from("tasks").insert({
+    const { error: e0 } = await db.from("tasks").insert({
       user_id: approver.clerk_user_id,
       org_id: orgId,
       title: `Approve contract: ${contractName}`,
@@ -180,6 +180,7 @@ async function assignApproverTask(step: { approver_name: string; approver_email:
       contract_id: contractId,
       assignee: "Approval Workflow",
     });
+    if (e0) console.error("[approvals] db write failed:", e0.message, e0.code ?? "");
   } catch (err) {
     console.error("Failed to create approver task for", step.approver_email, err);
   }
@@ -337,7 +338,8 @@ approvalsRouter.post("/contracts/:contractId/submit", upload.single("file"), asy
     const { data: steps, error: sErr } = await db.from("contract_approvals").insert(rows).select();
     if (sErr) throw sErr;
 
-    await db.from("contracts").update({ contract_status: "pending_approval", updated_at: new Date().toISOString() }).eq("id", contractId).eq("user_id", req.userId).eq("org_id", req.orgId!);
+    const { error: e1 } = await db.from("contracts").update({ contract_status: "pending_approval", updated_at: new Date().toISOString() }).eq("id", contractId).eq("user_id", req.userId).eq("org_id", req.orgId!);
+    if (e1) console.error("[approvals] db write failed:", e1.message, e1.code ?? "");
 
     await logActivity(req.userId, "approval.submitted", contractId, {
       round,
@@ -475,7 +477,8 @@ approvalsRouter.post("/steps/:stepId/decide", async (req, res, next) => {
     } else {
       // Reject / changes requested: void the rest of the chain
       if (remaining.length > 0) {
-        await db.from("contract_approvals").update({ status: "skipped" }).in("id", remaining.map(s => s.id)).eq("org_id", req.orgId!);
+        const { error: e2 } = await db.from("contract_approvals").update({ status: "skipped" }).in("id", remaining.map(s => s.id)).eq("org_id", req.orgId!);
+        if (e2) console.error("[approvals] db write failed:", e2.message, e2.code ?? "");
       }
       newContractStatus = decision === "rejected" ? "on_hold" : "in_negotiation";
     }
@@ -483,7 +486,8 @@ approvalsRouter.post("/steps/:stepId/decide", async (req, res, next) => {
     if (newContractStatus) {
       // step.user_id is the CONTRACT OWNER (set when the chain was created) —
       // req.userId may be a different account when a named approver decided.
-      await db.from("contracts").update({ contract_status: newContractStatus, updated_at: new Date().toISOString() }).eq("id", step.contract_id).eq("user_id", step.user_id).eq("org_id", req.orgId!);
+      const { error: e3 } = await db.from("contracts").update({ contract_status: newContractStatus, updated_at: new Date().toISOString() }).eq("id", step.contract_id).eq("user_id", step.user_id).eq("org_id", req.orgId!);
+      if (e3) console.error("[approvals] db write failed:", e3.message, e3.code ?? "");
     }
 
     await logActivity(req.userId, `approval.${decision}`, step.contract_id, {

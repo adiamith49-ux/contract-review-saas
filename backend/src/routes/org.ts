@@ -640,10 +640,11 @@ orgRouter.post("/users/add", requireOrgAdmin, async (req, res, next) => {
       role: "org:member",
     });
 
-    await db.from("users").upsert(
+    const { error: e0 } = await db.from("users").upsert(
       { clerk_user_id: clerkUser.id, email, org_id: req.orgId },
       { onConflict: "clerk_user_id" },
     );
+    if (e0) console.error("[org] db write failed:", e0.message, e0.code ?? "");
 
     let email_sent = false;
     if (isMailerConfigured()) {

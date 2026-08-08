@@ -1303,8 +1303,104 @@ contractsRouter.get("/:id/versions", async (req, res, next) => {
   }
 });
 
+// ─── Comparison: the AI half, run in the background ──────────────────────────
+// Everything here is AI work measured at ~200s on a real pair: two clause
+// inventories, their difference summaries, and the prose change summary. That
+// is far too long to hold a request open — an earlier 124s run died in flight
+// — so the route returns as soon as the structural diff is stored and this
+// fills the row in afterwards. Never throws: it owns marking the row failed.
+async function runComparisonAI(opts: {
+  comparisonId: string;
+  contractType: ContractType;
+  baseText: string;
+  comparedText: string;
+  diffBlocks: { type: string; base?: string; compared?: string }[];
+}): Promise<void> {
+  let summary: string | null = null;
+  let keyChanges: unknown[] = [];
+  let model = "";
+  const problems: string[] = [];
+
+  // Clause-level comparison — which clauses deviate, match, or went missing.
+  try {
+    const { alignClauses } = await import("../services/clauseCompare.service.js");
+    const [baseClauses, comparedClauses] = await Promise.all([
+      extractClauseInventory(opts.baseText, opts.contractType),
+      extractClauseInventory(opts.comparedText, opts.contractType),
+    ]);
+    let clauseResults = alignClauses(baseClauses, comparedClauses);
+    // Only deviating pairs cost an AI call; identical and missing need none.
+    const deviations = clauseResults.filter(c => c.status === "deviation");
+    if (deviations.length > 0) {
+      const explained = await summarizeClauseDifferences(deviations, opts.contractType);
+      const byKey = new Map(explained.map(e => [`${e.clauseType}|${e.baseSection ?? ""}`, e]));
+      clauseResults = clauseResults.map(c =>
+        c.status === "deviation" ? byKey.get(`${c.clauseType}|${c.baseSection ?? ""}`) ?? c : c);
+    }
+    if (clauseResults.length > 0) keyChanges = clauseResults;
+  } catch (e) {
+    const msg = (e as Error)?.message ?? String(e);
+    problems.push(`clause comparison: ${msg}`);
+    console.error("[compare] clause comparison failed:", (e as Error)?.stack ?? e);
+  }
+
+  // Prose summary of the structural diff (skip unchanged blocks).
+  const diffText = opts.diffBlocks
+    .filter(b => b.type !== "unchanged")
+    .map(b => {
+      if (b.type === "added") return `ADDED: ${b.compared}`;
+      if (b.type === "deleted") return `DELETED: ${b.base}`;
+      return `MODIFIED:\n  was: ${b.base}\n  now: ${b.compared}`;
+    })
+    .join("\n\n");
+
+  if (diffText.trim()) {
+    try {
+      const cs = await summarizeChanges(diffText, opts.contractType);
+      summary = cs.summary;
+      if (keyChanges.length === 0) keyChanges = cs.keyChanges;
+      model = cs.model;
+    } catch (e) {
+      const msg = (e as Error)?.message ?? String(e);
+      problems.push(`change summary: ${msg}`);
+      console.error("[compare] summarizeChanges failed:", (e as Error)?.stack ?? e);
+      // Distinguish "the AI provider refused us" from "nothing changed" — the
+      // generic line sent people hunting for a diff bug when the real cause was
+      // an exhausted credit balance.
+      const provider = /credit balance|quota|rate.?limit|429|invalid_request_error/i.test(msg)
+        ? " The AI service rejected the request (billing or rate limit) — check the Anthropic account."
+        : "";
+      summary = `Automated change summary unavailable.${provider} The structural diff is complete and unaffected.`;
+    }
+  } else {
+    summary = "No substantive text differences detected between these two versions.";
+  }
+
+  const { error: updErr } = await db
+    .from("contract_comparisons")
+    .update({
+      summary,
+      key_changes: keyChanges,
+      model,
+      status: "complete",
+      error_message: problems.length > 0 ? problems.join(" | ") : null,
+    })
+    .eq("id", opts.comparisonId);
+  // If this write is lost the row is stuck at "processing" and the client polls
+  // forever, so it cannot be allowed to fail silently.
+  if (updErr) {
+    console.error(`[compare] could not finalise ${opts.comparisonId}:`, updErr.message, updErr.code ?? "");
+    await db.from("contract_comparisons")
+      .update({ status: "failed", error_message: updErr.message })
+      .eq("id", opts.comparisonId);
+  }
+}
+
 // POST /api/contracts/:id/compare  { against: <otherContractId> }
-// Diffs :id (base/prior) against `against` (compared/new), stores + returns the comparison.
+// Diffs :id (base/prior) against `against` (compared/new). FIRE-AND-POLL: the
+// structural diff is computed and stored synchronously (it is pure text work
+// and fast), so the client can render the side-by-side immediately, and the AI
+// work continues in the background. Poll GET /:id/comparisons/:comparisonId.
 contractsRouter.post("/:id/compare", async (req, res, next) => {
   try {
     const { against } = z.object({ against: z.string().uuid() }).parse(req.body ?? {});
@@ -1328,74 +1424,6 @@ contractsRouter.post("/:id/compare", async (req, res, next) => {
     const { diffContracts } = await import("../services/compare.service.js");
     const diff = diffContracts(base.extracted_text, compared.extracted_text);
 
-    // ─── Clause-level comparison ─────────────────────────────────────────────
-    // The text diff says which characters moved; this says which CLAUSES
-    // deviate, match, or went missing — the three buckets a reviewer filters
-    // on. Stored in `key_changes` (jsonb, already unconstrained) so this needs
-    // no migration; a dedicated table is the cleaner home once this settles.
-    // Best-effort: a failure here must not cost the user the text diff.
-    let clauseResults: import("../services/clauseCompare.service.js").ClauseComparison[] = [];
-    let clauseError: string | null = null;
-    try {
-      const { alignClauses } = await import("../services/clauseCompare.service.js");
-      const [baseClauses, comparedClauses] = await Promise.all([
-        extractClauseInventory(base.extracted_text, base.contract_type as ContractType),
-        extractClauseInventory(compared.extracted_text, compared.contract_type as ContractType),
-      ]);
-      clauseResults = alignClauses(baseClauses, comparedClauses);
-      // Only deviating pairs cost an AI call; identical and missing need none.
-      const deviations = clauseResults.filter(c => c.status === "deviation");
-      if (deviations.length > 0) {
-        const explained = await summarizeClauseDifferences(deviations, base.contract_type as ContractType);
-        const byKey = new Map(explained.map(e => [`${e.clauseType}|${e.baseSection ?? ""}`, e]));
-        clauseResults = clauseResults.map(c =>
-          c.status === "deviation" ? byKey.get(`${c.clauseType}|${c.baseSection ?? ""}`) ?? c : c);
-      }
-    } catch (e) {
-      clauseError = (e as Error)?.message ?? String(e);
-      console.error("[compare] clause comparison failed:", (e as Error)?.stack ?? e);
-    }
-
-    // Build a compact diff transcript for the AI (skip unchanged blocks)
-    const diffText = diff.blocks
-      .filter(b => b.type !== "unchanged")
-      .map(b => {
-        if (b.type === "added") return `ADDED: ${b.compared}`;
-        if (b.type === "deleted") return `DELETED: ${b.base}`;
-        return `MODIFIED:\n  was: ${b.base}\n  now: ${b.compared}`;
-      })
-      .join("\n\n");
-
-    let summary: string | null = null;
-    let keyChanges: unknown[] = [];
-    let model = "";
-    let summaryError: string | null = null;
-    if (diffText.trim()) {
-      try {
-        const cs = await summarizeChanges(diffText, base.contract_type as ContractType);
-        summary = cs.summary;
-        keyChanges = cs.keyChanges;
-        model = cs.model;
-      } catch (e) {
-        // A bare `catch {}` here hid a real, repeatable summarization failure
-        // behind a generic message — the diff still rendered, so the outage
-        // looked like a quirk rather than a bug. Log it, and carry the reason
-        // out to the caller (not persisted) so it is diagnosable without
-        // server-log access.
-        summaryError = (e as Error)?.message ?? String(e);
-        console.error("[compare] summarizeChanges failed:", (e as Error)?.stack ?? e);
-        // Distinguish "the AI provider refused us" from "nothing changed". The
-        // generic line sent people hunting for a diff bug when the real cause
-        // was an exhausted Anthropic credit balance.
-        const provider = /credit balance|quota|rate.?limit|429|invalid_request_error/i.test(summaryError)
-          ? " The AI service rejected the request (billing or rate limit) — check the Anthropic account."
-          : "";
-        summary = `Automated change summary unavailable.${provider} The structural diff below is complete and unaffected.`;
-      }
-    } else {
-      summary = "No substantive text differences detected between these two versions.";
-    }
-
     const { data: saved, error: saveErr } = await db
       .from("contract_comparisons")
       .insert({
@@ -1407,9 +1435,10 @@ contractsRouter.post("/:id/compare", async (req, res, next) => {
         added_count: diff.added,
         deleted_count: diff.deleted,
         modified_count: diff.modified,
-        summary,
-        key_changes: clauseResults.length > 0 ? clauseResults : keyChanges,
-        model,
+        summary: null,
+        key_changes: [],
+        model: "",
+        status: "processing",
       })
       .select()
       .single();
@@ -1420,11 +1449,44 @@ contractsRouter.post("/:id/compare", async (req, res, next) => {
       added: diff.added, deleted: diff.deleted, modified: diff.modified,
     });
 
-    res.json({
-      comparison: saved,
-      ...(summaryError ? { summary_error: summaryError } : {}),
-      ...(clauseError ? { clause_error: clauseError } : {}),
+    const work = runComparisonAI({
+      comparisonId: saved.id,
+      contractType: base.contract_type as ContractType,
+      baseText: base.extracted_text,
+      comparedText: compared.extracted_text,
+      diffBlocks: diff.blocks,
     });
+
+    // Same pattern as analysis: waitUntil keeps the function alive past the
+    // response, but SILENTLY no-ops when the platform context is absent, which
+    // would strand the row at "processing" forever. Fall back to inline.
+    const waitUntil = getWaitUntil();
+    if (waitUntil) {
+      waitUntil(work);
+      res.status(202).json({ comparison: saved });
+      return;
+    }
+    await work;
+    const { data: finished } = await db
+      .from("contract_comparisons").select("*").eq("id", saved.id).single();
+    res.status(200).json({ comparison: finished ?? saved });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/contracts/:id/comparisons/:comparisonId — poll a running comparison
+contractsRouter.get("/:id/comparisons/:comparisonId", statusLimiter, async (req, res, next) => {
+  try {
+    const { data, error } = await db
+      .from("contract_comparisons")
+      .select("*")
+      .eq("id", req.params.comparisonId)
+      .eq("user_id", req.userId)
+      .eq("org_id", req.orgId!)
+      .single();
+    if (error || !data) { res.status(404).json({ error: "Comparison not found" }); return; }
+    res.json({ comparison: data });
   } catch (err) {
     next(err);
   }

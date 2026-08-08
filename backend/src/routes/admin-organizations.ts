@@ -122,7 +122,7 @@ adminOrganizationsRouter.post("/", async (req, res, next) => {
     // Upsert synchronously — same defensive pattern already used by
     // admin.ts's POST /users/add — so the dashboard is consistent even if
     // the organization.created webhook is delayed.
-    await db.from("organizations").upsert(
+    const { error: e0 } = await db.from("organizations").upsert(
       {
         clerk_org_id: org.id,
         name: org.name,
@@ -133,6 +133,7 @@ adminOrganizationsRouter.post("/", async (req, res, next) => {
       },
       { onConflict: "clerk_org_id" },
     );
+    if (e0) console.error("[admin-org] db write failed:", e0.message, e0.code ?? "");
 
     const invitation = await clerk.organizations.createOrganizationInvitation({
       organizationId: org.id,
@@ -243,9 +244,10 @@ adminOrganizationsRouter.delete("/:id", async (req, res, next) => {
       if (err?.status !== 404) throw err; // already gone in Clerk — fine, DB cleanup already ran
     }
 
-    await db.from("organizations")
+    const { error: e1 } = await db.from("organizations")
       .update({ status: "deleted", deleted_at: new Date().toISOString() })
       .eq("id", req.params.id);
+    if (e1) console.error("[admin-org] db write failed:", e1.message, e1.code ?? "");
 
     res.status(204).send();
   } catch (err) {

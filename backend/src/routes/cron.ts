@@ -86,7 +86,8 @@ View it on Contralyne: ${url}
             text,
             { html },
           );
-          await db.from("contract_obligations").update({ reminder_sent_at: new Date().toISOString() }).eq("id", o.id);
+          const { error: e0 } = await db.from("contract_obligations").update({ reminder_sent_at: new Date().toISOString() }).eq("id", o.id);
+          if (e0) console.error("[cron] db write failed:", e0.message, e0.code ?? "");
           sent++;
         } catch (mailErr) {
           console.error("[cron/obligation-reminders] mail failed for", email, mailErr);

@@ -84,10 +84,11 @@ webhooksRouter.post(
           return;
         }
 
-        await db.from("users").upsert(
+        const { error: e0 } = await db.from("users").upsert(
           { clerk_user_id: clerkUserId, email },
           { onConflict: "clerk_user_id" },
         );
+        if (e0) console.error("[webhooks] db write failed:", e0.message, e0.code ?? "");
 
       } else if (type === "user.deleted") {
         if (!clerkUserId) {
@@ -133,7 +134,7 @@ webhooksRouter.post(
           ? "sales_assisted" : "self_serve";
         const status = onboardingType === "sales_assisted" ? "active" : "pending";
 
-        await db.from("organizations").upsert(
+        const { error: e1 } = await db.from("organizations").upsert(
           {
             clerk_org_id: clerkOrgId,
             name,
@@ -145,6 +146,7 @@ webhooksRouter.post(
           },
           { onConflict: "clerk_org_id", ignoreDuplicates: true },
         );
+        if (e1) console.error("[webhooks] db write failed:", e1.message, e1.code ?? "");
 
       } else if (type === "organization.updated") {
         const clerkOrgId: string = data?.id;
@@ -153,7 +155,8 @@ webhooksRouter.post(
           res.status(200).json({ skipped: "missing id or name" });
           return;
         }
-        await db.from("organizations").update({ name, updated_at: new Date().toISOString() }).eq("clerk_org_id", clerkOrgId);
+        const { error: e2 } = await db.from("organizations").update({ name, updated_at: new Date().toISOString() }).eq("clerk_org_id", clerkOrgId);
+        if (e2) console.error("[webhooks] db write failed:", e2.message, e2.code ?? "");
 
       } else if (type === "organization.deleted") {
         const clerkOrgId: string = data?.id;
@@ -169,9 +172,10 @@ webhooksRouter.post(
         // Keep the organizations row itself (marked, not removed) — a minimal
         // audit trail of "this firm existed and was deleted", holding zero
         // contract content or PII beyond a name.
-        await db.from("organizations")
+        const { error: e3 } = await db.from("organizations")
           .update({ status: "deleted", deleted_at: new Date().toISOString() })
           .eq("clerk_org_id", clerkOrgId);
+        if (e3) console.error("[webhooks] db write failed:", e3.message, e3.code ?? "");
       }
 
       res.status(200).json({ received: true });
@@ -236,7 +240,8 @@ webhooksRouter.post(
         }));
       }
 
-      await db.from("signature_requests").update(updates).eq("docusign_envelope_id", envelopeId);
+      const { error: e4 } = await db.from("signature_requests").update(updates).eq("docusign_envelope_id", envelopeId);
+      if (e4) console.error("[webhooks] db write failed:", e4.message, e4.code ?? "");
 
       res.status(200).json({ received: true });
     } catch (err) {

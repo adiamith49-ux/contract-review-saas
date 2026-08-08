@@ -1080,6 +1080,9 @@ export interface Comparison {
   id: string;
   base_contract_id: string;
   compared_contract_id: string;
+  /** "processing" until the AI half lands; older rows default to "complete". */
+  status?: "processing" | "complete" | "failed";
+  error_message?: string | null;
   diff: DiffBlock[];
   added_count: number;
   deleted_count: number;
@@ -1097,6 +1100,48 @@ export async function listVersions(token: string | null, contractId: string): Pr
 
 export async function compareVersions(token: string | null, baseId: string, against: string): Promise<{ comparison: Comparison }> {
   return apiFetch(`/api/contracts/${baseId}/compare`, token, { method: "POST", body: JSON.stringify({ against }) });
+}
+
+export async function getComparison(
+  token: string | null,
+  contractId: string,
+  comparisonId: string,
+): Promise<{ comparison: Comparison }> {
+  return apiFetch(`/api/contracts/${contractId}/comparisons/${comparisonId}`, token);
+}
+
+/**
+ * The comparison is fire-and-poll: the structural diff comes back immediately
+ * and the AI work (clause inventories, difference summaries, prose summary)
+ * lands afterwards — around 200s on a real pair, far too long to hold a
+ * request open. `onProgress` receives the diff-only row first so the
+ * side-by-side can render while the rest is still running.
+ */
+export async function waitForComparison(
+  getToken: () => Promise<string | null>,
+  contractId: string,
+  comparisonId: string,
+  opts: { onTick?: (seconds: number) => void; timeoutMs?: number } = {},
+): Promise<Comparison> {
+  const started = Date.now();
+  const timeout = opts.timeoutMs ?? 300_000;
+  let delay = 2000;
+
+  for (;;) {
+    if (Date.now() - started > timeout) {
+      throw new Error("Comparison is taking longer than expected. It may still finish — reopen this panel shortly.");
+    }
+    await new Promise(r => setTimeout(r, delay));
+    delay = Math.min(delay * 1.3, 8000);   // back off; these runs are minutes long
+    opts.onTick?.(Math.round((Date.now() - started) / 1000));
+
+    try {
+      const { comparison } = await getComparison(await getToken(), contractId, comparisonId);
+      if (comparison.status !== "processing") return comparison;
+    } catch {
+      // A dropped poll is not a failed comparison — keep waiting for the deadline.
+    }
+  }
 }
 
 export async function listComparisons(token: string | null, contractId: string): Promise<{ comparisons: Comparison[] }> {

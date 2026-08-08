@@ -210,7 +210,8 @@ adminRouter.post("/auth/verify-otp", authLimiter, async (req, res, next) => {
     }
 
     // One-time: clear the code so it can't be replayed, but leave password_hash untouched
-    await db.from("admins").update({ reset_code_hash: null, reset_code_expires_at: null }).eq("id", a.id);
+    const { error: e0 } = await db.from("admins").update({ reset_code_hash: null, reset_code_expires_at: null }).eq("id", a.id);
+    if (e0) console.error("[admin] db write failed:", e0.message, e0.code ?? "");
 
     const token = signAdminToken(a.email);
     res.json({ token, admin: { email: a.email, name: a.name } });
