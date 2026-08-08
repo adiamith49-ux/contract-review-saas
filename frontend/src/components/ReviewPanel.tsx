@@ -20,6 +20,14 @@ type ItemDecision = "accepted" | "rejected" | "edited";
 
 interface Props {
   analysis: AnalysisOut;
+  /** Falls back into the metadata panel — see deriveMetadata. */
+  contract?: {
+    counterparty: string | null;
+    start_date: string | null;
+    end_date: string | null;
+    renewal_date: string | null;
+    contract_value: number | null;
+  };
   activeId: string | null;
   onActiveChange: (id: string | null) => void;
   appliedIds: Set<string>;
@@ -104,6 +112,25 @@ function SectionLabel({ icon, title, count }: { icon: React.ReactNode; title: st
 }
 
 // ─── Metadata Card ───────────────────────────────────────────────────────────
+
+// `analyses.contract_metadata` does not exist as a column and nothing has ever
+// written it, so this panel rendered for nobody. The same facts ARE stored on
+// the contract row (extractContractMeta fills them on upload), so read those
+// when the analysis has nothing — the panel works today, without a migration.
+function deriveMetadata(c: Props["contract"]): ContractMetadata | undefined {
+  if (!c) return undefined;
+  const fmt = (d: string | null) => (d ? new Date(d).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : "");
+  const meta: ContractMetadata = {
+    parties: c.counterparty ? [{ name: c.counterparty, role: "Counterparty" }] : [],
+    effectiveDate: fmt(c.start_date),
+    expirationDate: fmt(c.end_date) || undefined,
+    renewalTerms: c.renewal_date ? `Renews ${fmt(c.renewal_date)}` : undefined,
+    governingLaw: "",
+    totalValue: c.contract_value != null ? c.contract_value.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 }) : undefined,
+  };
+  const hasAny = meta.parties.length > 0 || meta.effectiveDate || meta.expirationDate || meta.renewalTerms || meta.totalValue;
+  return hasAny ? meta : undefined;
+}
 
 function MetadataSection({ metadata }: { metadata: ContractMetadata }) {
   const rows: { label: string; value: string; icon: React.ReactNode }[] = [];
@@ -602,7 +629,7 @@ function ClauseLibraryTab({ getToken }: { getToken: () => Promise<string | null>
 
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
-export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, onApply, onApplyAll, onClose, onDownload, redlinePlaced, redlineTotal, onScrollToText, getToken }: Props) {
+export function ReviewPanel({ analysis, contract, activeId, onActiveChange, appliedIds, onApply, onApplyAll, onClose, onDownload, redlinePlaced, redlineTotal, onScrollToText, getToken }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
   const [openClauseIdx, setOpenClauseIdx] = useState<number | null>(null);
   const [openMissingIdx, setOpenMissingIdx] = useState<number | null>(null);
@@ -619,7 +646,7 @@ export function ReviewPanel({ analysis, activeId, onActiveChange, appliedIds, on
   const ambiguityFlags = (analysis.ambiguity_flags ?? []) as AmbiguityFlag[];
   const extractedClauses = (analysis.extracted_clauses ?? []) as ExtractedClause[];
   const missingClauses = (analysis.missing_clauses ?? []) as MissingClause[];
-  const metadata = analysis.contract_metadata as ContractMetadata | undefined;
+  const metadata = (analysis.contract_metadata as ContractMetadata | undefined) ?? deriveMetadata(contract);
 
   const allIds = [
     ...analysis.risk_summary.map((_, i) => `r-${i}`),

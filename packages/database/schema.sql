@@ -89,6 +89,8 @@ CREATE TABLE IF NOT EXISTS analyses (
   clause_analysis jsonb NOT NULL DEFAULT '[]',
   negotiation_points jsonb NOT NULL DEFAULT '[]',
   ambiguity_flags jsonb NOT NULL DEFAULT '[]',
+  -- Applied to production out-of-band; kept here so a fresh run matches prod.
+  playbooks_used jsonb NOT NULL DEFAULT '[]',
   model text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );

@@ -518,6 +518,7 @@ export default function ContractDetailPage() {
           {panelOpen && (
             <ReviewPanel
               analysis={analysis}
+              contract={contract}
               activeId={activeId}
               onActiveChange={newId => setActiveId(prev => prev === newId ? null : newId)}
               appliedIds={appliedIds}
