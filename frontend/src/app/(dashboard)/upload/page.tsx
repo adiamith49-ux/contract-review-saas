@@ -203,6 +203,20 @@ export default function UploadPage() {
         parentContractId: parentContractId || undefined,
       });
       setProgress(80);
+
+      // A new version is uploaded to be compared against the previous draft,
+      // not reviewed from scratch. Re-running the full segmented analysis here
+      // would spend minutes and a full set of AI calls re-deriving findings for
+      // the ~95% of the document the counterparty did not touch. Land on the
+      // comparison instead; the contract page still offers Analyze on demand
+      // for whoever wants a full risk review of the new draft.
+      if (parentContractId) {
+        setProgress(100);
+        setStage("done");
+        router.push(`/contracts/${contract.id}?panel=versions&compare=auto`);
+        return;
+      }
+
       setStage("analyzing");
       try {
         // Only queues the job (202) — the AI runs server-side. Don't wait here;

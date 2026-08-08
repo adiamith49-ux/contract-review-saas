@@ -1,6 +1,7 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   ChevronDown, ChevronUp, Loader2, GitCompare, Upload, Plus, Minus, Pencil,
   Sparkles, Download, ArrowRight, Columns2, AlignJustify,
@@ -54,6 +55,20 @@ export function VersionComparePanel({ contractId, getToken, embedded }: Props) {
   }, [contractId, getToken]);
 
   useEffect(() => { if (isOpen && loading) load(); }, [isOpen, loading, load]);
+
+  // The version-upload flow routes here with ?compare=auto so the new draft
+  // opens on its diff rather than on an empty panel waiting for a click. Guarded
+  // by a ref because the comparison is an AI call — it must fire exactly once
+  // per arrival, not on every re-render that touches baseId/againstId.
+  const autoCompare = useSearchParams().get("compare") === "auto";
+  const autoRan = useRef(false);
+
+  useEffect(() => {
+    if (!autoCompare || autoRan.current || loading || comparing) return;
+    if (versions.length < 2 || !baseId || !againstId || baseId === againstId) return;
+    autoRan.current = true;
+    void handleCompare();
+  }, [autoCompare, loading, comparing, versions.length, baseId, againstId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleCompare() {
     if (!baseId || !againstId) { toast.error("Pick two versions to compare"); return; }

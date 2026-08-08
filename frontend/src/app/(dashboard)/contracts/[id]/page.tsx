@@ -1,11 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useAuth } from "@clerk/nextjs";
+import { useAuth, useUser } from "@clerk/nextjs";
 import {
   ArrowLeft, Download, Loader2, AlertTriangle, FileText, RefreshCw, GitPullRequest,
-  AlignLeft, X, Pencil, Building2, Calendar, User, DollarSign, Globe, Upload,
+  AlignLeft, X, Pencil, Building2, Calendar, User, DollarSign, Globe, Upload, GitCompare,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -28,13 +28,53 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { formatDate, formatDateShort, formatCurrency, formatFileSize, CONTRACT_TYPE_LABELS, getLifecycleBadge, CONTRACT_BUSINESS_STATUS_LABELS } from "@/lib/utils";
+import { reviewerLabel } from "@/lib/reviewer";
 import type { ContractType } from "@/lib/types";
+
+// ─── Applied-item → redline resolution ────────────────────────────────────────
+// Only clause findings carry verbatim contract text plus replacement language,
+// so only they can anchor a tracked change. Risk-summary and ambiguity items are
+// commentary on the same clauses — applying one selects the clause findings it
+// covers, instead of silently redlining nothing.
+
+function sectionRefs(...parts: (string | undefined | null)[]): string[] {
+  const out: string[] = [];
+  for (const p of parts) {
+    for (const m of (p ?? "").matchAll(/\b\d+(?:\.\d+)*\b/g)) out.push(m[0]);
+  }
+  return out;
+}
+
+// "24" covers "24.1"; "24.1" belongs to "24".
+function refsOverlap(a: string[], b: string[]): boolean {
+  return a.some(x => b.some(y => x === y || x.startsWith(`${y}.`) || y.startsWith(`${x}.`)));
+}
+
+function topicWords(s?: string | null): Set<string> {
+  return new Set(
+    (s ?? "").toLowerCase().split(/[^a-z]+/)
+      .filter(w => w.length > 4 && !["section","sections","clause","clauses","agreement","contract"].includes(w)),
+  );
+}
+
+function sharesTopic(a?: string | null, b?: string | null): boolean {
+  const wa = topicWords(a);
+  if (wa.size === 0) return false;
+  const wb = topicWords(b);
+  for (const w of wa) if (wb.has(w)) return true;
+  return false;
+}
 
 export default function ContractDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { getToken } = useAuth();
+  const { user } = useUser();
+
+  // Word attributes every comment and tracked change to this name.
+  const reviewer = reviewerLabel(user?.fullName ?? [user?.firstName, user?.lastName].filter(Boolean).join(" "));
 
   const [contract, setContract] = useState<ContractDetail | null>(null);
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeElapsed, setAnalyzeElapsed] = useState(0);
@@ -165,7 +205,7 @@ export default function ContractDetailPage() {
     if (!contract) return;
     try {
       const token = await getToken();
-      await downloadExport(token, id, "docx", contract.filename, appliedIds.size > 0 ? appliedIds : undefined);
+      await downloadExport(token, id, "docx", contract.filename, appliedIds.size > 0 ? appliedIds : undefined, contract.version_number, reviewer);
       toast.success("Download started");
     } catch {
       toast.error("Download failed");
@@ -175,13 +215,39 @@ export default function ContractDetailPage() {
   async function handleRedline() {
     if (!contract || !analysis) return;
 
-    // Only redline clause findings the user actually applied in the Review
-    // panel — and only ones with real contract text + a suggested revision
-    // (risk/negotiation/ambiguity items have no verbatim text to anchor a
-    // tracked change to, so they can't become redlines).
-    const editsToRedline = analysis.clause_analysis
-      .map((c, i) => ({ c, id: `c-${i}` }))
-      .filter(({ c, id }) => appliedIds.has(id) && c.contractText && c.suggestedLanguage)
+    // Redline the clause findings the user applied in the Review panel. Only
+    // findings with real contract text + a suggested revision can anchor a
+    // tracked change; applying a risk-summary, ambiguity or negotiation item
+    // selects the clause findings covering the same sections/topic.
+    const eligible = (analysis.clause_analysis ?? [])
+      .map((c, i) => ({ c, i }))
+      .filter(({ c }) => c.contractText && c.suggestedLanguage);
+
+    const selected = new Set<number>();
+    for (const { i } of eligible) if (appliedIds.has(`c-${i}`)) selected.add(i);
+
+    const selectBy = (refs: string[], topic?: string | null) => {
+      for (const { c, i } of eligible) {
+        const clauseRefs = sectionRefs(c.clause);
+        if ((refs.length > 0 && refsOverlap(refs, clauseRefs)) || sharesTopic(topic, c.clause)) {
+          selected.add(i);
+        }
+      }
+    };
+
+    (analysis.risk_summary ?? []).forEach((r, i) => {
+      if (appliedIds.has(`r-${i}`)) selectBy(sectionRefs(r.clauseRef), r.area);
+    });
+    (analysis.ambiguity_flags ?? []).forEach((a, i) => {
+      if (appliedIds.has(`a-${i}`)) selectBy(sectionRefs(a.location), a.term);
+    });
+    // Negotiation points carry no clause reference at all, so they match on topic only.
+    (analysis.negotiation_points ?? []).forEach((n, i) => {
+      if (appliedIds.has(`n-${i}`)) selectBy(sectionRefs(n.point), n.point);
+    });
+
+    const editsToRedline = eligible
+      .filter(({ i }) => selected.has(i))
       .map(({ c }) => ({
         clause_ref: c.clause,
         original_text: c.contractText!,
@@ -193,7 +259,11 @@ export default function ContractDetailPage() {
       }));
 
     if (editsToRedline.length === 0) {
-      toast.warning("Apply at least one clause change with suggested language before redlining");
+      toast.warning(
+        eligible.length > 0
+          ? "Nothing to redline yet — the items you applied have no replacement language. Open the Clauses tab and Accept a suggested revision."
+          : "This analysis has no clause findings with replacement language, so there is nothing to redline.",
+      );
       return;
     }
 
@@ -223,7 +293,7 @@ export default function ContractDetailPage() {
     setDownloadingRedline(true);
     try {
       const token = await getToken();
-      await downloadRedlineDocx(token, id, contract.filename, redlineResult?.edits ?? []);
+      await downloadRedlineDocx(token, id, contract.filename, redlineResult?.edits ?? [], reviewer);
       toast.success("Redline DOCX downloaded");
     } catch {
       toast.error("Redline download failed");
@@ -405,6 +475,9 @@ export default function ContractDetailPage() {
             analyzing={analyzing}
             elapsed={analyzeElapsed}
             errorMessage={contract.error_message}
+            isVersion={!!contract.parent_contract_id}
+            versionNumber={contract.version_number}
+            onCompare={() => router.push(`/contracts/${id}?panel=versions&compare=auto`)}
           />
         </div>
       ) : view === "redline" ? (
@@ -528,12 +601,16 @@ function formatElapsed(seconds: number): string {
 
 function NotAnalyzedState({
   status, onAnalyze, analyzing, elapsed = 0, errorMessage = null,
+  versionNumber = 1, isVersion = false, onCompare,
 }: {
   status: string;
   onAnalyze: () => void;
   analyzing: boolean;
   elapsed?: number;
   errorMessage?: string | null;
+  versionNumber?: number;
+  isVersion?: boolean;
+  onCompare?: () => void;
 }) {
   if (status === "processing") {
     return (
@@ -576,6 +653,34 @@ function NotAnalyzedState({
       </div>
     );
   }
+  // A new version is not re-reviewed on upload — what you want from a
+  // counterparty's draft is what changed, not a fresh risk report on the 95%
+  // they left alone. Lead with the comparison and keep the full review one
+  // click away for when the new draft warrants its own review.
+  if (isVersion) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <GitCompare className="h-10 w-10 text-gray-300 mb-4" />
+        <p className="font-medium text-gray-700">Version {versionNumber} uploaded</p>
+        <p className="text-sm text-gray-400 mt-1 max-w-md">
+          Compare it against the previous draft to see what the counterparty changed, with an
+          AI summary of the changes. A full risk review of this version is optional.
+        </p>
+        <div className="flex items-center gap-2 mt-6">
+          <Button onClick={onCompare}>
+            <GitCompare className="h-4 w-4 mr-2" />
+            View Comparison
+          </Button>
+          <Button variant="outline" onClick={onAnalyze} disabled={analyzing}>
+            {analyzing
+              ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Analyzing…</>
+              : "Run Full AI Analysis"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center">
       <FileText className="h-10 w-10 text-gray-300 mb-4" />
