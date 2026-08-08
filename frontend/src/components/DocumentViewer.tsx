@@ -240,10 +240,13 @@ export function DocumentViewer({ text, analysis, activeId, appliedIds, panelOpen
                         {para}
                       </p>
                       <div className="mt-1.5 mb-0.5">
-                        <span className="text-[10px] font-semibold text-blue-600 uppercase tracking-wide">Proposed replacement</span>
+                        {/* Insertions read green here too — the redline viewer and the
+                            DOCX/PDF exports all use green-underline for added text, and a
+                            blue preview made the same edit look like a different thing. */}
+                        <span className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wide">Proposed replacement</span>
                       </div>
                       <p className={cn(
-                        "leading-relaxed whitespace-pre-wrap break-words underline text-blue-700 bg-blue-50 px-1 rounded",
+                        "leading-relaxed whitespace-pre-wrap break-words underline decoration-emerald-600 text-emerald-800 bg-emerald-50 px-1 rounded",
                         heading ? "font-bold text-sm" : "text-[13px]",
                       )}>
                         {ann.suggestedLanguage}
