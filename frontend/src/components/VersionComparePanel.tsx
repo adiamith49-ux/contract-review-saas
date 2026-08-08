@@ -45,6 +45,10 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
   const [elapsed, setElapsed] = useState(0);
   const [showSummary, setShowSummary] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
+  // "full" shows both contracts end to end with the changes highlighted in
+  // place; "changes" shows only the changed blocks. Reading a redline in
+  // context is the normal job, so full is the default.
+  const [scope, setScope] = useState<"full" | "changes">("full");
 
   useEffect(() => {
     if (!comparing) return;
@@ -147,6 +151,11 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
   }
 
   const changedBlocks = result?.diff.filter(b => b.type !== "unchanged") ?? [];
+  // The stored diff already carries every unchanged paragraph with both sides,
+  // so the complete uploaded documents are reconstructible here — no extra
+  // fetch — and the highlighting lands in its real position in the contract.
+  const allBlocks = result?.diff ?? [];
+  const shownBlocks = scope === "full" ? allBlocks : changedBlocks;
 
   const baseVersion = result ? versions.find(v => v.id === result.base_contract_id) : undefined;
   const comparedVersion = result ? versions.find(v => v.id === result.compared_contract_id) : undefined;
@@ -231,6 +240,18 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
                   )}
                 </button>
                 <span className="inline-flex rounded-md border overflow-hidden">
+                  <button type="button" onClick={() => setScope("full")}
+                    className={cn("px-2 py-1 text-[10px] font-medium", scope === "full" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-50")}
+                    title="Both contracts end to end, changes highlighted in place">
+                    Full documents
+                  </button>
+                  <button type="button" onClick={() => setScope("changes")}
+                    className={cn("px-2 py-1 text-[10px] font-medium border-l", scope === "changes" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-50")}
+                    title="Only the paragraphs that differ">
+                    Changes only
+                  </button>
+                </span>
+                <span className="inline-flex rounded-md border overflow-hidden">
                   <button type="button" onClick={() => setDiffView("inline")}
                     className={cn("inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium", diffView === "inline" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-50")}>
                     <AlignJustify className="h-3 w-3" />Inline
@@ -290,17 +311,18 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
           <div className="flex-1 flex items-center justify-center text-sm text-gray-400">
             {comparing ? `Comparing the two drafts… ${elapsed}s` : "Pick two versions and press Compare."}
           </div>
-        ) : changedBlocks.length === 0 ? (
+        ) : shownBlocks.length === 0 ? (
           <div className="flex-1 flex items-center justify-center text-sm text-gray-400">No textual changes between these two versions.</div>
         ) : diffView === "inline" ? (
           <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-2">
-            {changedBlocks.map((b, i) => (
+            {shownBlocks.map((b, i) => (
               <div key={i} className="text-[13px] leading-relaxed">
+                {b.type === "unchanged" && <p className="px-3 py-1 text-gray-700">{b.compared ?? b.base}</p>}
                 {b.type === "added" && <p className="rounded bg-emerald-50 border-l-2 border-emerald-400 px-3 py-2 text-emerald-900"><span className="font-semibold">+ </span>{b.compared}</p>}
-                {b.type === "deleted" && <p className="rounded bg-red-50 border-l-2 border-red-400 px-3 py-2 text-red-900"><span className="font-semibold">− </span>{b.base}</p>}
+                {b.type === "deleted" && <p className="rounded bg-red-50 border-l-2 border-red-400 px-3 py-2 text-red-900 line-through"><span className="font-semibold no-underline">− </span>{b.base}</p>}
                 {b.type === "modified" && (
                   <div className="rounded bg-amber-50 border-l-2 border-amber-400 px-3 py-2">
-                    <p className="text-red-700"><span className="font-semibold">was: </span>{b.base}</p>
+                    <p className="text-red-700 line-through"><span className="font-semibold no-underline">was: </span>{b.base}</p>
                     <p className="text-emerald-800 mt-1"><span className="font-semibold">now: </span>{b.compared}</p>
                   </div>
                 )}
@@ -320,21 +342,23 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
               </div>
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto divide-y">
-              {changedBlocks.map((b, i) => (
+              {shownBlocks.map((b, i) => (
                 <div key={i} className="grid grid-cols-2 gap-px bg-gray-100">
                   <div className={cn("px-4 py-3 text-[13px] leading-relaxed whitespace-pre-wrap",
-                    b.type === "deleted" && "bg-red-50 text-red-900",
+                    b.type === "unchanged" && "bg-white text-gray-600",
+                    b.type === "deleted" && "bg-red-50 text-red-900 line-through decoration-red-400",
                     b.type === "modified" && "bg-red-50/70 text-red-800",
                     b.type === "added" && "bg-gray-50 text-gray-300 italic",
                   )}>
-                    {b.type === "added" ? "— not present —" : b.base}
+                    {b.type === "added" ? "— not in this version —" : b.base}
                   </div>
                   <div className={cn("px-4 py-3 text-[13px] leading-relaxed whitespace-pre-wrap",
+                    b.type === "unchanged" && "bg-white text-gray-600",
                     b.type === "added" && "bg-emerald-50 text-emerald-900",
                     b.type === "modified" && "bg-emerald-50/70 text-emerald-800",
                     b.type === "deleted" && "bg-gray-50 text-gray-300 italic",
                   )}>
-                    {b.type === "deleted" ? "— removed —" : b.compared}
+                    {b.type === "deleted" ? "— removed in this version —" : b.compared}
                   </div>
                 </div>
               ))}
