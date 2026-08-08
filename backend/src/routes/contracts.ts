@@ -269,12 +269,16 @@ contractsRouter.post("/upload", uploadLimiter, upload.single("file"), async (req
     const requestedClientId = typeof req.body.client_id === "string" && req.body.client_id.trim()
       ? req.body.client_id.trim() : null;
     if (requestedClientId) {
-      const { data: client } = await db
+      const { data: client, error: clientErr } = await db
         .from("clients")
         .select("id")
         .eq("id", requestedClientId)
         .eq("org_id", req.orgId!)
-        .single();
+        .maybeSingle();
+      // A dead database and a genuinely unknown client are different problems.
+      // Collapsing both into "Client not found" would tell the user to fix
+      // their input while the real fault is ours, and hide the outage.
+      if (clientErr) throw clientErr;
       if (!client) { res.status(400).json({ error: "Client not found" }); return; }
       clientId = client.id;
     } else if (parent?.client_id) {
@@ -622,6 +626,10 @@ async function runAnalysis(opts: {
         clause_analysis: analysis.clauseAnalysis,
         negotiation_points: analysis.negotiationPoints,
         ambiguity_flags: analysis.ambiguityFlags ?? [],
+        // Column added 2026-08-08. The panel for this existed long before
+        // anything wrote it — declaring the schema field is only half the fix,
+        // the value has to be persisted too.
+        missing_clauses: analysis.missingClauses ?? [],
         model: analysis.model,
         playbooks_used: opts.playbooksUsed,
       }, { onConflict: "contract_id" })

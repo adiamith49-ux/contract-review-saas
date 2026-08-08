@@ -11,7 +11,9 @@
 -- now reads those instead. Adding a third copy would just be another thing to
 -- keep in sync.
 --
--- Run in the Supabase SQL editor. Safe to re-run.
+-- APPLIED to production 2026-08-08 via the Supabase Management API
+-- (project qdjdoxwebuwpnggifeku). Both columns verified present, jsonb,
+-- defaulting to '[]'. Safe to re-run.
 
 ALTER TABLE analyses ADD COLUMN IF NOT EXISTS extracted_clauses jsonb NOT NULL DEFAULT '[]';
 ALTER TABLE analyses ADD COLUMN IF NOT EXISTS missing_clauses   jsonb NOT NULL DEFAULT '[]';

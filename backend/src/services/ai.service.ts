@@ -81,6 +81,20 @@ function buildAnalysisTool(maxItems: number | null): Anthropic.Tool {
             },
           },
         },
+        missingClauses: {
+          type: "array",
+          description: `Clauses a contract of this type would normally contain but which are ABSENT here — indemnity, limitation of liability, termination for convenience, data protection, insurance, dispute resolution, and so on. Judge by what this deal needs, not by a fixed checklist. ${listLimit}`,
+          items: {
+            type: "object",
+            required: ["clauseType", "importance", "recommendation"],
+            properties: {
+              clauseType: { type: "string", description: "The missing clause, e.g. 'Limitation of Liability'" },
+              importance: { type: "string", enum: ["critical", "important", "recommended"] },
+              recommendation: { type: "string", description: "Why its absence matters to the reviewing party" },
+              suggestedLanguage: { type: "string", description: "Drafted clause text that could be inserted" },
+            },
+          },
+        },
         ambiguityFlags: {
           type: "array",
           description: `Vague or undefined terms that gate an obligation, remedy or termination right — 'reasonable', 'material', 'best efforts', 'promptly', 'industry standard', 'satisfactory to Customer'. ${listLimit}`,
