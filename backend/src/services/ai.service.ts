@@ -532,7 +532,10 @@ const changesTool: Anthropic.Tool = {
       summary: { type: "string", description: "2-4 sentence plain-English summary of what changed between the prior version and the new version, from the reviewing party's perspective." },
       keyChanges: {
         type: "array",
-        description: "Every substantive change in the diff, one entry each — typically 5-15, up to 25. Ignore pure formatting/whitespace, but never return an empty array when the diff contains substantive changes: a diff with added or deleted clauses always has at least one key change.",
+        // Bounded on purpose. "Every change, up to 25" made the model write to
+        // the token ceiling on every segment, which pushed a real comparison to
+        // 124s and the request died in flight. 8-12 short entries is what fits.
+        description: "The most substantive changes, up to 12, ordered by impact. Keep `detail` to one sentence. Ignore pure formatting/whitespace, but never return an empty array when the diff contains substantive changes: a diff with added or deleted clauses always has at least one key change.",
         items: {
           type: "object",
           required: ["type", "clause", "detail", "impact"],
@@ -560,9 +563,11 @@ async function summarizeChangesSegment(
 
   const response = await anthropic.messages.create({
     model: config.AI_MODEL,
-    // Room for the prose summary AND a full keyChanges list. At 2048 the list
-    // came back empty once the summary had been written.
-    max_tokens: 4096,
+    // Room for the prose summary AND a keyChanges list. At 2048 the list came
+    // back empty once the summary had been written; at 4096 the model filled
+    // the budget and the whole call ran too long to survive. 3000 is the middle
+    // — output length is the dominant term in how long this takes.
+    max_tokens: 3000,
     system: [{ type: "text", text: legalSystemPrompt }],
     tools: [changesTool],
     tool_choice: { type: "tool", name: "summarize_changes" },
