@@ -68,9 +68,14 @@ type RenderMode = "inline" | "original" | "revised";
 const DEL_CLS = "text-red-700 bg-red-100 line-through px-0.5 rounded-sm decoration-red-600";
 const INS_CLS = "text-emerald-800 bg-emerald-100 underline decoration-emerald-600 not-italic px-0.5 rounded-sm";
 
+// An edit that OVERLAPS this block, not one that fits inside it. A redline
+// routinely spans a paragraph break — a finding about Section 39 covers 39.1
+// and 39.2, which are separate blocks — and requiring containment meant those
+// edits matched no block at all and silently rendered nothing, even though the
+// backend had placed them correctly.
 function editsInBlock(block: Block, matchedEdits: LocatedEdit[]): LocatedEdit[] {
   return matchedEdits
-    .filter(e => e.start >= block.start && e.end <= block.end)
+    .filter(e => e.start < block.end && e.end > block.start)
     .sort((a, b) => a.start - b.start);
 }
 
@@ -96,13 +101,21 @@ function renderBlockContent(
     const editIdx = allMatchedEdits.indexOf(edit);
     const isActive = activeEditIdx === editIdx;
 
-    if (edit.start > cursor) {
+    // Clamp to this block — the edit may start before it or end after it.
+    const from = Math.max(edit.start, block.start);
+    const to = Math.min(edit.end, block.end);
+    // The replacement text belongs on the LAST block the edit touches, so a
+    // span crossing a paragraph break strikes through both halves but inserts
+    // the revised clause once rather than repeating it.
+    const isFinalPiece = to >= edit.end;
+
+    if (from > cursor) {
       segments.push(
-        <span key={`t-${cursor}`}>{block.text.slice(cursor - block.start, edit.start - block.start)}</span>,
+        <span key={`t-${cursor}`}>{block.text.slice(cursor - block.start, from - block.start)}</span>,
       );
     }
 
-    const raw = block.text.slice(edit.start - block.start, edit.end - block.start);
+    const raw = block.text.slice(from - block.start, to - block.start);
 
     let body: React.ReactNode;
     if (mode === "original") {
@@ -114,19 +127,19 @@ function renderBlockContent(
       // A deletion leaves nothing behind in the revised text.
       if (edit.edit_type === "delete") body = null;
       else if (edit.edit_type === "insert") {
-        body = <><span>{raw}</span><ins className={cn(INS_CLS, "ml-0.5")}>{edit.revised_text}</ins></>;
+        body = <><span>{raw}</span>{isFinalPiece && <ins className={cn(INS_CLS, "ml-0.5")}>{edit.revised_text}</ins>}</>;
       } else {
-        body = <ins className={INS_CLS}>{edit.revised_text}</ins>;
+        body = isFinalPiece ? <ins className={INS_CLS}>{edit.revised_text}</ins> : null;
       }
     } else {
       if (edit.edit_type === "delete") body = <del className={DEL_CLS}>{raw}</del>;
       else if (edit.edit_type === "insert") {
-        body = <><span>{raw}</span><ins className={cn(INS_CLS, "ml-0.5")}>{edit.revised_text}</ins></>;
+        body = <><span>{raw}</span>{isFinalPiece && <ins className={cn(INS_CLS, "ml-0.5")}>{edit.revised_text}</ins>}</>;
       } else {
         body = (
           <>
             <del className={DEL_CLS}>{raw}</del>
-            <ins className={cn(INS_CLS, "ml-0.5")}>{edit.revised_text}</ins>
+            {isFinalPiece && <ins className={cn(INS_CLS, "ml-0.5")}>{edit.revised_text}</ins>}
           </>
         );
       }
@@ -134,7 +147,7 @@ function renderBlockContent(
 
     segments.push(
       <span
-        key={`e-${edit.start}`}
+        key={`e-${edit.start}-${from}`}
         ref={registerRefs ? (el => { if (el) editRefs.current.set(editIdx, el); }) : undefined}
         className={cn("rounded transition-all", isActive ? "ring-2 ring-blue-400 ring-offset-1" : "")}
       >
@@ -142,7 +155,7 @@ function renderBlockContent(
       </span>,
     );
 
-    cursor = edit.end;
+    cursor = to;
   }
 
   if (cursor < block.end) {
