@@ -195,8 +195,11 @@ async function ensureUser(clerkUserId: string): Promise<void> {
       { clerk_user_id: clerkUserId, email },
       { onConflict: "clerk_user_id" },
     );
-  } catch {
-    // Non-fatal — user sync failure should never block an upload
+  } catch (e) {
+    // Non-fatal — user sync failure should never block an upload — but a
+    // permanently failing sync means users never land in the users table, and
+    // silence is how that goes unnoticed for months.
+    console.error("[ensureUser] sync failed:", (e as Error)?.message ?? e);
   }
 }
 
@@ -1160,8 +1163,14 @@ contractsRouter.post("/:id/redline", analyzeLimiter, async (req, res, next) => {
         unmatched_count,
         model,
       });
-    } catch {
-      // table may not exist yet — non-fatal
+    } catch (e) {
+      // The `redlines` table has existed for a long time, so "may not exist
+      // yet" is no longer a reason to stay quiet: anything failing here now is
+      // a real fault (constraint, RLS, a missing column), and the consequence
+      // is that the redline is never persisted — GET /:id/redline returns
+      // nothing and the user's run is silently lost. Still non-fatal, because
+      // the edits are already in the response, but no longer invisible.
+      console.error("[redline] failed to persist redlines row:", (e as Error)?.stack ?? e);
     }
 
     await logActivity(req.userId, "contract.redlined", req.params.id, { matched_count, unmatched_count });
