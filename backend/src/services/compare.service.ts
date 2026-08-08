@@ -14,6 +14,13 @@ export interface DiffBlock {
   type: DiffType;
   base?: string;      // paragraph from the base (prior) version
   compared?: string;  // paragraph from the compared (new) version
+  /**
+   * This unit started a new paragraph in the uploaded document. Diffing happens
+   * at sentence level for accuracy, but the reader wants the contract to look
+   * like the contract — this is what lets the viewer re-flow sentences back into
+   * the original paragraphs instead of showing one box per sentence.
+   */
+  para?: boolean;
   // Word-level breakdown, present on "modified" blocks only. Without this a
   // reworded clause is just two walls of text and the reader has to spot the
   // difference by eye.
@@ -52,14 +59,20 @@ function splitSentences(block: string): string[] {
     .filter(Boolean);
 }
 
-function splitParagraphs(text: string): string[] {
+interface Unit { text: string; para: boolean }
+
+function splitParagraphs(text: string): Unit[] {
   const blocks = text
     .replace(/\r\n/g, "\n")
     .split(/\n\s*\n+/)              // blank-line separated blocks
     .map(p => p.replace(/\s+/g, " ").trim())
     .filter(Boolean);
 
-  return blocks.flatMap(b => (b.length > MAX_UNIT_CHARS ? splitSentences(b) : [b]));
+  return blocks.flatMap(b => {
+    const parts = b.length > MAX_UNIT_CHARS ? splitSentences(b) : [b];
+    // Only the first sentence of a block opens a paragraph; the rest flow on.
+    return parts.map((text, i) => ({ text, para: i === 0 }));
+  });
 }
 
 // ─── Word-level diff inside a modified unit ──────────────────────────────────
@@ -94,23 +107,23 @@ function wordDiff(base: string, compared: string) {
 }
 
 // LCS table over exact-equal normalized paragraphs
-function lcs(a: string[], b: string[]): DiffBlock[] {
+function lcs(a: Unit[], b: Unit[]): DiffBlock[] {
   const n = a.length, m = b.length;
   const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
   for (let i = n - 1; i >= 0; i--) {
     for (let j = m - 1; j >= 0; j--) {
-      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+      dp[i][j] = a[i].text === b[j].text ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
     }
   }
   const out: DiffBlock[] = [];
   let i = 0, j = 0;
   while (i < n && j < m) {
-    if (a[i] === b[j]) { out.push({ type: "unchanged", base: a[i], compared: b[j] }); i++; j++; }
-    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ type: "deleted", base: a[i] }); i++; }
-    else { out.push({ type: "added", compared: b[j] }); j++; }
+    if (a[i].text === b[j].text) { out.push({ type: "unchanged", base: a[i].text, compared: b[j].text, para: a[i].para || b[j].para }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ type: "deleted", base: a[i].text, para: a[i].para }); i++; }
+    else { out.push({ type: "added", compared: b[j].text, para: b[j].para }); j++; }
   }
-  while (i < n) { out.push({ type: "deleted", base: a[i] }); i++; }
-  while (j < m) { out.push({ type: "added", compared: b[j] }); j++; }
+  while (i < n) { out.push({ type: "deleted", base: a[i].text, para: a[i].para }); i++; }
+  while (j < m) { out.push({ type: "added", compared: b[j].text, para: b[j].para }); j++; }
   return out;
 }
 
@@ -155,6 +168,7 @@ function reclassifyModified(blocks: DiffBlock[]): DiffBlock[] {
               compared: added[bestIdx].compared,
               baseParts: parts.base,
               comparedParts: parts.compared,
+              para: del.para || added[bestIdx].para,
             });
           } else {
             out.push(del);

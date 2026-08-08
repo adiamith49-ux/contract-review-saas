@@ -1027,6 +1027,8 @@ export interface DiffBlock {
   type: "added" | "deleted" | "modified" | "unchanged";
   base?: string;
   compared?: string;
+  /** This unit opened a paragraph in the uploaded document. */
+  para?: boolean;
   // Present on "modified" blocks from comparisons run after 2026-08-08.
   // Older stored comparisons have neither, hence the plain-text fallback.
   baseParts?: DiffPart[];

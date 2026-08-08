@@ -179,6 +179,47 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
     });
   };
 
+  // ── One side of the contract, rendered as the document ────────────────────
+  // Not one bordered row per sentence: sentences re-flow into the paragraphs
+  // they came from, so the column reads like the uploaded contract with the
+  // edits marked in place. `side` picks which version this column shows —
+  // deletions only exist on the left, insertions only on the right.
+  function DocumentColumn({ blocks, side }: { blocks: typeof allBlocks; side: "base" | "compared" }) {
+    const paras: { key: number; runs: React.ReactNode[] }[] = [];
+    blocks.forEach((b, i) => {
+      const runs: React.ReactNode[] = [];
+      if (b.type === "unchanged") {
+        runs.push(<span key={i}>{(side === "base" ? b.base : b.compared)} </span>);
+      } else if (b.type === "modified") {
+        runs.push(
+          <span key={i}>
+            {renderParts(side === "base" ? b.baseParts : b.comparedParts, side === "base" ? b.base : b.compared, side)}{" "}
+          </span>,
+        );
+      } else if (b.type === "deleted" && side === "base") {
+        runs.push(<del key={i} className="bg-red-100 text-red-800 decoration-red-500 rounded px-0.5">{b.base} </del>);
+      } else if (b.type === "added" && side === "compared") {
+        runs.push(<ins key={i} className="bg-emerald-100 text-emerald-900 no-underline rounded px-0.5">{b.compared} </ins>);
+      } else {
+        return; // this edit belongs to the other column
+      }
+
+      if (b.para || paras.length === 0) paras.push({ key: i, runs });
+      else paras[paras.length - 1].runs.push(...runs);
+    });
+
+    if (paras.length === 0) {
+      return <p className="text-[13px] text-gray-400 italic">— nothing in this version —</p>;
+    }
+    return (
+      <>
+        {paras.map(p => (
+          <p key={p.key} className="text-[13px] leading-relaxed mb-3">{p.runs}</p>
+        ))}
+      </>
+    );
+  }
+
   const compareButton = (
     <Button size="sm" className="h-7 text-xs" onClick={handleCompare} disabled={comparing}>
       {comparing
@@ -358,36 +399,47 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
                 <span className="truncate">Newer — {colLabel(comparedVersion, "new draft")}</span>
               </div>
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto divide-y">
-              {shownBlocks.map((b, i) => (
-                <div key={i} className="grid grid-cols-2 gap-px bg-gray-100">
-                  <div className={cn("px-4 py-3 text-[13px] leading-relaxed whitespace-pre-wrap",
-                    b.type === "unchanged" && "bg-white text-gray-600",
-                    b.type === "deleted" && "bg-red-50 text-red-900 line-through decoration-red-400",
-                    b.type === "modified" && "bg-red-50/70 text-red-800",
-                    b.type === "added" && "bg-gray-50 text-gray-300 italic",
-                  )}>
-                    {b.type === "added"
-                      ? "— not in this version —"
-                      : b.type === "modified"
-                        ? renderParts(b.baseParts, b.base, "base")
-                        : b.base}
-                  </div>
-                  <div className={cn("px-4 py-3 text-[13px] leading-relaxed whitespace-pre-wrap",
-                    b.type === "unchanged" && "bg-white text-gray-600",
-                    b.type === "added" && "bg-emerald-50 text-emerald-900",
-                    b.type === "modified" && "bg-emerald-50/70 text-emerald-800",
-                    b.type === "deleted" && "bg-gray-50 text-gray-300 italic",
-                  )}>
-                    {b.type === "deleted"
-                      ? "— removed in this version —"
-                      : b.type === "modified"
-                        ? renderParts(b.comparedParts, b.compared, "compared")
-                        : b.compared}
-                  </div>
+            {scope === "full" ? (
+              /* The contract as uploaded, both versions, edits marked in place.
+                 Each column scrolls on its own so you can track one side. */
+              <div className="flex-1 min-h-0 grid grid-cols-2 gap-px bg-gray-200">
+                <div className="bg-white overflow-y-auto px-5 py-4">
+                  <DocumentColumn blocks={allBlocks} side="base" />
                 </div>
-              ))}
-            </div>
+                <div className="bg-white overflow-y-auto px-5 py-4">
+                  <DocumentColumn blocks={allBlocks} side="compared" />
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 min-h-0 overflow-y-auto divide-y">
+                {shownBlocks.map((b, i) => (
+                  <div key={i} className="grid grid-cols-2 gap-px bg-gray-100">
+                    <div className={cn("px-4 py-3 text-[13px] leading-relaxed whitespace-pre-wrap",
+                      b.type === "deleted" && "bg-red-50 text-red-900 line-through decoration-red-400",
+                      b.type === "modified" && "bg-red-50/70 text-red-800",
+                      b.type === "added" && "bg-gray-50 text-gray-300 italic",
+                    )}>
+                      {b.type === "added"
+                        ? "— not in this version —"
+                        : b.type === "modified"
+                          ? renderParts(b.baseParts, b.base, "base")
+                          : b.base}
+                    </div>
+                    <div className={cn("px-4 py-3 text-[13px] leading-relaxed whitespace-pre-wrap",
+                      b.type === "added" && "bg-emerald-50 text-emerald-900",
+                      b.type === "modified" && "bg-emerald-50/70 text-emerald-800",
+                      b.type === "deleted" && "bg-gray-50 text-gray-300 italic",
+                    )}>
+                      {b.type === "deleted"
+                        ? "— removed in this version —"
+                        : b.type === "modified"
+                          ? renderParts(b.comparedParts, b.compared, "compared")
+                          : b.compared}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -497,9 +549,32 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
                       <details className="rounded-lg border" open>
                         <summary className="px-3 py-2 text-[11px] font-medium text-gray-600 cursor-pointer flex items-center gap-2">
                           <span>Full text diff ({changedBlocks.length} changed block{changedBlocks.length === 1 ? "" : "s"})</span>
-                          {/* View toggle — stop the click from collapsing the <details> */}
+                          {/* Scope + view toggles — stop the click from collapsing the <details> */}
                           <span
                             className="ml-auto inline-flex rounded-md border bg-white overflow-hidden"
+                            onClick={e => e.preventDefault()}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => setScope("full")}
+                              className={cn("px-2 py-1 text-[10px] font-medium transition-colors",
+                                scope === "full" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-50")}
+                              title="Both contracts end to end, changes highlighted in place"
+                            >
+                              Full documents
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setScope("changes")}
+                              className={cn("px-2 py-1 text-[10px] font-medium transition-colors border-l",
+                                scope === "changes" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-50")}
+                              title="Only the paragraphs that differ"
+                            >
+                              Changes only
+                            </button>
+                          </span>
+                          <span
+                            className="inline-flex rounded-md border bg-white overflow-hidden"
                             onClick={e => e.preventDefault()}
                           >
                             <button
@@ -527,12 +602,12 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
                           </span>
                         </summary>
 
-                        {changedBlocks.length === 0 ? (
+                        {shownBlocks.length === 0 ? (
                           <div className="px-3 py-4 text-[11px] text-gray-400 border-t">No textual changes between these two versions.</div>
                         ) : diffView === "inline" ? (
                           /* ── Inline (stacked) ─────────────────────────── */
                           <div className="max-h-96 overflow-y-auto px-3 py-2 space-y-1.5 border-t">
-                            {changedBlocks.map((b, i) => (
+                            {shownBlocks.map((b, i) => (
                               <div key={i} className="text-[11px] leading-relaxed">
                                 {b.type === "added" && <p className="rounded bg-emerald-50 border-l-2 border-emerald-400 px-2 py-1 text-emerald-900"><span className="font-semibold">+ </span>{b.compared}</p>}
                                 {b.type === "deleted" && <p className="rounded bg-red-50 border-l-2 border-red-400 px-2 py-1 text-red-900 line-through/50"><span className="font-semibold">− </span>{b.base}</p>}
@@ -561,7 +636,7 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
                             </div>
                             {/* Aligned rows */}
                             <div className="max-h-96 overflow-y-auto divide-y">
-                              {changedBlocks.map((b, i) => (
+                              {shownBlocks.map((b, i) => (
                                 <div key={i} className="grid grid-cols-2 gap-px bg-gray-100">
                                   {/* Left: old text */}
                                   <div className={cn(
