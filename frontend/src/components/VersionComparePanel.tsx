@@ -10,8 +10,9 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn, formatDateTime } from "@/lib/utils";
 import {
-  listVersions, compareVersions,
+  listVersions, compareVersions, isClauseComparison,
   type VersionItem, type Comparison, type DiffPart,
+  type ClauseComparison, type ClauseStatus, type LegacyKeyChange,
 } from "@/lib/api";
 import { CONTRACT_BUSINESS_STATUS_LABELS } from "@/lib/utils";
 
@@ -23,6 +24,20 @@ interface Props {
   /** Fill the viewport and give the whole area to the two text columns. */
   fullScreen?: boolean;
 }
+
+const STATUS_LABEL: Record<ClauseStatus, string> = {
+  deviation: "Deviation",
+  identical: "Identical",
+  missing_in_base: "Added in new",
+  missing_in_compared: "Missing in new",
+};
+
+const STATUS_CLS: Record<ClauseStatus, string> = {
+  deviation: "bg-amber-100 text-amber-800",
+  identical: "bg-gray-100 text-gray-600",
+  missing_in_base: "bg-emerald-100 text-emerald-800",
+  missing_in_compared: "bg-red-100 text-red-700",
+};
 
 const IMPACT_CLS: Record<string, string> = {
   high: "bg-red-100 text-red-700",
@@ -49,6 +64,9 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
   // place; "changes" shows only the changed blocks. Reading a redline in
   // context is the normal job, so full is the default.
   const [scope, setScope] = useState<"full" | "changes">("full");
+  // Empty set = show everything. "missing_in_base" doubles as the Missing chip.
+  const [statusFilter, setStatusFilter] = useState<Set<ClauseStatus>>(new Set());
+  const [showResults, setShowResults] = useState(true);
 
   useEffect(() => {
     if (!comparing) return;
@@ -125,9 +143,19 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
     lines.push(`## AI Summary of Changes`);
     lines.push(result.summary ?? "—");
     lines.push(``);
-    if (result.key_changes.length) {
+    if (clauses.length) {
+      lines.push(`## Clause Comparison (${clauseCounts.deviation} deviations · ${clauseCounts.identical} identical · ${clauseCounts.missing} missing)`);
+      for (const c of clauses) {
+        lines.push(`\n### [${STATUS_LABEL[c.status]}] ${c.title}${c.baseSection || c.comparedSection ? ` (v1 §${c.baseSection ?? "-"} → v2 §${c.comparedSection ?? "-"})` : ""}`);
+        if (c.summary) lines.push(c.summary);
+        if (c.baseText) lines.push(`\nPRIOR:\n${c.baseText}`);
+        if (c.comparedText) lines.push(`\nNEW:\n${c.comparedText}`);
+      }
+      lines.push(``);
+    }
+    if (legacyChanges.length) {
       lines.push(`## Key Changes`);
-      for (const k of result.key_changes) {
+      for (const k of legacyChanges) {
         lines.push(`- [${k.type.toUpperCase()} · ${k.impact} impact] ${k.clause}: ${k.detail}`);
       }
       lines.push(``);
@@ -156,6 +184,22 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
   // fetch — and the highlighting lands in its real position in the contract.
   const allBlocks = result?.diff ?? [];
   const shownBlocks = scope === "full" ? allBlocks : changedBlocks;
+
+  // Newer comparisons store clause-level results in key_changes; older rows
+  // hold the previous free-form notes. Both are rendered, neither is assumed.
+  const clauses: ClauseComparison[] = (result?.key_changes ?? []).filter(isClauseComparison);
+  const legacyChanges = (result?.key_changes ?? []).filter(
+    (k): k is LegacyKeyChange => !isClauseComparison(k));
+  const clauseCounts = {
+    deviation: clauses.filter(c => c.status === "deviation").length,
+    identical: clauses.filter(c => c.status === "identical").length,
+    missing:   clauses.filter(c => c.status === "missing_in_base" || c.status === "missing_in_compared").length,
+  };
+  const visibleClauses = clauses.filter(c =>
+    statusFilter.size === 0 ? true
+      : c.status === "missing_in_base" || c.status === "missing_in_compared"
+        ? statusFilter.has("missing_in_base")
+        : statusFilter.has(c.status));
 
   const baseVersion = result ? versions.find(v => v.id === result.base_contract_id) : undefined;
   const comparedVersion = result ? versions.find(v => v.id === result.compared_contract_id) : undefined;
@@ -219,6 +263,80 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
       </>
     );
   }
+
+  function toggleFilter(st: ClauseStatus) {
+    setStatusFilter(prev => {
+      const next = new Set(prev);
+      if (next.has(st)) next.delete(st); else next.add(st);
+      return next;
+    });
+  }
+
+  const filterChip = (st: ClauseStatus, label: string, count: number) => (
+    <button
+      type="button"
+      onClick={() => toggleFilter(st)}
+      className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium border transition-colors",
+        statusFilter.has(st) ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-600 hover:bg-gray-50")}
+    >
+      {label} {count}
+    </button>
+  );
+
+  const ResultsPanel = () => (
+    <div className="flex flex-col h-full min-h-0 border-l bg-gray-50/60">
+      <div className="shrink-0 px-3 py-2 border-b bg-white">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs font-semibold text-gray-700">Result ({visibleClauses.length})</span>
+          {statusFilter.size > 0 && (
+            <button type="button" onClick={() => setStatusFilter(new Set())}
+              className="ml-auto text-[10px] text-gray-500 hover:text-gray-900 underline">Reset</button>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {filterChip("deviation", "Deviations", clauseCounts.deviation)}
+          {filterChip("identical", "Identical", clauseCounts.identical)}
+          {filterChip("missing_in_base", "Missing", clauseCounts.missing)}
+        </div>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto divide-y">
+        {clauses.length === 0 ? (
+          <p className="px-3 py-4 text-[11px] text-gray-400">
+            No clause comparison on this result. Run Compare again to generate one.
+          </p>
+        ) : visibleClauses.length === 0 ? (
+          <p className="px-3 py-4 text-[11px] text-gray-400">Nothing matches this filter.</p>
+        ) : visibleClauses.map((c, i) => (
+          <div key={i} className="px-3 py-2.5 bg-white">
+            <div className="flex items-start gap-2 mb-1">
+              <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide", STATUS_CLS[c.status])}>
+                {STATUS_LABEL[c.status]}
+              </span>
+              {c.impact && (
+                <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase", IMPACT_CLS[c.impact])}>{c.impact}</span>
+              )}
+            </div>
+            <p className="text-xs font-semibold text-gray-900">{c.title}</p>
+            {(c.baseSection || c.comparedSection) && (
+              <p className="text-[10px] text-gray-400 mb-1">v1 §{c.baseSection || "—"} → v2 §{c.comparedSection || "—"}</p>
+            )}
+            {c.summary && <p className="text-[11px] text-gray-700 leading-relaxed mt-1">{c.summary}</p>}
+            {c.status !== "identical" && (
+              <div className="mt-1.5 space-y-1">
+                {c.baseText && (
+                  <p className="text-[10px] leading-relaxed bg-red-50 text-red-900 border-l-2 border-red-300 px-1.5 py-1 rounded-sm line-clamp-4">{c.baseText}</p>
+                )}
+                {c.comparedText && (
+                  <p className="text-[10px] leading-relaxed bg-emerald-50 text-emerald-900 border-l-2 border-emerald-300 px-1.5 py-1 rounded-sm line-clamp-4">{c.comparedText}</p>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   const compareButton = (
     <Button size="sm" className="h-7 text-xs" onClick={handleCompare} disabled={comparing}>
@@ -288,6 +406,15 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
                 </button>
                 <button
                   type="button"
+                  onClick={() => setShowResults(r => !r)}
+                  className={cn("inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
+                    showResults ? "bg-gray-900 text-white border-gray-900" : "text-gray-600 hover:bg-gray-50")}
+                >
+                  Result
+                  <span className={cn("rounded-full px-1 text-[9px]", showResults ? "bg-white/20" : "bg-gray-100")}>{clauses.length}</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => setShowSummary(s => !s)}
                   className={cn("inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
                     showSummary ? "bg-blue-600 text-white border-blue-600" : "text-blue-700 hover:bg-blue-50")}
@@ -351,9 +478,9 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
         {result && showSummary && (
           <div className="shrink-0 border-b border-blue-100 bg-blue-50/50 px-4 py-2.5 max-h-[38vh] overflow-y-auto">
             {result.summary && <p className="text-xs text-blue-900 leading-relaxed">{result.summary}</p>}
-            {result.key_changes.length > 0 && (
+            {legacyChanges.length > 0 && (
               <ul className="mt-2 space-y-1">
-                {result.key_changes.map((k, i) => (
+                {legacyChanges.map((k, i) => (
                   <li key={i} className="flex items-start gap-2 text-xs">
                     <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase", IMPACT_CLS[k.impact])}>{k.type}</span>
                     <span className="text-gray-700"><span className="font-medium">{k.clause}:</span> {k.detail}</span>
@@ -369,7 +496,10 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
           <div className="flex-1 flex items-center justify-center text-sm text-gray-400">
             {comparing ? `Comparing the two drafts… ${elapsed}s` : "Pick two versions and press Compare."}
           </div>
-        ) : shownBlocks.length === 0 ? (
+        ) : (
+          <div className="flex-1 min-h-0 flex">
+            <div className="flex-1 min-w-0 flex flex-col">
+        {shownBlocks.length === 0 ? (
           <div className="flex-1 flex items-center justify-center text-sm text-gray-400">No textual changes between these two versions.</div>
         ) : diffView === "inline" ? (
           <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-2">
@@ -439,6 +569,12 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+        )}
+            </div>
+            {showResults && (
+              <div className="w-[340px] shrink-0"><ResultsPanel /></div>
             )}
           </div>
         )}
@@ -534,9 +670,9 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
                       )}
 
                       {/* Key changes */}
-                      {result.key_changes.length > 0 && (
+                      {legacyChanges.length > 0 && (
                         <ul className="space-y-1.5">
-                          {result.key_changes.map((k, i) => (
+                          {legacyChanges.map((k, i) => (
                             <li key={i} className="flex items-start gap-2 text-xs">
                               <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase", IMPACT_CLS[k.impact])}>{k.type}</span>
                               <span className="text-gray-700"><span className="font-medium">{k.clause}:</span> {k.detail}</span>

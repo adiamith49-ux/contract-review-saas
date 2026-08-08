@@ -655,3 +655,137 @@ export async function summarizeContract(
 
   return textBlock.text;
 }
+
+// ─── Clause inventory + clause-level difference summaries ────────────────────
+// Powers the clause comparison view (deviations / identical / missing). Kept
+// separate from analyzeContract: that one hunts for risk, this one just
+// inventories what clauses exist so two versions can be aligned.
+
+import type { ExtractedClauseRef, ClauseComparison } from "./clauseCompare.service.js";
+
+const clauseInventoryTool: Anthropic.Tool = {
+  name: "list_clauses",
+  description: "List every clause in the contract text, verbatim",
+  input_schema: {
+    type: "object",
+    required: ["clauses"],
+    properties: {
+      clauses: {
+        type: "array",
+        description: "Every clause present in this text, in document order. Do not skip clauses that look routine — an inventory with gaps makes two versions look like they differ when they do not.",
+        items: {
+          type: "object",
+          required: ["clauseType", "title", "section", "text"],
+          properties: {
+            clauseType: { type: "string", description: "Canonical topic in snake_case, e.g. limitation_of_liability, confidentiality, indemnification, term_and_termination, governing_law. Use the SAME key for the same topic across documents." },
+            title:      { type: "string", description: "The clause heading as written, e.g. 'Limitation of Liability'" },
+            section:    { type: "string", description: "Section number as written, e.g. '8' or '24.1'. Empty string if unnumbered." },
+            text:       { type: "string", description: "The clause body copied VERBATIM from the contract. Never paraphrase, merge clauses, or tidy the wording." },
+          },
+        },
+      },
+    },
+  },
+};
+
+export async function extractClauseInventory(
+  text: string,
+  contractType: ContractType,
+): Promise<ExtractedClauseRef[]> {
+  const segments = splitIntoSegments(text, SEGMENT_CHARS);
+
+  const runOne = async (segmentText: string, i: number): Promise<ExtractedClauseRef[]> => {
+    const scope = segments.length > 1
+      ? `\n\nThis is part ${i + 1} of ${segments.length} of the contract. Inventory only the clauses in this part.`
+      : "";
+    const response = await anthropic.messages.create({
+      model: config.AI_MODEL,
+      max_tokens: config.ANALYSIS_MAX_TOKENS,
+      system: [{ type: "text", text: legalSystemPrompt }],
+      tools: [clauseInventoryTool],
+      tool_choice: { type: "tool", name: "list_clauses" },
+      messages: [{
+        role: "user",
+        content: `Inventory every clause in this ${contractType.toUpperCase()} contract.${scope}\n\n${segmentText}`,
+      }],
+    });
+    const toolUse = response.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
+    if (!toolUse) throw new Error("AI did not return a clause inventory");
+    return ((toolUse.input as { clauses?: ExtractedClauseRef[] }).clauses ?? []).filter(c => c?.text);
+  };
+
+  if (segments.length === 1) return runOne(text, 0);
+
+  const settled = await runWithConcurrency(segments, SEGMENT_CONCURRENCY, async (seg, i) =>
+    runOne(seg, i).catch(err => {
+      console.error(`[clauses] segment ${i + 1}/${segments.length} failed:`, (err as Error)?.message);
+      return [] as ExtractedClauseRef[];
+    }),
+  );
+  return settled.flat();
+}
+
+const clauseDiffTool: Anthropic.Tool = {
+  name: "summarize_clause_differences",
+  description: "Explain how each clause pair differs between the two versions",
+  input_schema: {
+    type: "object",
+    required: ["differences"],
+    properties: {
+      differences: {
+        type: "array",
+        items: {
+          type: "object",
+          required: ["index", "summary", "impact"],
+          properties: {
+            index:   { type: "number", description: "The pair's index as given in the prompt" },
+            summary: { type: "string", description: "One or two sentences: what changed and what it means for the reviewing party. Name the concrete change (a number, a party, a carve-out), never just 'the wording was updated'." },
+            impact:  { type: "string", enum: ["low", "medium", "high"], description: "Impact of this change on the reviewing party" },
+          },
+        },
+      },
+    },
+  },
+};
+
+/** Fills `summary` and `impact` on deviating pairs, in batches. Mutates nothing. */
+export async function summarizeClauseDifferences(
+  deviations: ClauseComparison[],
+  contractType: ContractType,
+): Promise<ClauseComparison[]> {
+  if (deviations.length === 0) return [];
+  const BATCH = 8;
+  const batches: ClauseComparison[][] = [];
+  for (let i = 0; i < deviations.length; i += BATCH) batches.push(deviations.slice(i, i + BATCH));
+
+  const done = await runWithConcurrency(batches, SEGMENT_CONCURRENCY, async (batch, bi) => {
+    const prompt = batch.map((d, i) =>
+      `[${i}] ${d.title || d.clauseType}\nPRIOR VERSION:\n${(d.baseText ?? "").slice(0, 2500)}\n\nNEW VERSION:\n${(d.comparedText ?? "").slice(0, 2500)}`,
+    ).join("\n\n---\n\n");
+
+    try {
+      const response = await anthropic.messages.create({
+        model: config.AI_MODEL,
+        max_tokens: 2000,
+        system: [{ type: "text", text: legalSystemPrompt }],
+        tools: [clauseDiffTool],
+        tool_choice: { type: "tool", name: "summarize_clause_differences" },
+        messages: [{
+          role: "user",
+          content: `These clause pairs come from two versions of the same ${contractType.toUpperCase()} contract. For each pair, explain how the new version differs from the prior one.\n\n${prompt}`,
+        }],
+      });
+      const toolUse = response.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
+      const diffs = toolUse ? (toolUse.input as { differences?: { index: number; summary: string; impact: "low" | "medium" | "high" }[] }).differences ?? [] : [];
+      return batch.map((d, i) => {
+        const hit = diffs.find(x => x.index === i);
+        return hit ? { ...d, summary: hit.summary, impact: hit.impact } : d;
+      });
+    } catch (err) {
+      console.error(`[clauses] difference batch ${bi + 1}/${batches.length} failed:`, (err as Error)?.message);
+      return batch;   // the pair is still shown, just without a written summary
+    }
+  });
+
+  return done.flat();
+}

@@ -9,7 +9,7 @@ import { requireActiveOrg } from "../middleware/org.js";
 import { createClerkClient } from "@clerk/backend";
 import { config } from "../config.js";
 import { analyzeLimiter, chatLimiter, statusLimiter, uploadLimiter } from "../middleware/rateLimit.js";
-import { analyzeContract, extractContractMeta, redlineContract, summarizeContract, summarizeChanges } from "../services/ai.service.js";
+import { analyzeContract, extractContractMeta, redlineContract, summarizeContract, summarizeChanges, extractClauseInventory, summarizeClauseDifferences } from "../services/ai.service.js";
 import { exportRedlineDocx, processEdits, type ProcessedEdit } from "../services/redline.service.js";
 import { logActivity } from "../services/activity.service.js";
 import { chatWithContract } from "../services/chat.service.js";
@@ -1239,6 +1239,34 @@ contractsRouter.post("/:id/compare", async (req, res, next) => {
     const { diffContracts } = await import("../services/compare.service.js");
     const diff = diffContracts(base.extracted_text, compared.extracted_text);
 
+    // ─── Clause-level comparison ─────────────────────────────────────────────
+    // The text diff says which characters moved; this says which CLAUSES
+    // deviate, match, or went missing — the three buckets a reviewer filters
+    // on. Stored in `key_changes` (jsonb, already unconstrained) so this needs
+    // no migration; a dedicated table is the cleaner home once this settles.
+    // Best-effort: a failure here must not cost the user the text diff.
+    let clauseResults: import("../services/clauseCompare.service.js").ClauseComparison[] = [];
+    let clauseError: string | null = null;
+    try {
+      const { alignClauses } = await import("../services/clauseCompare.service.js");
+      const [baseClauses, comparedClauses] = await Promise.all([
+        extractClauseInventory(base.extracted_text, base.contract_type as ContractType),
+        extractClauseInventory(compared.extracted_text, compared.contract_type as ContractType),
+      ]);
+      clauseResults = alignClauses(baseClauses, comparedClauses);
+      // Only deviating pairs cost an AI call; identical and missing need none.
+      const deviations = clauseResults.filter(c => c.status === "deviation");
+      if (deviations.length > 0) {
+        const explained = await summarizeClauseDifferences(deviations, base.contract_type as ContractType);
+        const byKey = new Map(explained.map(e => [`${e.clauseType}|${e.baseSection ?? ""}`, e]));
+        clauseResults = clauseResults.map(c =>
+          c.status === "deviation" ? byKey.get(`${c.clauseType}|${c.baseSection ?? ""}`) ?? c : c);
+      }
+    } catch (e) {
+      clauseError = (e as Error)?.message ?? String(e);
+      console.error("[compare] clause comparison failed:", (e as Error)?.stack ?? e);
+    }
+
     // Build a compact diff transcript for the AI (skip unchanged blocks)
     const diffText = diff.blocks
       .filter(b => b.type !== "unchanged")
@@ -1291,7 +1319,7 @@ contractsRouter.post("/:id/compare", async (req, res, next) => {
         deleted_count: diff.deleted,
         modified_count: diff.modified,
         summary,
-        key_changes: keyChanges,
+        key_changes: clauseResults.length > 0 ? clauseResults : keyChanges,
         model,
       })
       .select()
@@ -1303,7 +1331,11 @@ contractsRouter.post("/:id/compare", async (req, res, next) => {
       added: diff.added, deleted: diff.deleted, modified: diff.modified,
     });
 
-    res.json({ comparison: saved, ...(summaryError ? { summary_error: summaryError } : {}) });
+    res.json({
+      comparison: saved,
+      ...(summaryError ? { summary_error: summaryError } : {}),
+      ...(clauseError ? { clause_error: clauseError } : {}),
+    });
   } catch (err) {
     next(err);
   }

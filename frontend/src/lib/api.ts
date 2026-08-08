@@ -1017,6 +1017,33 @@ export interface VersionItem {
   parent_contract_id: string | null;
 }
 
+export type ClauseStatus = "identical" | "deviation" | "missing_in_base" | "missing_in_compared";
+
+/** A clause-level comparison result. Newer comparisons store these in key_changes. */
+export interface ClauseComparison {
+  status: ClauseStatus;
+  clauseType: string;
+  title: string;
+  baseSection?: string;
+  comparedSection?: string;
+  baseText?: string;
+  comparedText?: string;
+  summary?: string;
+  impact?: "low" | "medium" | "high";
+}
+
+/** Older comparisons stored free-form change notes here instead. */
+export interface LegacyKeyChange {
+  type: "added" | "deleted" | "modified";
+  clause: string;
+  detail: string;
+  impact: "low" | "medium" | "high";
+}
+
+export function isClauseComparison(k: ClauseComparison | LegacyKeyChange): k is ClauseComparison {
+  return typeof (k as ClauseComparison).status === "string";
+}
+
 /** One run of text inside a modified block: unchanged, or added/removed words. */
 export interface DiffPart {
   t: string;
@@ -1044,7 +1071,8 @@ export interface Comparison {
   deleted_count: number;
   modified_count: number;
   summary: string | null;
-  key_changes: { type: "added" | "deleted" | "modified"; clause: string; detail: string; impact: "low" | "medium" | "high" }[];
+  /** Clause comparisons on newer rows; legacy change notes on older ones. */
+  key_changes: (ClauseComparison | LegacyKeyChange)[];
   model: string;
   created_at: string;
 }
