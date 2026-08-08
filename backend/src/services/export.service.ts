@@ -17,6 +17,7 @@ import {
   ShadingType,
 } from "docx";
 import type { AnalysisResult } from "../types.js";
+import { DEL_STYLE, INS_STYLE } from "./redline.service.js";
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
 const NAVY        = "#1B2A4A";
@@ -136,7 +137,7 @@ function addPage(doc: PDFKit.PDFDocument, pageNum: number): number {
   fillRect(doc, 0, 0, PAGE_W, 32, NAVY);
   setFill(doc, WHITE);
   doc.fontSize(8).font("Helvetica")
-    .text("CONTRALYN  --  Contract Review (continued)", MARGIN, 10, { lineBreak: false });
+    .text("CONTRALYNE  --  Contract Review (continued)", MARGIN, 10, { lineBreak: false });
   doc.y = 42;
   return pageNum;
 }
@@ -210,6 +211,14 @@ function findMatchingParagraph(paragraphs: Para[], finding: string, heading: str
   const secRe = /(?:Section|Clause|Art(?:icle)?)[s]?\s+(\d+(?:\.\d+)*)/gi;
   let m: RegExpExecArray | null;
   while ((m = secRe.exec(finding)) !== null) secNums.push(m[1]);
+  // The clause reference usually lives in the heading ("Section 24.1"), not in
+  // the finding prose — reading only the finding sent nearly every annotation to
+  // "Additional Findings" instead of anchoring it as a Word comment.
+  secRe.lastIndex = 0;
+  while ((m = secRe.exec(heading)) !== null) secNums.push(m[1]);
+  // A bare numeric heading ("24.1 Limitation of Liability") counts too.
+  const bare = heading.match(/^\s*(\d+(?:\.\d+)*)/);
+  if (bare) secNums.push(bare[1]);
 
   for (const ref of secNums) {
     const esc = ref.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -328,6 +337,7 @@ function drawSingleAnnotation(
   x:    number,
   y:    number,
   item: AnnotationItem,
+  author: string,
 ): number {
   const h           = measureSingleAnnotation(doc, item);
   const bg          = RISK_BG[item.severity]     ?? RISK_BG.high;
@@ -343,7 +353,7 @@ function drawSingleAnnotation(
   // Header text
   setFill(doc, WHITE);
   doc.fontSize(7).font("Helvetica-Bold")
-    .text("CONTRALYN AI", x + 7, y + 6, { lineBreak: false });
+    .text(author.toUpperCase(), x + 7, y + 6, { width: RIGHT_COL_W - 60, ellipsis: true, lineBreak: false });
   doc.fontSize(6.5).font("Helvetica-Bold")
     .text(`${riskLabel(item.severity)} RISK`, x + 7, y + 7, {
       width: RIGHT_COL_W - 14, align: "right", lineBreak: false,
@@ -391,10 +401,11 @@ function drawAnnotationsColumn(
   doc:     PDFKit.PDFDocument,
   startY:  number,
   items:   AnnotationItem[],
+  author:  string,
 ): void {
   let ty = startY;
   for (let i = 0; i < items.length; i++) {
-    const h = drawSingleAnnotation(doc, RIGHT_COL_X, ty, items[i]);
+    const h = drawSingleAnnotation(doc, RIGHT_COL_X, ty, items[i], author);
     ty += h + (i < items.length - 1 ? 6 : 0);
   }
 }
@@ -418,11 +429,13 @@ export function exportToPdf(
   createdAt?:    string,
   extractedText?: string,
   appliedIds?:   Set<string>,
+  reviewer?:     string | null,
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
+    const reviewerName = (reviewer ?? "").trim() || "Contralyne AI";
     const doc = new PDFDocument({
       size: "A4", margin: 0, compress: false,
-      info: { Title: `${filename} -- Contralyn Review`, Author: "Contralyn AI" },
+      info: { Title: `${filename} -- Contralyne Review`, Author: reviewerName },
     });
 
     const chunks: Buffer[] = [];
@@ -436,7 +449,7 @@ export function exportToPdf(
     // ── HEADER ────────────────────────────────────────────────────────────
     fillRect(doc, 0, 0, PAGE_W, 76, NAVY);
     setFill(doc, WHITE);
-    doc.fontSize(20).font("Helvetica-Bold").text("CONTRALYN", MARGIN, 16, { lineBreak: false });
+    doc.fontSize(20).font("Helvetica-Bold").text("CONTRALYNE", MARGIN, 16, { lineBreak: false });
     doc.fontSize(9).font("Helvetica").text("AI Contract Analysis Report", MARGIN, 42, { lineBreak: false });
 
     const riskBorderColor = RISK_BORDER[analysis.riskLevel] ?? RISK_BORDER.high;
@@ -453,16 +466,17 @@ export function exportToPdf(
     fillRect(doc,   MARGIN, metaY, CONTENT_W, 48, LIGHT_BG);
     strokeRect(doc, MARGIN, metaY, CONTENT_W, 48, BORDER, 0.5);
 
-    const col3 = CONTENT_W / 3;
+    const col4 = CONTENT_W / 4;
     [
-      { label: "FILE",     value: filename,                        x: MARGIN + 10 },
-      { label: "TYPE",     value: formatContractType(contractType), x: MARGIN + col3 + 10 },
-      { label: "REVIEWED", value: createdAt ? formatDate(createdAt) : new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }), x: MARGIN + col3 * 2 + 10 },
+      { label: "FILE",        value: filename,                         x: MARGIN + 10 },
+      { label: "TYPE",        value: formatContractType(contractType),  x: MARGIN + col4 + 10 },
+      { label: "REVIEWED",    value: createdAt ? formatDate(createdAt) : new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }), x: MARGIN + col4 * 2 + 10 },
+      { label: "REVIEWED BY", value: reviewerName,                      x: MARGIN + col4 * 3 + 10 },
     ].forEach(f => {
       setFill(doc, TEXT_MUTED);
       doc.fontSize(6.5).font("Helvetica-Bold").text(f.label, f.x, metaY + 7, { lineBreak: false });
       setFill(doc, TEXT_PRIMARY);
-      doc.fontSize(9).font("Helvetica-Bold").text(f.value, f.x, metaY + 19, { width: col3 - 14, ellipsis: true, lineBreak: false });
+      doc.fontSize(9).font("Helvetica-Bold").text(f.value, f.x, metaY + 19, { width: col4 - 14, ellipsis: true, lineBreak: false });
     });
 
     doc.y = metaY + 48 + 12;
@@ -515,7 +529,7 @@ export function exportToPdf(
         const rowY = doc.y;
 
         drawParagraphLeft(doc, rowY, rowH, para, isAnnotated, severity);
-        if (isAnnotated) drawAnnotationsColumn(doc, rowY, annotations);
+        if (isAnnotated) drawAnnotationsColumn(doc, rowY, annotations, reviewerName);
 
         doc.y = rowY + rowH;
       }
@@ -541,7 +555,7 @@ export function exportToPdf(
               width: LEFT_COL_W - 8, lineBreak: false,
             });
 
-          drawSingleAnnotation(doc, RIGHT_COL_X, rowY, item);
+          drawSingleAnnotation(doc, RIGHT_COL_X, rowY, item, reviewerName);
           doc.y = rowY + rowH;
         }
       }
@@ -566,7 +580,7 @@ export function exportToPdf(
           doc.fontSize(9).font("Helvetica-Bold")
             .text(item.heading, MARGIN + 22, rowY + 3, { width: LEFT_COL_W - 26 });
 
-          drawSingleAnnotation(doc, RIGHT_COL_X, rowY, item);
+          drawSingleAnnotation(doc, RIGHT_COL_X, rowY, item, reviewerName);
           doc.y = rowY + rowH;
         });
       }
@@ -600,6 +614,7 @@ export async function exportToDocx(
   extractedText?: string,
   appliedIds?:   Set<string>,
   redlineEdits?: RedlineProcessedEdit[],
+  reviewer?:     string | null,
 ): Promise<Buffer> {
   const riskColorHex: Record<string, string> = {
     low: "166534", medium: "9A3412", high: "7F1D1D", critical: "4C1D95",
@@ -608,6 +623,7 @@ export async function exportToDocx(
     low: "F0FFF4", medium: "FFEDD5", high: "FEE2E2", critical: "EDE9FE",
   };
   const overallColor = riskColorHex[analysis.riskLevel] ?? "000000";
+  const reviewerName = (reviewer ?? "").trim() || "Contralyne AI";
   const now     = new Date();
   const nowISO  = now.toISOString();
 
@@ -625,7 +641,7 @@ export async function exportToDocx(
     const label = severity.toUpperCase();
     commentDefs.push({
       id,
-      author: "Contralyn AI",
+      author: reviewerName,
       date:   now,
       children: [
         new DocxParagraph({
@@ -681,7 +697,7 @@ export async function exportToDocx(
   // ─── Build contract body with inline redline tracked changes ────────────────
   const bodyChildren: DocxParagraph[] = [];
   let hasBody = false;
-  const author = "Contralyn AI";
+  const author = reviewerName;
 
   // Get placed redline edits sorted by position
   const placedEdits = (redlineEdits ?? [])
@@ -744,14 +760,14 @@ export async function exportToDocx(
           currentRuns.push(new CommentRangeStart(commentId) as any);
 
           if (edit.edit_type === "delete") {
-            currentRuns.push(new DeletedTextRun({ text: raw, id, author, date: nowISO }));
+            currentRuns.push(new DeletedTextRun({ text: raw, id, author, date: nowISO, ...DEL_STYLE }));
           } else if (edit.edit_type === "insert") {
             currentRuns.push(new TextRun(raw));
-            currentRuns.push(new InsertedTextRun({ text: ` ${edit.revised_text}`, id, author, date: nowISO, color: "0070C0" }));
+            currentRuns.push(new InsertedTextRun({ text: ` ${edit.revised_text}`, id, author, date: nowISO, ...INS_STYLE }));
           } else {
-            // replace — strikethrough original, underline new
-            currentRuns.push(new DeletedTextRun({ text: raw, id, author, date: nowISO }));
-            currentRuns.push(new InsertedTextRun({ text: edit.revised_text, id, author, date: nowISO, color: "0070C0" }));
+            // replace — strikethrough original (red), underline new (green)
+            currentRuns.push(new DeletedTextRun({ text: raw, id, author, date: nowISO, ...DEL_STYLE }));
+            currentRuns.push(new InsertedTextRun({ text: edit.revised_text, id, author, date: nowISO, ...INS_STYLE }));
           }
 
           currentRuns.push(new CommentRangeEnd(commentId) as any);
@@ -882,8 +898,8 @@ export async function exportToDocx(
   // ─── Determine header note ────────────────────────────────────────────────
   const hasRedlines = placedEdits.length > 0;
   const headerNote = hasRedlines
-    ? "Red strikethrough = deleted text · Blue underline = inserted text. Use Word's Review tab to accept or reject changes. Comments explain each edit's rationale."
-    : "Highlighted clauses carry AI findings as Word comments. Blue underlined text shows suggested revisions.";
+    ? "Red strikethrough = deleted text · Green underline = inserted text. Use Word's Review tab to accept or reject changes. Comments explain each edit's rationale."
+    : "Highlighted clauses carry AI findings as Word comments. Green underlined text shows suggested revisions.";
 
   // ─── Build document ────────────────────────────────────────────────────────
   const doc = new Document({
@@ -891,13 +907,18 @@ export async function exportToDocx(
     sections: [{
       children: [
         // Cover / title block
-        new DocxParagraph({ text: "Contract Review — Contralyn AI", heading: HeadingLevel.TITLE }),
+        new DocxParagraph({ text: "Contract Review — Contralyne", heading: HeadingLevel.TITLE }),
         new DocxParagraph({
           children: [
             new TextRun({ text: "File: ", bold: true }), new TextRun(filename),
             new TextRun("   "),
             new TextRun({ text: "Type: ", bold: true }), new TextRun(formatContractType(contractType)),
             ...(createdAt ? [new TextRun({ text: `   Reviewed: ${formatDate(createdAt)}`, color: "718096" })] : []),
+          ],
+        }),
+        new DocxParagraph({
+          children: [
+            new TextRun({ text: "Reviewed by: ", bold: true }), new TextRun(reviewerName),
           ],
         }),
         new DocxParagraph({

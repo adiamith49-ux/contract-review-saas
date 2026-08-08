@@ -71,6 +71,7 @@ function isDocxSource(filename: string, mimeType?: string | null): boolean {
 function buildDocxEdits(
   redlineEdits: ProcessedEdit[] | undefined,
   clauseAnalysis: Array<{ clause?: string; finding?: string; recommendation?: string; contractText?: string; suggestedLanguage?: string }> | undefined,
+  appliedIds?: Set<string>,
 ): DocxEdit[] {
   const out: DocxEdit[] = [];
   for (const e of redlineEdits ?? []) {
@@ -82,7 +83,11 @@ function buildDocxEdits(
       comment: e.rationale || e.playbook_rule || undefined,
     });
   }
-  for (const c of clauseAnalysis ?? []) {
+  for (const [i, c] of (clauseAnalysis ?? []).entries()) {
+    // When the caller sent an applied-set, only those findings are exported —
+    // otherwise picking three clauses in the review panel still produced a
+    // document annotated with all seventy.
+    if (appliedIds && !appliedIds.has(`c-${i}`)) continue;
     const original = c.contractText || c.clause;
     if (!original || original.length < 12) continue;
     // Skip if a redline edit already targets this text
@@ -792,6 +797,7 @@ contractsRouter.get("/:id/export/docx", async (req, res, next) => {
 
     const appliedParam = typeof req.query.applied === "string" ? req.query.applied : "";
     const appliedIds = appliedParam ? new Set(appliedParam.split(",").map(s => s.trim())) : undefined;
+    const reviewer = typeof req.query.reviewer === "string" ? req.query.reviewer : undefined;
 
     // Pass cached redline edits so the export includes proper tracked changes
     const redlineEdits = Array.isArray(redlineData?.edits) ? redlineData.edits as ProcessedEdit[] : undefined;
@@ -805,8 +811,8 @@ contractsRouter.get("/:id/export/docx", async (req, res, next) => {
     if (isDocxSource(data.filename, data.mime_type) && data.s3_key) {
       try {
         const original = await downloadFromS3(data.s3_key);
-        const docxEdits = buildDocxEdits(redlineEdits, a.clause_analysis);
-        const { buffer: edited } = editOriginalDocx(original, docxEdits);
+        const docxEdits = buildDocxEdits(redlineEdits, a.clause_analysis, appliedIds);
+        const { buffer: edited } = editOriginalDocx(original, docxEdits, reviewer);
         buffer = edited;
       } catch (e) {
         console.error("[export/docx] in-place edit failed, falling back to rebuild:", (e as Error)?.message);
@@ -819,7 +825,7 @@ contractsRouter.get("/:id/export/docx", async (req, res, next) => {
         riskSummary: a.risk_summary,
         clauseAnalysis: a.clause_analysis,
         negotiationPoints: a.negotiation_points,
-      }, data.summary ?? undefined, data.created_at, data.extracted_text ?? undefined, appliedIds, redlineEdits);
+      }, data.summary ?? undefined, data.created_at, data.extracted_text ?? undefined, appliedIds, redlineEdits, reviewer);
     }
 
     await logActivity(req.userId, "contract.exported", req.params.id, { format: "docx" });
@@ -849,13 +855,14 @@ contractsRouter.get("/:id/export/pdf", async (req, res, next) => {
 
     const appliedParam = typeof req.query.applied === "string" ? req.query.applied : "";
     const appliedIds = appliedParam ? new Set(appliedParam.split(",").map(s => s.trim())) : undefined;
+    const reviewer = typeof req.query.reviewer === "string" ? req.query.reviewer : undefined;
 
     const buffer = await exportToPdf(data.filename, data.contract_type, {
       riskLevel: a.risk_level,
       riskSummary: a.risk_summary,
       clauseAnalysis: a.clause_analysis,
       negotiationPoints: a.negotiation_points,
-    }, data.summary ?? undefined, data.created_at, data.extracted_text ?? undefined, appliedIds);
+    }, data.summary ?? undefined, data.created_at, data.extracted_text ?? undefined, appliedIds, reviewer);
 
     await logActivity(req.userId, "contract.exported", req.params.id, { format: "pdf" });
 
@@ -1127,6 +1134,7 @@ contractsRouter.get("/:id/redline", async (req, res, next) => {
 contractsRouter.post("/:id/redline/export/docx", async (req, res, next) => {
   try {
     const edits = Array.isArray(req.body?.edits) ? (req.body.edits as ProcessedEdit[]) : [];
+    const reviewer = typeof req.body?.reviewer === "string" ? req.body.reviewer : undefined;
 
     const { data: contract, error } = await db
       .from("contracts")
@@ -1150,7 +1158,7 @@ contractsRouter.post("/:id/redline/export/docx", async (req, res, next) => {
       try {
         const original = await downloadFromS3(contract.s3_key);
         const docxEdits = buildDocxEdits(edits, undefined);
-        const { buffer: edited } = editOriginalDocx(original, docxEdits);
+        const { buffer: edited } = editOriginalDocx(original, docxEdits, reviewer);
         buffer = edited;
       } catch (e) {
         console.error("[redline/export/docx] in-place edit failed, falling back:", (e as Error)?.message);
@@ -1159,7 +1167,7 @@ contractsRouter.post("/:id/redline/export/docx", async (req, res, next) => {
 
     if (!buffer) {
       try {
-        buffer = await exportRedlineDocx(contract.filename, contract.extracted_text ?? "", edits);
+        buffer = await exportRedlineDocx(contract.filename, contract.extracted_text ?? "", edits, reviewer);
       } catch (docxErr) {
         console.error("[redline/export/docx] exportRedlineDocx threw:", (docxErr as Error)?.stack ?? docxErr);
         throw docxErr;

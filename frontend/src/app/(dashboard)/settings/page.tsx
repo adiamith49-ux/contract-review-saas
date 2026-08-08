@@ -42,12 +42,15 @@ interface Prefs {
   defaultContractType: ContractType | "none";
   defaultJurisdiction: string;
   emailNotifications: boolean;
+  /** Shown beside your name on exported redlines and Word comments. */
+  reviewerTitle: string;
 }
 
 const DEFAULT_PREFS: Prefs = {
   defaultContractType: "none",
   defaultJurisdiction: "",
   emailNotifications: true,
+  reviewerTitle: "",
 };
 
 function loadPrefs(): Prefs {
@@ -486,6 +489,21 @@ function PreferencesTab({
               </SelectContent>
             </Select>
             <p className="text-xs text-gray-400">Pre-filled in the legal intake form</p>
+          </div>
+
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="reviewerTitle" className="text-sm font-medium text-gray-700">Your Designation</Label>
+            <Input
+              id="reviewerTitle"
+              value={prefs.reviewerTitle}
+              onChange={(e) => onUpdatePref("reviewerTitle", e.target.value)}
+              placeholder="e.g. Legal Counsel"
+              maxLength={60}
+              className="h-10"
+            />
+            <p className="text-xs text-gray-400">
+              Signs your exported redlines and Word comments — e.g. &ldquo;A. Rao, Legal Counsel&rdquo;. Leave blank to use your name alone.
+            </p>
           </div>
         </div>
       </div>

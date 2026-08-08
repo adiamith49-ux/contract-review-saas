@@ -386,13 +386,15 @@ export async function downloadExport(
   filename: string,
   appliedIds?: Set<string>,
   version?: number,
+  reviewer?: string,
 ): Promise<void> {
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const qs = appliedIds && appliedIds.size > 0
-    ? `?applied=${Array.from(appliedIds).join(",")}`
-    : "";
+  const params = new URLSearchParams();
+  if (appliedIds && appliedIds.size > 0) params.set("applied", Array.from(appliedIds).join(","));
+  if (reviewer) params.set("reviewer", reviewer);
+  const qs = params.toString() ? `?${params.toString()}` : "";
   const res = await fetch(`${API_URL}/api/contracts/${id}/export/${format}${qs}`, { headers });
   if (!res.ok) throw new Error("Export failed");
 
@@ -599,6 +601,7 @@ export async function downloadRedlineDocx(
   contractId: string,
   filename: string,
   edits: ProcessedEdit[],
+  reviewer?: string,
 ): Promise<void> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -606,7 +609,7 @@ export async function downloadRedlineDocx(
   const res = await fetch(`${API_URL}/api/contracts/${contractId}/redline/export/docx`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ edits }),
+    body: JSON.stringify({ edits, reviewer }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: "Redline export failed" }));

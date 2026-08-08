@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { useAuth } from "@clerk/nextjs";
+import { useAuth, useUser } from "@clerk/nextjs";
 import { ArrowLeft, FileDown, FileText, Loader2, AlertTriangle, FileSignature, Download } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,12 +11,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { RiskBadge } from "@/components/RiskBadge";
 import { getContract, downloadExport, type ContractDetail } from "@/lib/api";
 import { formatDate, CONTRACT_TYPE_LABELS } from "@/lib/utils";
+import { reviewerLabel } from "@/lib/reviewer";
 
 type DownloadKind = "pdf" | "docx" | "original";
 
 export default function ExportPage() {
   const { id } = useParams<{ id: string }>();
   const { getToken } = useAuth();
+  const { user } = useUser();
+  // Word/PDF attribute every comment and tracked change to this name.
+  const reviewer = reviewerLabel(user?.fullName ?? [user?.firstName, user?.lastName].filter(Boolean).join(" "));
   const [contract, setContract] = useState<ContractDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState<DownloadKind | null>(null);
@@ -41,7 +45,7 @@ export default function ExportPage() {
     setDownloading(format);
     try {
       const token = await getToken();
-      await downloadExport(token, id, format, contract.filename, undefined, contract.version_number);
+      await downloadExport(token, id, format, contract.filename, undefined, contract.version_number, reviewer);
       toast.success(format === "pdf" ? "Risk report downloaded" : "Reviewed Word document downloaded");
     } catch {
       toast.error("Export failed — please try again");

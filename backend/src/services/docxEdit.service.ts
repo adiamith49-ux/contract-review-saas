@@ -22,6 +22,26 @@ import { normalizeWithMap } from "./redline.service.js";
 const AUTHOR = "Contralyne AI";
 const DATE = "2020-01-01T00:00:00Z"; // fixed date keeps output deterministic
 
+// Markup colours. Word paints tracked changes in the *author's* colour while
+// "All Markup" is on, but it honours these once changes are accepted and every
+// other viewer (Google Docs, Pages, PDF converters) honours them immediately —
+// so insertions read green and deletions red instead of one undifferentiated red.
+const INS_COLOR = "1B7F3B"; // green
+const DEL_COLOR = "C00000"; // red
+
+// Word rejects an .docx whose w:author contains XML metacharacters, and a long
+// author name breaks the comment balloon layout.
+function sanitizeAuthor(name?: string | null): string {
+  const clean = (name ?? "").replace(/[<>&"']/g, "").replace(/\s+/g, " ").trim();
+  return clean ? clean.slice(0, 80) : AUTHOR;
+}
+
+function initialsOf(name: string): string {
+  const parts = name.split(/[\s,]+/).filter(Boolean);
+  const ini = parts.map(p => p[0]).join("").toUpperCase().slice(0, 3);
+  return ini || "AI";
+}
+
 export interface DocxEdit {
   originalText: string;
   revisedText?: string;   // present for replace/insert
@@ -131,19 +151,35 @@ function extractPpr(paraXml: string): string {
   return m ? m[0] : "";
 }
 
+// Merge extra run properties into a run's existing <w:rPr> (creating one if the
+// run has none). <w:rPr> must stay the first child of <w:r>, so it is inserted
+// at the front rather than appended.
+function withRunProps(runInner: string, props: string): string {
+  const rPr = runInner.match(/<w:rPr>[\s\S]*?<\/w:rPr>|<w:rPr\/>/);
+  if (!rPr) return `<w:rPr>${props}</w:rPr>${runInner}`;
+  const merged = rPr[0] === "<w:rPr/>"
+    ? `<w:rPr>${props}</w:rPr>`
+    : rPr[0].replace("</w:rPr>", `${props}</w:rPr>`);
+  return runInner.replace(rPr[0], merged);
+}
+
 // Turn a paragraph's runs into a tracked-DELETED paragraph
-function makeDeletedParagraph(paraXml: string, delId: number): string {
+function makeDeletedParagraph(paraXml: string, delId: number, author: string): string {
   // Convert <w:t …>text</w:t> → <w:delText …>text</w:delText>, wrap each run in <w:del>
-  let out = paraXml.replace(/<w:r\b([^>]*)>([\s\S]*?)<\/w:r>/g, (_full, attrs, inner) => {
-    const innerDel = inner.replace(/<w:t(\b[^>]*)>/g, "<w:delText$1>").replace(/<\/w:t>/g, "</w:delText>");
-    return `<w:del w:id="${delId}" w:author="${AUTHOR}" w:date="${DATE}"><w:r${attrs}>${innerDel}</w:r></w:del>`;
+  const out = paraXml.replace(/<w:r\b([^>]*)>([\s\S]*?)<\/w:r>/g, (_full, attrs, inner) => {
+    const innerDel = inner
+      .replace(/<w:t(\b[^>]*)>/g, "<w:delText$1>")
+      .replace(/<\/w:t>/g, "</w:delText>");
+    const styled = withRunProps(innerDel, `<w:strike/><w:color w:val="${DEL_COLOR}"/>`);
+    return `<w:del w:id="${delId}" w:author="${author}" w:date="${DATE}"><w:r${attrs}>${styled}</w:r></w:del>`;
   });
   return out;
 }
 
 // Build a new tracked-INSERTED paragraph carrying the original's formatting
-function makeInsertedParagraph(ppr: string, text: string, insId: number): string {
-  return `<w:p>${ppr}<w:ins w:id="${insId}" w:author="${AUTHOR}" w:date="${DATE}"><w:r><w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r></w:ins></w:p>`;
+function makeInsertedParagraph(ppr: string, text: string, insId: number, author: string): string {
+  const rPr = `<w:rPr><w:u w:val="single"/><w:color w:val="${INS_COLOR}"/></w:rPr>`;
+  return `<w:p>${ppr}<w:ins w:id="${insId}" w:author="${author}" w:date="${DATE}"><w:r>${rPr}<w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r></w:ins></w:p>`;
 }
 
 // Anchor a comment across a paragraph
@@ -163,9 +199,10 @@ function addCommentToParagraph(paraXml: string, commentId: number): string {
   return out;
 }
 
-function buildCommentsXml(comments: { id: number; text: string }[]): string {
+function buildCommentsXml(comments: { id: number; text: string }[], author: string): string {
+  const initials = initialsOf(author);
   const body = comments.map(c =>
-    `<w:comment w:id="${c.id}" w:author="${AUTHOR}" w:date="${DATE}" w:initials="AI"><w:p><w:r><w:t xml:space="preserve">${xmlEscape(c.text)}</w:t></w:r></w:p></w:comment>`
+    `<w:comment w:id="${c.id}" w:author="${author}" w:date="${DATE}" w:initials="${initials}"><w:p><w:r><w:t xml:space="preserve">${xmlEscape(c.text)}</w:t></w:r></w:p></w:comment>`
   ).join("");
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${body}</w:comments>`;
 }
@@ -178,7 +215,9 @@ function buildCommentsXml(comments: { id: number; text: string }[]): string {
 export function editOriginalDocx(
   originalBuffer: Buffer,
   edits: DocxEdit[],
+  reviewer?: string | null,
 ): { buffer: Buffer; applied: number; skipped: number } {
+  const author = sanitizeAuthor(reviewer);
   const zip = new PizZip(originalBuffer);
   const docPath = "word/document.xml";
   let documentXml = zip.file(docPath)?.asText();
@@ -214,8 +253,8 @@ export function editOriginalDocx(
     const delId = idCounter++;
     const insId = idCounter++;
     let replacement = "";
-    if (edit.editType !== "insert") replacement += makeDeletedParagraph(current, delId);
-    if (edit.editType !== "delete" && edit.revisedText) replacement += makeInsertedParagraph(ppr, edit.revisedText, insId);
+    if (edit.editType !== "insert") replacement += makeDeletedParagraph(current, delId, author);
+    if (edit.editType !== "delete" && edit.revisedText) replacement += makeInsertedParagraph(ppr, edit.revisedText, insId, author);
     if (edit.comment) {
       const cid = idCounter++;
       comments.push({ id: cid, text: edit.comment });
@@ -251,7 +290,7 @@ export function editOriginalDocx(
 
   // Register comments part if any comments were added
   if (comments.length > 0) {
-    zip.file("word/comments.xml", buildCommentsXml(comments));
+    zip.file("word/comments.xml", buildCommentsXml(comments, author));
 
     // content types
     const ctPath = "[Content_Types].xml";

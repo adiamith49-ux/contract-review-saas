@@ -63,8 +63,10 @@ function riskBadgeCls(risk: string) {
 // "revised"  — the contract as it would read if every edit were accepted.
 type RenderMode = "inline" | "original" | "revised";
 
-const DEL_CLS = "text-red-600 bg-red-100 line-through px-0.5 rounded-sm decoration-red-600";
-const INS_CLS = "text-blue-700 bg-blue-100 underline not-italic px-0.5 rounded-sm";
+// Standard legal-markup convention: deletions red + struck through, insertions
+// green + underlined. Matches the DOCX/PDF exports so screen and paper agree.
+const DEL_CLS = "text-red-700 bg-red-100 line-through px-0.5 rounded-sm decoration-red-600";
+const INS_CLS = "text-emerald-800 bg-emerald-100 underline decoration-emerald-600 not-italic px-0.5 rounded-sm";
 
 function editsInBlock(block: Block, matchedEdits: LocatedEdit[]): LocatedEdit[] {
   return matchedEdits
@@ -201,7 +203,7 @@ export function RedlineViewer({
               <span>= removed text</span>
             </span>
             <span className="flex items-center gap-1.5">
-              <ins className="text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded text-[11px] underline not-italic">inserted</ins>
+              <ins className="text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded text-[11px] underline decoration-emerald-600 not-italic">inserted</ins>
               <span>= suggested addition</span>
             </span>
 
@@ -370,7 +372,7 @@ export function RedlineViewer({
                   {edit.revised_text && (
                     <div className="mb-1.5">
                       <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider">Suggested</span>
-                      <p className="text-[10px] text-blue-700 bg-blue-50 border border-blue-100 rounded px-1.5 py-1 mt-0.5 line-clamp-2 leading-relaxed">
+                      <p className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-100 rounded px-1.5 py-1 mt-0.5 line-clamp-2 leading-relaxed">
                         {edit.revised_text}
                       </p>
                     </div>

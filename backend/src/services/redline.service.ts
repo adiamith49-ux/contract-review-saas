@@ -8,6 +8,13 @@ import {
   DeletedTextRun,
 } from "docx";
 
+// ─── Redline markup colours ───────────────────────────────────────────────────
+// Word paints tracked changes in the author's own colour while "All Markup" is
+// on, but honours these once changes are accepted — and every other viewer
+// (Google Docs, Pages, PDF converters) honours them straight away.
+export const INS_STYLE = { color: "1B7F3B", underline: {} } as const; // green
+export const DEL_STYLE = { color: "C00000", strike: true } as const;  // red
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface RedlineEdit {
@@ -338,9 +345,10 @@ export async function exportRedlineDocx(
   filename: string,
   source: string,
   processedEdits: ProcessedEdit[],
+  reviewer?: string | null,
 ): Promise<Buffer> {
   const nowISO = new Date().toISOString();
-  const author = "Contralyn AI";
+  const author = (reviewer ?? "").trim() || "Contralyne AI";
 
   // Sort placed edits ascending — walk source left to right.
   const placed = processedEdits
@@ -387,14 +395,14 @@ export async function exportRedlineDocx(
       const id = revId++;
 
       if (edit.edit_type === "delete") {
-        currentRuns.push(new DeletedTextRun({ text: raw, id, author, date: nowISO }));
+        currentRuns.push(new DeletedTextRun({ text: raw, id, author, date: nowISO, ...DEL_STYLE }));
       } else if (edit.edit_type === "insert") {
         currentRuns.push(new TextRun(raw));
-        currentRuns.push(new InsertedTextRun({ text: ` ${edit.revised_text}`, id, author, date: nowISO, color: "0070C0" }));
+        currentRuns.push(new InsertedTextRun({ text: ` ${edit.revised_text}`, id, author, date: nowISO, ...INS_STYLE }));
       } else {
         // replace
-        currentRuns.push(new DeletedTextRun({ text: raw, id, author, date: nowISO }));
-        currentRuns.push(new InsertedTextRun({ text: edit.revised_text, id, author, date: nowISO, color: "0070C0" }));
+        currentRuns.push(new DeletedTextRun({ text: raw, id, author, date: nowISO, ...DEL_STYLE }));
+        currentRuns.push(new InsertedTextRun({ text: edit.revised_text, id, author, date: nowISO, ...INS_STYLE }));
       }
     }
   }
