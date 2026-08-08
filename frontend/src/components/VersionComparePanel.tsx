@@ -4,13 +4,13 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   ChevronDown, ChevronUp, Loader2, GitCompare, Upload, Plus, Minus, Pencil,
-  Sparkles, Download, ArrowRight, Columns2, AlignJustify,
+  Sparkles, Download, ArrowRight, Columns2, AlignJustify, FileText, AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn, formatDateTime } from "@/lib/utils";
 import {
-  listVersions, compareVersions, isClauseComparison, uploadContractVersion,
+  listVersions, compareVersions, isClauseComparison, uploadContractVersion, getContract,
   type VersionItem, type Comparison, type DiffPart,
   type ClauseComparison, type ClauseStatus, type LegacyKeyChange,
 } from "@/lib/api";
@@ -67,6 +67,12 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
   // Empty set = show everything. "missing_in_base" doubles as the Missing chip.
   const [statusFilter, setStatusFilter] = useState<Set<ClauseStatus>>(new Set());
   const [showResults, setShowResults] = useState(true);
+  // "text" = the extracted text with the diff marked in place. "original" =
+  // the uploaded PDFs themselves, which is the only view that preserves the
+  // real headings, tables and pagination — the extracted text cannot.
+  const [docView, setDocView] = useState<"text" | "original">("text");
+  const [originals, setOriginals] = useState<Record<string, { url: string | null; status?: string; filename: string; mime?: string }>>({});
+  const [loadingOriginals, setLoadingOriginals] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -263,6 +269,61 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
           <p key={p.key} className="text-[13px] leading-relaxed mb-3">{p.runs}</p>
         ))}
       </>
+    );
+  }
+
+  // Pre-signed S3 URLs are minted per request and expire, so they are fetched
+  // when the view is opened rather than held with the version list.
+  useEffect(() => {
+    if (docView !== "original" || !result) return;
+    const ids = [result.base_contract_id, result.compared_contract_id].filter(id => !originals[id]);
+    if (ids.length === 0) return;
+    let cancelled = false;
+    setLoadingOriginals(true);
+    (async () => {
+      try {
+        const token = await getToken();
+        const fetched = await Promise.all(ids.map(async id => {
+          const { contract } = await getContract(token, id);
+          return [id, { url: contract.fileUrl, status: contract.fileStatus, filename: contract.filename, mime: (contract as { mime_type?: string }).mime_type }] as const;
+        }));
+        if (!cancelled) setOriginals(prev => ({ ...prev, ...Object.fromEntries(fetched) }));
+      } catch { /* the panel shows its own unavailable state */ }
+      finally { if (!cancelled) setLoadingOriginals(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [docView, result, getToken]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function OriginalColumn({ contractId }: { contractId: string }) {
+    const o = originals[contractId];
+    if (loadingOriginals && !o) {
+      return <div className="h-full flex items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-gray-300" /></div>;
+    }
+    if (o?.url && (o.mime?.includes("pdf") || /\.pdf$/i.test(o.filename))) {
+      return <iframe src={o.url} title={o.filename} className="w-full h-full border-0" />;
+    }
+    if (o?.url) {
+      // Word can't render in an iframe; offer the file rather than pretend.
+      return (
+        <div className="h-full flex flex-col items-center justify-center gap-3 px-6 text-center">
+          <FileText className="h-7 w-7 text-gray-300" />
+          <p className="text-xs text-gray-500 max-w-xs">Word documents can&apos;t be previewed inline. Open it to see the original formatting.</p>
+          <Button asChild size="sm" variant="outline" className="h-8 text-xs">
+            <a href={o.url} target="_blank" rel="noopener noreferrer">Open {o.filename}</a>
+          </Button>
+        </div>
+      );
+    }
+    return (
+      <div className="h-full flex flex-col items-center justify-center gap-2 px-6 text-center">
+        <AlertTriangle className="h-6 w-6 text-amber-400" />
+        <p className="text-xs text-gray-600 font-medium">Original file unavailable</p>
+        <p className="text-[11px] text-gray-400 max-w-xs">
+          {o?.status === "missing"
+            ? "This file is no longer in storage, so the original pages can't be shown. The text comparison beside it is unaffected — it uses the text extracted at upload."
+            : "File storage is unreachable right now. Try again shortly."}
+        </p>
+      </div>
     );
   }
 
@@ -472,6 +533,18 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
                   )}
                 </button>
                 <span className="inline-flex rounded-md border overflow-hidden">
+                  <button type="button" onClick={() => setDocView("text")}
+                    className={cn("px-2 py-1 text-[10px] font-medium", docView === "text" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-50")}
+                    title="Extracted text with the changes marked in place">
+                    Text diff
+                  </button>
+                  <button type="button" onClick={() => setDocView("original")}
+                    className={cn("px-2 py-1 text-[10px] font-medium border-l", docView === "original" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-50")}
+                    title="The uploaded documents exactly as they are, with real formatting and pages">
+                    Original file
+                  </button>
+                </span>
+                <span className="inline-flex rounded-md border overflow-hidden">
                   <button type="button" onClick={() => setScope("full")}
                     className={cn("px-2 py-1 text-[10px] font-medium", scope === "full" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-50")}
                     title="Both contracts end to end, changes highlighted in place">
@@ -542,7 +615,18 @@ export function VersionComparePanel({ contractId, getToken, embedded, fullScreen
         ) : (
           <div className="flex-1 min-h-0 flex">
             <div className="flex-1 min-w-0 flex flex-col">
-        {shownBlocks.length === 0 ? (
+        {docView === "original" ? (
+          <div className="flex-1 min-h-0 flex flex-col">
+            <div className="shrink-0 grid grid-cols-2 gap-px bg-gray-200 text-[11px] font-semibold">
+              <div className="bg-gray-100 px-4 py-2 text-gray-600 truncate">Older — {colLabel(baseVersion, "prior draft")}</div>
+              <div className="bg-gray-100 px-4 py-2 text-gray-600 truncate">Newer — {colLabel(comparedVersion, "new draft")}</div>
+            </div>
+            <div className="flex-1 min-h-0 grid grid-cols-2 gap-px bg-gray-200">
+              <div className="bg-white min-h-0"><OriginalColumn contractId={result.base_contract_id} /></div>
+              <div className="bg-white min-h-0"><OriginalColumn contractId={result.compared_contract_id} /></div>
+            </div>
+          </div>
+        ) : shownBlocks.length === 0 ? (
           <div className="flex-1 flex items-center justify-center text-sm text-gray-400">No textual changes between these two versions.</div>
         ) : diffView === "inline" ? (
           <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-2">
