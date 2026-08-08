@@ -6,7 +6,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "tsx tests/clauseCompare.test.ts && tsx tests/compare.test.ts && tsx tests/export.test.ts",
+    "test": "tsx tests/clauseCompare.test.ts && tsx tests/compare.test.ts && tsx tests/redlinePlacement.test.ts && tsx tests/export.test.ts",
     "migrate:org1": "tsx scripts/migrate-org1.ts"
   },
   "dependencies": {

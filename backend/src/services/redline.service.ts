@@ -188,15 +188,35 @@ function buildTokenIndex(toks: Token[]): Map<string, number[]> {
 // Greedy alignment of tgt against doc[start…]. Allows a word to be skipped on
 // either side, which is what "the model dropped/added a word" looks like.
 // Returns how many target words were matched and how much of doc was consumed.
+// How many consecutive extra words to look past on either side. One is not
+// enough in practice: a counterparty draft that adds "consultant, customer,
+// vendor," inserts THREE consecutive words the quote does not have, and a
+// single-word lookahead falls out of alignment there and never recovers.
+const ALIGN_SKIP = 4;
+
 function align(doc: Token[], start: number, limit: number, tgt: Token[]): { hits: number; consumed: number } {
   let i = 0, j = 0, hits = 0, lastHit = 0;
   while (i < limit && j < tgt.length) {
     if (doc[start + i].t === tgt[j].t) {
       hits++; i++; j++; lastHit = i;
-    } else if (i + 1 < limit && doc[start + i + 1].t === tgt[j].t) {
-      i++;                                    // doc has an extra word
-    } else if (j + 1 < tgt.length && doc[start + i].t === tgt[j + 1].t) {
-      j++;                                    // target has an extra word
+      continue;
+    }
+
+    // Look a short way ahead on each side for the next agreement, and take
+    // whichever resynchronises sooner.
+    let docSkip = -1;
+    for (let k = 1; k <= ALIGN_SKIP && i + k < limit; k++) {
+      if (doc[start + i + k].t === tgt[j].t) { docSkip = k; break; }
+    }
+    let tgtSkip = -1;
+    for (let k = 1; k <= ALIGN_SKIP && j + k < tgt.length; k++) {
+      if (doc[start + i].t === tgt[j + k].t) { tgtSkip = k; break; }
+    }
+
+    if (docSkip !== -1 && (tgtSkip === -1 || docSkip <= tgtSkip)) {
+      i += docSkip;                           // doc has extra words
+    } else if (tgtSkip !== -1) {
+      j += tgtSkip;                           // target has extra words
     } else {
       i++; j++;                               // substitution
     }
@@ -234,7 +254,13 @@ function locateTokens(
   const candidates = anchorPositions.length > 4000 ? anchorPositions.slice(0, 4000) : anchorPositions;
 
   // Short quotes get no fuzz — a 3-word window matches half the document.
-  const threshold = n < 6 ? 1 : 0.75;
+  //
+  // 0.75 was too loose once the alignment could skip runs of inserted words: a
+  // clause with the parties swapped, "goods" for "services" and "nine (9)" for
+  // "five (5)" years still scored 0.76 against the original. Placing a tracked
+  // change on the WRONG clause is far worse than leaving one unplaced — the
+  // user can see an unplaced edit, but a wrong one goes out to the counterparty.
+  const threshold = n < 6 ? 1 : 0.85;
 
   let best: { s: number; e: number; confidence: number } | null = null;
 
@@ -264,6 +290,63 @@ function locateTokens(
 }
 
 // ─── Process edits against source ────────────────────────────────────────────
+
+// Split a quote into sentences. The analysis frequently returns `contractText`
+// that STITCHES several clauses together — measured on a real contract, one
+// finding joined Sections 39.1 and 39.2 with a semicolon and dropped phrases
+// from both. No such string exists in the document, and the token window is
+// capped at target-length + 4, so it can never stretch across the real span.
+// Placing each sentence separately is what makes those quotes locatable.
+function splitQuoteSentences(text: string): string[] {
+  return text
+    .split(/(?<=[.;:!?])\s+(?=["'(]?[A-Z0-9])/)
+    .map(t => t.trim())
+    .filter(t => t.split(/\s+/).length >= 5);   // fragments match anything
+}
+
+// Largest gap tolerated between consecutive matched sentences, in normalised
+// characters. Adjacent sub-clauses (39.1 → 39.2) sit within a few hundred
+// characters; anything wider means the quote spans unrelated parts of the
+// contract and the union would swallow text the edit was never meant to touch.
+const MAX_SENTENCE_GAP = 600;
+
+/**
+ * Locate a stitched quote by placing each sentence and taking the union of the
+ * spans, provided they are consecutive and close together.
+ */
+function locateStitched(
+  docToks: Token[],
+  docIdx: Map<string, number[]>,
+  raw: string,
+): { s: number; e: number; confidence: number } | null {
+  const sentences = splitQuoteSentences(raw);
+  if (sentences.length < 2) return null;        // nothing to gain over the normal path
+
+  const spans: { s: number; e: number; confidence: number }[] = [];
+  const matchedSentences: string[] = [];
+  for (const sentence of sentences) {
+    const norm = normalizeWithMap(sentence).norm;
+    if (!norm) continue;
+    const hit = locateTokens(docToks, docIdx, tokenize(norm));
+    if (hit) { spans.push(hit); matchedSentences.push(sentence); }
+  }
+
+  // Demand most of the quote by WORD COUNT rather than by sentence count: one
+  // long clause that matches solidly is better evidence than two short ones,
+  // and refusing to place it was leaving real redlines unplaced.
+  const totalWords = sentences.reduce((n, x) => n + x.split(/\s+/).length, 0);
+  const matchedWords = matchedSentences.reduce((n, x) => n + x.split(/\s+/).length, 0);
+  if (spans.length === 0 || matchedWords / totalWords < 0.5) return null;
+
+  spans.sort((a, b) => a.s - b.s);
+  for (let i = 1; i < spans.length; i++) {
+    if (spans[i].s - spans[i - 1].e > MAX_SENTENCE_GAP) return null;
+  }
+
+  const confidence = (spans.reduce((acc, x) => acc + x.confidence, 0) / spans.length)
+    * (matchedWords / totalWords);
+  return { s: spans[0].s, e: spans[spans.length - 1].e, confidence };
+}
 
 export function processEdits(source: string, edits: RedlineEdit[]): ProcessedEdit[] {
   // Pre-compute the normalised document and its token index ONCE — reused for
@@ -303,7 +386,10 @@ export function processEdits(source: string, edits: RedlineEdit[]): ProcessedEdi
       confidence = 1;
     } else {
       // Word-alignment path — survives paraphrase-level drift.
-      const located = locateTokens(docToks, docIdx, tokenize(normTgt));
+      let located = locateTokens(docToks, docIdx, tokenize(normTgt));
+      // Then the stitched path, for quotes that join several clauses into one
+      // string that exists nowhere in the document as written.
+      if (!located) located = locateStitched(docToks, docIdx, raw);
       if (!located) {
         return {
           ...edit,

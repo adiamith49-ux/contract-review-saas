@@ -61,7 +61,7 @@ function buildAnalysisTool(maxItems: number | null): Anthropic.Tool {
               recommendation: { type: "string" },
               contractText: {
                 type: "string",
-                description: "The clause language being flagged, copied VERBATIM character-for-character from the contract text — same wording, punctuation, capitalisation and spacing. Never paraphrase, summarise, tidy up or re-quote from memory: this string is matched back against the source to anchor the redline, and a paraphrase cannot be placed. One or two key sentences is the right length.",
+                description: "The clause language being flagged, copied VERBATIM character-for-character from the contract text — same wording, punctuation, capitalisation and spacing. Never paraphrase, summarise, tidy up or re-quote from memory: this string is matched back against the source to anchor the redline, and a paraphrase cannot be placed. Quote ONE CONTIGUOUS passage — never join two clauses together, never bridge them with a semicolon, and never omit words from the middle. If the problem spans several sub-clauses, quote only the single worst one and reference the others in `finding`. One or two key sentences is the right length.",
               },
               suggestedLanguage: { type: "string", description: languageDescription },
               playbookRule: { type: "string", description: "If this finding deviates from a company playbook rule, name the playbook and rule that was triggered (e.g. 'SaaS Playbook — Liability cap: 12 months fees'). Omit if no playbook rule applies." },
