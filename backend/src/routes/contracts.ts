@@ -1267,7 +1267,13 @@ contractsRouter.post("/:id/compare", async (req, res, next) => {
         // server-log access.
         summaryError = (e as Error)?.message ?? String(e);
         console.error("[compare] summarizeChanges failed:", (e as Error)?.stack ?? e);
-        summary = "Automated change summary unavailable — showing the structural diff below.";
+        // Distinguish "the AI provider refused us" from "nothing changed". The
+        // generic line sent people hunting for a diff bug when the real cause
+        // was an exhausted Anthropic credit balance.
+        const provider = /credit balance|quota|rate.?limit|429|invalid_request_error/i.test(summaryError)
+          ? " The AI service rejected the request (billing or rate limit) — check the Anthropic account."
+          : "";
+        summary = `Automated change summary unavailable.${provider} The structural diff below is complete and unaffected.`;
       }
     } else {
       summary = "No substantive text differences detected between these two versions.";
