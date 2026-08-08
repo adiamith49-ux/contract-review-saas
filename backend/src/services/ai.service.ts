@@ -532,7 +532,7 @@ const changesTool: Anthropic.Tool = {
       summary: { type: "string", description: "2-4 sentence plain-English summary of what changed between the prior version and the new version, from the reviewing party's perspective." },
       keyChanges: {
         type: "array",
-        description: "The most substantive changes (max 10). Ignore pure formatting/whitespace.",
+        description: "Every substantive change in the diff, one entry each — typically 5-15, up to 25. Ignore pure formatting/whitespace, but never return an empty array when the diff contains substantive changes: a diff with added or deleted clauses always has at least one key change.",
         items: {
           type: "object",
           required: ["type", "clause", "detail", "impact"],
@@ -548,25 +548,83 @@ const changesTool: Anthropic.Tool = {
   },
 };
 
-// AI summary of what changed between two drafts. `diffText` is a compact
-// pre-computed diff so the model focuses on classifying substance, not re-diffing.
-export async function summarizeChanges(diffText: string, contractType: ContractType): Promise<ChangeSummary> {
+// One AI pass over a slice of the diff.
+async function summarizeChangesSegment(
+  diffText: string,
+  contractType: ContractType,
+  segment?: { index: number; total: number },
+): Promise<{ summary: string; keyChanges: ChangeSummary["keyChanges"] }> {
+  const scope = segment
+    ? `\n\nThis is part ${segment.index} of ${segment.total} of the diff. Summarize ONLY the changes shown below; another pass covers the rest.`
+    : "";
+
   const response = await anthropic.messages.create({
     model: config.AI_MODEL,
-    max_tokens: 2048,
+    // Room for the prose summary AND a full keyChanges list. At 2048 the list
+    // came back empty once the summary had been written.
+    max_tokens: 4096,
     system: [{ type: "text", text: legalSystemPrompt }],
     tools: [changesTool],
     tool_choice: { type: "tool", name: "summarize_changes" },
     messages: [{
       role: "user",
-      content: `Two drafts of a ${contractType.toUpperCase()} contract were compared. Below is a paragraph-level diff (ADDED = only in the new version, DELETED = only in the prior version, MODIFIED = reworded between versions). Summarize the substantive legal changes and their impact on the reviewing party. Ignore formatting-only changes.\n\n${diffText.slice(0, 40000)}`,
+      content: `Two drafts of a ${contractType.toUpperCase()} contract were compared. Below is a paragraph-level diff (ADDED = only in the new version, DELETED = only in the prior version, MODIFIED = reworded between versions). Summarize the substantive legal changes and their impact on the reviewing party. Ignore formatting-only changes.${scope}\n\n${diffText}`,
     }],
   });
 
   const toolUse = response.content.find((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
   if (!toolUse) throw new Error("AI did not return a change summary");
   const input = toolUse.input as { summary: string; keyChanges: ChangeSummary["keyChanges"] };
-  return { summary: input.summary, keyChanges: input.keyChanges ?? [], model: config.AI_MODEL };
+  return { summary: input.summary ?? "", keyChanges: input.keyChanges ?? [] };
+}
+
+// AI summary of what changed between two drafts. `diffText` is a compact
+// pre-computed diff so the model focuses on classifying substance, not re-diffing.
+//
+// The diff is reviewed in SEGMENTS, not truncated. This previously did
+// `diffText.slice(0, 40000)`, which silently dropped the tail of any large
+// comparison — measured at 10,194 of 50,194 chars (20%) on a real v1→v2 run,
+// and the dropped part is always the end of the document. Same failure the
+// analysis path had; same fix: more calls in parallel, so wall-clock stays at
+// roughly one call while coverage scales with the diff.
+export async function summarizeChanges(diffText: string, contractType: ContractType): Promise<ChangeSummary> {
+  const segments = splitIntoSegments(diffText, SEGMENT_CHARS);
+
+  if (segments.length === 1) {
+    const one = await summarizeChangesSegment(diffText, contractType);
+    return { ...one, model: config.AI_MODEL };
+  }
+
+  console.log(`[compare] ${diffText.length} chars → ${segments.length} segments, ${SEGMENT_CONCURRENCY} at a time`);
+  const settled = await runWithConcurrency(segments, SEGMENT_CONCURRENCY, async (segmentText, i) =>
+    summarizeChangesSegment(segmentText, contractType, { index: i + 1, total: segments.length })
+      .then(r => ({ ok: true as const, r }))
+      .catch(err => {
+        console.error(`[compare] segment ${i + 1}/${segments.length} failed:`, (err as Error)?.message);
+        return { ok: false as const, r: null };
+      }),
+  );
+
+  const ok = settled.filter(s => s.ok).map(s => s.r!);
+  if (ok.length === 0) throw new Error("AI did not return a change summary");
+
+  // Drop duplicates where two segments describe the same clause change.
+  const seen = new Set<string>();
+  const keyChanges = ok.flatMap(r => r.keyChanges).filter(k => {
+    const key = `${k.type}|${(k.clause ?? "").toLowerCase().slice(0, 60)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const parts = ok.map(r => r.summary).filter(Boolean);
+  // Say so rather than quietly presenting partial coverage as complete.
+  const incomplete = segments.length - ok.length;
+  if (incomplete > 0) {
+    parts.push(`Note: ${incomplete} of ${segments.length} sections of this diff could not be summarized in this run. Re-run the comparison for complete coverage.`);
+  }
+
+  return { summary: parts.join(" "), keyChanges, model: config.AI_MODEL };
 }
 
 export async function summarizeContract(

@@ -41,9 +41,15 @@ export function ContractDetailTabs({ contractId, contractStatus, getToken, onCha
   if (!active || !TITLES[active]) return null;
   const { label, icon: Icon } = TITLES[active];
 
+  // Comparing two drafts is a read-heavy, full-attention task — two columns of
+  // contract text do not fit a 3xl dialog. It gets the whole screen.
+  const fullScreen = active === "versions";
+
   return (
     <Dialog open onOpenChange={(open) => !open && close()}>
-      <DialogContent className="max-w-3xl w-[calc(100vw-2rem)] h-[75vh] p-0 gap-0 flex flex-col overflow-hidden">
+      <DialogContent className={fullScreen
+        ? "max-w-none w-screen h-screen sm:rounded-none border-0 p-0 gap-0 flex flex-col overflow-hidden"
+        : "max-w-3xl w-[calc(100vw-2rem)] h-[75vh] p-0 gap-0 flex flex-col overflow-hidden"}>
         <DialogHeader className="shrink-0 px-5 py-4 border-b">
           <DialogTitle className="flex items-center gap-2">
             <Icon className="h-4 w-4 text-primary" />
@@ -51,7 +57,9 @@ export function ContractDetailTabs({ contractId, contractStatus, getToken, onCha
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        {/* The comparison view manages its own scrolling: the two text columns
+            scroll independently while the controls stay pinned. */}
+        <div className={fullScreen ? "flex-1 min-h-0 overflow-hidden" : "flex-1 min-h-0 overflow-y-auto"}>
           {active === "intake" && (
             <IntakePanel embedded contractId={contractId} getToken={getToken} onSaved={onChanged} />
           )}
@@ -59,7 +67,7 @@ export function ContractDetailTabs({ contractId, contractStatus, getToken, onCha
             <ApprovalPanel embedded contractId={contractId} contractStatus={contractStatus} getToken={getToken} onChanged={onChanged} />
           )}
           {active === "versions" && (
-            <VersionComparePanel embedded contractId={contractId} getToken={getToken} />
+            <VersionComparePanel embedded fullScreen contractId={contractId} getToken={getToken} />
           )}
           {active === "workspace" && (
             <MatterWorkspace embedded contractId={contractId} getToken={getToken} />
