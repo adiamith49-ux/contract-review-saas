@@ -22,14 +22,35 @@ accountRouter.delete("/", async (req, res, next) => {
       await Promise.allSettled(contracts.map((c) => deleteFromS3(c.s3_key)));
     }
 
-    // Delete all user data from DB — cascade handles child rows
-    await db.from("contracts").delete().eq("user_id", userId);
-    await db.from("analyses").delete().eq("user_id", userId);
-    await db.from("legal_intake").delete().eq("user_id", userId);
-    await db.from("chat_messages").delete().eq("user_id", userId);
-    await db.from("activity_logs").delete().eq("user_id", userId);
-    await db.from("review_rules").delete().eq("user_id", userId);
-    await db.from("clause_library").delete().eq("user_id", userId);
+    // Delete all user data from DB — cascade handles child rows.
+    //
+    // Every one of these MUST be checked. supabase-js resolves with { error }
+    // rather than throwing, so the previous fire-and-forget calls could each
+    // fail while this endpoint still returned 204 — telling a user their data
+    // was erased under GDPR when some of it was still there. A deletion that
+    // silently half-completes is worse than one that fails loudly.
+    const tables = [
+      "contracts", "analyses", "legal_intake", "chat_messages",
+      "activity_logs", "review_rules", "clause_library",
+    ] as const;
+
+    const failed: string[] = [];
+    for (const table of tables) {
+      const { error } = await db.from(table).delete().eq("user_id", userId);
+      if (error) {
+        console.error(`[account.delete] ${table} delete failed for ${userId}:`, error.message, error.code ?? "");
+        failed.push(table);
+      }
+    }
+
+    if (failed.length > 0) {
+      res.status(500).json({
+        error: `Account deletion incomplete — ${failed.join(", ")} could not be erased. Nothing further was removed; please retry or contact support.`,
+        code: "deletion_incomplete",
+        tables: failed,
+      });
+      return;
+    }
 
     res.status(204).send();
   } catch (err) {

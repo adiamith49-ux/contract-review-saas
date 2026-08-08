@@ -191,15 +191,19 @@ async function ensureUser(clerkUserId: string): Promise<void> {
     const email = user.emailAddresses?.[0]?.emailAddress ?? "";
     if (!email) return; // can't insert without email
 
-    await db.from("users").upsert(
+    // supabase-js resolves with { error } rather than throwing, so this has to
+    // be read explicitly — the surrounding catch alone would never see it.
+    const { error } = await db.from("users").upsert(
       { clerk_user_id: clerkUserId, email },
       { onConflict: "clerk_user_id" },
     );
+    if (error) throw error;
   } catch (e) {
     // Non-fatal — user sync failure should never block an upload — but a
     // permanently failing sync means users never land in the users table, and
     // silence is how that goes unnoticed for months.
-    console.error("[ensureUser] sync failed:", (e as Error)?.message ?? e);
+    const err = e as { message?: string; code?: string };
+    console.error("[ensureUser] sync failed:", err?.message ?? e, err?.code ?? "");
   }
 }
 
@@ -655,9 +659,12 @@ async function runAnalysis(opts: {
     // this failed is the row itself — record the reason for the status poll.
     const message = err instanceof Error ? err.message : "Analysis failed";
     console.error(`[analyze] contract ${opts.contractId} failed:`, err);
-    await db.from("contracts")
+    // If THIS write is also lost the contract wedges at "processing" forever
+    // and the user can never retry, so its failure has to be visible too.
+    const { error: markErr } = await db.from("contracts")
       .update({ status: "failed", error_message: message })
       .eq("id", opts.contractId);
+    if (markErr) console.error(`[analyze] could not mark ${opts.contractId} failed:`, markErr.message, markErr.code ?? "");
   }
 }
 
@@ -799,9 +806,10 @@ contractsRouter.post("/:id/analyze", analyzeLimiter, async (req, res, next) => {
 
     res.status(202).json({ status: "processing" });
   } catch (err) {
-    await db.from("contracts")
+    const { error: markErr } = await db.from("contracts")
       .update({ status: "failed", error_message: err instanceof Error ? err.message : "Analysis failed" })
       .eq("id", req.params.id);
+    if (markErr) console.error(`[analyze] could not mark ${req.params.id} failed:`, markErr.message, markErr.code ?? "");
     next(err);
   }
 });
@@ -828,7 +836,8 @@ contractsRouter.post("/:id/summarize", async (req, res, next) => {
       contract.contract_type as ContractType
     );
 
-    await db.from("contracts").update({ summary }).eq("id", contract.id);
+    const { error: sumErr } = await db.from("contracts").update({ summary }).eq("id", contract.id);
+    if (sumErr) console.error(`[summarize] could not cache summary for ${contract.id}:`, sumErr.message, sumErr.code ?? "");
     await logActivity(req.userId, "contract.summarized", contract.id);
 
     res.json({ summary });
@@ -981,10 +990,13 @@ contractsRouter.post("/:id/chat", chatLimiter, async (req, res, next) => {
       question,
     });
 
-    await db.from("chat_messages").insert([
+    const { error: chatErr } = await db.from("chat_messages").insert([
       { contract_id: req.params.id, user_id: req.userId, org_id: req.orgId, role: "user", content: question },
       { contract_id: req.params.id, user_id: req.userId, org_id: req.orgId, role: "assistant", content: answer },
     ]);
+    // The answer still goes back, but a lost insert silently drops the history
+    // that every following question uses as context.
+    if (chatErr) console.error(`[chat] could not persist messages for ${req.params.id}:`, chatErr.message, chatErr.code ?? "");
 
     res.json({ answer });
   } catch (err) {
@@ -1148,13 +1160,21 @@ contractsRouter.post("/:id/redline", analyzeLimiter, async (req, res, next) => {
     console.log("[redline-route] placed:", matched_count, "unplaced:", unmatched_count);
 
     // Cache result — delete old then insert new (no unique constraint needed)
+    // The `redlines` table has existed for a long time, so the old "may not
+    // exist yet" catch was hiding real faults. It also could not have caught
+    // them: supabase-js RESOLVES with { error } instead of throwing, so a
+    // try/catch around these calls only ever sees transport-level failures.
+    // Read the returned error, or persistence stays silent either way. Still
+    // non-fatal — the edits are already in the response — but never invisible.
     try {
-      await db.from("redlines")
+      const { error: delErr } = await db.from("redlines")
         .delete()
         .eq("contract_id", req.params.id)
         .eq("user_id", req.userId)
         .eq("org_id", req.orgId!);
-      await db.from("redlines").insert({
+      if (delErr) throw delErr;
+
+      const { error: insErr } = await db.from("redlines").insert({
         contract_id: req.params.id,
         user_id: req.userId,
         org_id: req.orgId,
@@ -1163,14 +1183,11 @@ contractsRouter.post("/:id/redline", analyzeLimiter, async (req, res, next) => {
         unmatched_count,
         model,
       });
+      if (insErr) throw insErr;
     } catch (e) {
-      // The `redlines` table has existed for a long time, so "may not exist
-      // yet" is no longer a reason to stay quiet: anything failing here now is
-      // a real fault (constraint, RLS, a missing column), and the consequence
-      // is that the redline is never persisted — GET /:id/redline returns
-      // nothing and the user's run is silently lost. Still non-fatal, because
-      // the edits are already in the response, but no longer invisible.
-      console.error("[redline] failed to persist redlines row:", (e as Error)?.stack ?? e);
+      const err = e as { message?: string; code?: string; details?: string; hint?: string };
+      console.error("[redline] failed to persist redlines row:",
+        err?.message ?? e, err?.code ?? "", err?.details ?? "", err?.hint ?? "");
     }
 
     await logActivity(req.userId, "contract.redlined", req.params.id, { matched_count, unmatched_count });
